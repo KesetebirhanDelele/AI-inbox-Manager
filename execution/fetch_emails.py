@@ -235,11 +235,23 @@ def move_emails(
     Organize emails by Gmail label, then remove them from the source folder.
 
     For each message this applies the destination label with
-    ``STORE +X-GM-LABELS`` (Gmail auto-creates the label) and only then strips
-    the source-folder label (``\\Inbox`` for the inbox, otherwise the folder's
-    own label) with ``STORE -X-GM-LABELS``.  There is no COPY, no ``\\Deleted``
-    and no ``expunge()`` — the organize path cannot permanently delete mail, and
-    a partial failure just leaves an extra label to be retried next run.
+    ``STORE +X-GM-LABELS`` (Gmail auto-creates the label), then removes it from
+    the source folder via ``STORE +FLAGS (\\Deleted)`` + a UID-scoped
+    ``UID EXPUNGE`` (RFC 4315) on that folder.
+
+    Gmail's IMAP treats ``\\Inbox`` (and other folder labels) as special: a
+    plain ``STORE -X-GM-LABELS (\\Inbox)`` reports OK and drops it from the
+    ``X-GM-LABELS`` FETCH response, but does *not* actually remove the message
+    from Gmail's own ``in:inbox`` index — confirmed live via ``X-GM-RAW``
+    search, which kept matching ``in:inbox`` for messages "moved" this way.
+    Delete+expunge scoped to the source folder is Gmail's documented,
+    actually-effective way to do this: since the expunge only ever targets
+    this folder (never Trash or All Mail), it removes the folder's label
+    rather than the message itself — any other label already applied (the
+    destination category) keeps the message alive, just no longer in this
+    folder. Still no COPY, no blind ``expunge()`` — only the specific UIDs
+    flagged here are ever expunged, and only after the destination label is
+    confirmed applied, so a partial failure just retries next run.
 
     Handles are UIDs (see module docstring); each is checked against the live
     UID set and, if missing, re-resolved via its Message-ID before any mutation.
@@ -256,7 +268,6 @@ def move_emails(
         return 0
 
     id_to_message_id = id_to_message_id or {}
-    leave_label = "\\Inbox" if source_folder.upper() == "INBOX" else source_folder
 
     imap = None
     try:
@@ -269,7 +280,7 @@ def move_emails(
 
         present, mid_to_uid = _resolve_folder_uids(imap)
 
-        moved_count = 0
+        to_expunge: List[str] = []
         for handle, dest_folder in email_moves.items():
             uid = str(handle)
 
@@ -292,16 +303,31 @@ def move_emails(
                 logger.error(f"Move: failed to label UID {uid} as {dest_folder!r}: {r1}")
                 continue
 
-            # 2. Only now remove it from the source folder.
-            s2, r2 = imap.uid("STORE", uid, "-X-GM-LABELS", f"({_gm_label_atom(leave_label)})")
+            # 2. Flag for removal from the source folder — expunged as a batch below.
+            s2, r2 = imap.uid("STORE", uid, "+FLAGS", "(\\Deleted)")
             if s2 != "OK":
                 logger.error(
-                    f"Move: labeled UID {uid} {dest_folder!r} but could not leave "
-                    f"{source_folder!r}: {r2} — will retry next run"
+                    f"Move: labeled UID {uid} {dest_folder!r} but could not flag "
+                    f"it \\Deleted in {source_folder!r}: {r2} — will retry next run"
                 )
                 continue
 
-            moved_count += 1
+            to_expunge.append(uid)
+
+        moved_count = 0
+        if to_expunge:
+            # UIDPLUS: expunge ONLY the UIDs just flagged. Never a blind
+            # expunge() — this mailbox is also worked by a human.
+            try:
+                typ, resp = imap.uid("EXPUNGE", ",".join(to_expunge))
+                if typ != "OK":
+                    raise imaplib.IMAP4.error(f"UID EXPUNGE returned {typ}: {resp}")
+                moved_count = len(to_expunge)
+            except imaplib.IMAP4.error as exc:
+                logger.error(
+                    f"Move: labeled {len(to_expunge)} message(s) but UID EXPUNGE "
+                    f"failed ({exc}) — they'll retry next run"
+                )
 
         logger.info(f"Successfully moved {moved_count} of {len(email_moves)} email(s)")
         return moved_count

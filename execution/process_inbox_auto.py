@@ -764,12 +764,18 @@ def is_from_known_company(email_data: Dict[str, Any], classification: Dict[str, 
     return False
 
 
-def process_unread_emails(limit: Optional[int] = None) -> Dict[str, Any]:
+def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN") -> Dict[str, Any]:
     """
-    Process only unread emails from inbox.
+    Process emails from inbox matching an IMAP search criteria.
 
     Args:
         limit: Maximum number of emails to process (None for unlimited)
+        criteria: IMAP search criteria, scoped to the INBOX folder (default
+            "UNSEEN"). "ALL" catches up on anything still sitting in INBOX
+            uncategorized — safe to run any time, since an email already
+            processed has been relabeled out of INBOX and won't match either
+            way; it only ever picks up what's arrived (or been left unlabeled)
+            since the last run.
 
     Returns:
         Processing statistics
@@ -812,7 +818,7 @@ def process_unread_emails(limit: Optional[int] = None) -> Dict[str, Any]:
     logger.info("=" * 60)
     logger.info(f"Timestamp: {timestamp}")
     logger.info(f"Account: {email_address}")
-    logger.info(f"Processing: UNSEEN emails only")
+    logger.info(f"Processing: {criteria} emails")
     logger.info("")
 
     try:
@@ -821,15 +827,15 @@ def process_unread_emails(limit: Optional[int] = None) -> Dict[str, Any]:
         spam_review_stats = _run_spam_review_pass(server, port, email_address, password)
         stats["spam_review"] = spam_review_stats
 
-        # Fetch ONLY unread emails
-        logger.info("Fetching unread emails...")
+        # Fetch emails matching the requested criteria
+        logger.info(f"Fetching {criteria} emails...")
         emails = fetch_emails(
             server=server,
             port=port,
             email_address=email_address,
             password=password,
             folder="INBOX",
-            criteria="UNSEEN",  # CRITICAL: Only unread emails
+            criteria=criteria,
             limit=limit or _MAX_EMAILS_PER_RUN,  # Fetch only what we'll process
             mark_as_read=False,  # Never mark interview requests as read
             newest_first=True,  # Sort today's mail before draining any backlog
@@ -1441,6 +1447,18 @@ def main():
         help="Maximum number of emails to process (default: process all)"
     )
     parser.add_argument(
+        "--criteria",
+        choices=["UNSEEN", "ALL"],
+        default="UNSEEN",
+        help=(
+            "IMAP search criteria within INBOX (default: UNSEEN, used by the "
+            "scheduled cron run). ALL is for one-off catch-up runs — it picks "
+            "up anything still sitting in INBOX uncategorized, including "
+            "already-read mail, without reprocessing anything already moved "
+            "out of INBOX by a prior run."
+        ),
+    )
+    parser.add_argument(
         "--triggered-by",
         default="scheduled",
         help="Label for who triggered this run (default: scheduled)"
@@ -1464,7 +1482,7 @@ def main():
         sys.exit(2)  # Exit 2 = already running (not an error for Task Scheduler)
 
     try:
-        stats = process_unread_emails(limit=args.limit)
+        stats = process_unread_emails(limit=args.limit, criteria=args.criteria)
 
         # ── Alert: pre-run cost guardrail abort ───────────────────────────────
         aborted = stats.get("aborted_reason", "")

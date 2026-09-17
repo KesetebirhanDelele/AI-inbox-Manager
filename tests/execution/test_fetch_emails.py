@@ -1,19 +1,28 @@
 """
 Unit tests for execution/fetch_emails.py IMAP operations.
 
-Regression coverage for the 2026-09 incident: the classify -> move pipeline
-identified messages by IMAP *sequence number*, resolved in one connection and
-mutated minutes later in another.  Sequence numbers renumber on every expunge,
-so labels landed on the wrong messages, the right messages never left the inbox,
-and each 2-hourly run smeared another label onto some unrelated email.
+Regression coverage for two stacked incidents on the classify -> move pipeline:
 
-The fix:
-  * every handle is a UID (stable across sessions and expunges);
-  * move/delete verify the handle against the folder's live UID set and, if it
-    has shifted, recover it via the RFC 5322 Message-ID header;
-  * the organize path mutates Gmail labels only -- no COPY, no \\Deleted, no
-    blind expunge() -- so it can never permanently destroy mail;
-  * the one hard delete (confirmed-spam purge) is scoped with UID EXPUNGE.
+1. (2026-09, first fix) Messages were identified by IMAP *sequence number*,
+   resolved in one connection and mutated minutes later in another. Sequence
+   numbers renumber on every expunge, so labels landed on the wrong messages
+   and the right ones never left the inbox. Fixed by tracking everything by
+   UID (stable across sessions/expunges) with Message-ID recovery for stale
+   handles.
+
+2. (2026-09, second fix) The first fix's organize path removed the source
+   folder via a plain ``STORE -X-GM-LABELS``, including for ``\\Inbox``. That
+   reports OK and drops the label from the ``X-GM-LABELS`` FETCH response, but
+   does not actually remove the message from Gmail's own ``in:inbox`` index --
+   confirmed live via ``X-GM-RAW`` search continuing to match ``in:inbox``.
+   Every "moved" email was in fact staying in Inbox. Fixed by using Gmail's
+   actually-effective mechanism instead: ``STORE +FLAGS (\\Deleted)`` + a
+   UID-scoped ``UID EXPUNGE`` (RFC 4315) on the source folder -- the same
+   mechanism delete_emails() already used for the confirmed-spam purge, which
+   never had this problem. Because the expunge is scoped to the source folder
+   (never Trash/All Mail) and the destination label is applied first, this
+   still cannot permanently destroy mail -- it just removes that one folder's
+   label, same as before, just via a path Gmail actually honors.
 
 All tests use an in-memory fake IMAP client -- nothing touches a real server.
 """
@@ -164,19 +173,22 @@ def test_search_excludes_gmail_labels():
 
 # ── move_emails ─────────────────────────────────────────────────────────────
 
-def test_move_labels_then_archives_never_deletes(patch_connect):
+def test_move_labels_then_archives_via_uid_expunge(patch_connect):
     fake = patch_connect(FakeIMAP(["10", "11"], {"10": "<a@x>", "11": "<b@x>"}))
 
     moved = move_emails("s", 993, "e", "p", {"10": "Job Alerts", "11": "Rejection"})
 
     assert moved == 2
     assert ("10", "+", '("Job Alerts")') in fake.label_ops
-    assert ("10", "-", "(\\Inbox)") in fake.label_ops
     assert ("11", "+", '("Rejection")') in fake.label_ops
-    # organize path must not touch \Deleted or expunge anything
-    assert fake.flag_ops == []
-    assert fake.uid_expunged == []
+    # archiving out of the source folder is \Deleted + a scoped UID EXPUNGE,
+    # never a label removal (that's the bug this replaced) and never blind
+    assert ("10", "(\\Deleted)") in fake.flag_ops
+    assert ("11", "(\\Deleted)") in fake.flag_ops
+    assert fake.uid_expunged == ["10,11"]
     assert fake.plain_expunge_called is False
+    # no leftover -X-GM-LABELS anywhere in the organize path
+    assert all(op != "-" for (_uid, op, _atom) in fake.label_ops)
 
 
 def test_move_skips_handle_not_in_folder(patch_connect):
@@ -200,7 +212,8 @@ def test_move_recovers_stale_uid_via_message_id(patch_connect):
 
     assert moved == 1
     assert ("10", "+", '("Rejection")') in fake.label_ops
-    assert ("10", "-", "(\\Inbox)") in fake.label_ops
+    assert ("10", "(\\Deleted)") in fake.flag_ops
+    assert fake.uid_expunged == ["10"]
 
 
 def test_move_does_not_archive_when_labelling_fails(patch_connect):
@@ -210,10 +223,11 @@ def test_move_does_not_archive_when_labelling_fails(patch_connect):
     moved = move_emails("s", 993, "e", "p", {"10": "Rejection"})
 
     assert moved == 0
-    assert all(op != "-" for (_uid, op, _atom) in fake.label_ops)
+    assert fake.flag_ops == []
+    assert fake.uid_expunged == []
 
 
-def test_move_out_of_named_folder_strips_that_folder_label(patch_connect):
+def test_move_out_of_named_folder_uses_uid_expunge(patch_connect):
     fake = patch_connect(FakeIMAP(["10"], {"10": "<a@x>"}))
 
     move_emails(
@@ -223,7 +237,8 @@ def test_move_out_of_named_folder_strips_that_folder_label(patch_connect):
     )
 
     assert ("select", '"Spam Review"', False) in fake.calls
-    assert ("10", "-", '("Spam Review")') in fake.label_ops
+    assert ("10", "(\\Deleted)") in fake.flag_ops
+    assert fake.uid_expunged == ["10"]
 
 
 # ── delete_emails ──────────────────────────────────────────────────────────
