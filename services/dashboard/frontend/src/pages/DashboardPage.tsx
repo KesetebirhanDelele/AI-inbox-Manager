@@ -974,6 +974,7 @@ const DashboardPage = () => {
             )}
           </div>
         </div>
+        )}
 
         {/* Recent Processing Runs */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
