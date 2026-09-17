@@ -22,21 +22,60 @@ services:
   # FastAPI backend (development)
   api:
     build:
-      context: ./api
-      dockerfile: Dockerfile.dev
+      context: ../..
+      dockerfile: services/dashboard/api/Dockerfile.dev
     container_name: email_dashboard_api
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ports:
-      - "8000:8000"
+      - "8010:8000"  # host 8000 was already taken by another local project
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/email_dashboard
       ENVIRONMENT: development
       DEBUG: "false"
       LOG_LEVEL: INFO
+      SESSION_SECRET: local-dev-session-secret
+      # Local dev login only — password is "admin123". Change/rotate for anything beyond your own machine.
+      ADMIN_PASSWORD_HASH: $$2b$$12$$VrQEs11/UlWqNKsBOmhP..S3.tfe22QTDHfHz2IC43GMe7GFEq4/O
+    # process_runner.py walks up 5 parent dirs from its own file to find the
+    # repo root (matching its real path when run outside Docker). Mounting the
+    # whole repo at the same relative depth keeps that path math correct,
+    # instead of flattening api/execution/config into separate /app/* mounts.
+    working_dir: /repo/services/dashboard/api
     volumes:
-      - ./api:/app
-      - ../../execution:/app/execution  # Mount execution scripts
-      - ../../.env:/app/.env  # Mount existing .env file
+      - ../..:/repo
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # React frontend (development)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: email_dashboard_frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8010
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # Local replacement for the GitHub Actions cron trigger (process_inbox.yml)
+  cron:
+    build:
+      context: ../../
+      dockerfile: execution/Dockerfile.cron
+    container_name: email_dashboard_cron
+    volumes:
+      - ../../execution:/app/execution
+      - ../../config:/app/config
+      - ../../logs:/app/logs
+      - ../../.env:/app/.env
     depends_on:
       postgres:
         condition: service_healthy

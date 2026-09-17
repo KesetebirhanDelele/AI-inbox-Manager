@@ -1,4 +1,8 @@
-# Development Dockerfile for FastAPI dashboard
+# Development Dockerfile for FastAPI dashboard.
+# Build context is the repo root (see services/dashboard/docker-compose.yml) so
+# execution/requirements.txt is reachable — process_runner.py shells out to
+# execution/process_inbox_auto.py from this same container, so its deps
+# (google-api-python-client, openai, etc.) need to be installed here too.
 
 FROM python:3.11-slim
 
@@ -10,12 +14,13 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy requirements and install Python dependencies (api + execution)
+COPY services/dashboard/api/requirements.txt api-requirements.txt
+COPY execution/requirements.txt execution-requirements.txt
+RUN pip install --no-cache-dir -r api-requirements.txt -r execution-requirements.txt
 
 # Copy application code
-COPY . .
+COPY services/dashboard/api/ .
 
 # Expose port
 EXPOSE 8000
