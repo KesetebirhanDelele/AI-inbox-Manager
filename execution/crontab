@@ -1,3 +1,8 @@
+# cron runs jobs with a minimal PATH that doesn't include where this image
+# puts python (/usr/local/bin) -- must be set explicitly here, the container's
+# own ENV PATH is not inherited by cron-spawned jobs.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 # Mirrors .github/workflows/process_inbox.yml's schedule (every 2 hours, UTC)
 0 */2 * * * root cd /app && python execution/process_inbox_auto.py >> /app/logs/cron.log 2>&1
 
