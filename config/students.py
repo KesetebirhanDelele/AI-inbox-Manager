@@ -35,6 +35,7 @@ STUDENTS = [
     {"name": "Emmanuel", "personal_email": "", "phone": "", "assigned_to": "Karthik", "assistant_email": "karthik@colaberry.com"},
     {"name": "Promise", "personal_email": "", "phone": "", "assigned_to": "Karthik", "assistant_email": "karthik@colaberry.com"},
     {"name": "Shylaja", "personal_email": "", "phone": "", "assigned_to": "Karthik", "assistant_email": "karthik@colaberry.com"},
+    {"name": "Pandey", "personal_email": "", "phone": "", "assigned_to": "Karthik", "assistant_email": "karthik@colaberry.com"},
 ]
 
 # Always CC on every notification
