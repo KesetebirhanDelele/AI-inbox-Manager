@@ -28,6 +28,14 @@ that **is no longer in use**. Current reality:
 The frontend URL (`https://ai-inbox-manager-vert.vercel.app`) and the Gmail
 account (`c_interviews@colaberry.com`) are unchanged.
 
+**Fork note:** everything above describes the `Ojobo1800/AI-inbox-Manager`
+production system. This repo is a fork (`KesetebirhanDelele/AI-inbox-Manager`)
+that also runs its own **separate local Docker environment** against the same
+Gmail mailbox — see [§4b](#4b-this-forks-local-docker-environment). Fixes
+developed locally are **never pushed to `Ojobo1800`** (permanent rule); the
+production system above keeps running its own older code until someone with
+access to that repo/Render account updates it.
+
 ---
 
 ## 1. Live URLs & accounts
@@ -135,6 +143,73 @@ Entry point: `python execution/process_inbox_auto.py`
 **Local Windows Task Scheduler** job `ColaberryEmailProcessing` — **DISABLED on
 purpose.** Re-enable only if the cloud cron dies. `InboxAI_StartAPI_OnLogon`
 (starts a local API on logon) is harmless and still active.
+
+---
+
+## 4b. This fork's local Docker environment
+
+`KesetebirhanDelele/AI-inbox-Manager` (this fork) also runs a **fully local,
+self-contained** Docker Compose stack — `services/dashboard/docker-compose.yml`
+— as an independent alternative to §1–§4's cloud production system, against the
+same Gmail mailbox. It does **not** touch Render, Vercel, Neon, or GitHub
+Actions; everything lives in four containers:
+
+| Container | Role |
+|---|---|
+| `email_dashboard_db` | Postgres 16, local-only data (own DB, not Neon) |
+| `email_dashboard_api` | FastAPI dashboard backend, `services/dashboard/api/Dockerfile.dev`, host port 8010 |
+| `email_dashboard_frontend` | Vite dev server, host port 5173 |
+| `email_dashboard_cron` | Local replacement for `.github/workflows/process_inbox.yml`'s cron trigger |
+
+**Scheduler:** `execution/Dockerfile.cron` + `execution/crontab`, same cadence
+as production — `0 */2 * * *` (every 2 h UTC). The container's PID 1 is
+`cron -f` (foreground) directly; the crontab job runs
+`process_inbox_auto.py`, redirecting its own output to `/repo/logs/cron.log`
+via the crontab line's `>>` redirect.
+
+⚠️ **2026-09-18 incident + fix:** the CMD used to be
+`cron && tail -f /repo/logs/cron.log` — plain `cron` daemonizes and detaches,
+so the shell's `&&` chain handed PID 1 to `tail -f` watching the bind-mounted
+log file. That `tail -f` hit `No data available` (a WSL2/Docker Desktop
+filesystem-bridge hiccup on the Windows-host bind mount) and exited, which
+killed PID 1 and the whole container — including whatever pipeline run was
+mid-flight — restart policy silently relaunched it, but the run itself was
+lost uncleanly. Fixed by making `cron -f` PID 1 directly (`exec cron -f`, no
+`tail -f`), since it never touches the bind-mounted log itself. Verified: a
+full 2 h cycle completed unattended afterward with zero container restarts.
+
+**Countdown timer caveat:** the dashboard's "Next run in" countdown
+(`services/dashboard/frontend/src/hooks/useCountdownTimer.ts`) computes the
+next fire time from a **fixed UTC clock boundary**
+(`Math.ceil(now / intervalMs) * intervalMs`), matching the crontab's
+`0 */2 * * *` schedule — it does **not** anchor off the last `ProcessRun`
+timestamp. An earlier version anchored off `last_run_timestamp`, which meant
+every manual "Run Now" click (which also writes a `ProcessRun` row) silently
+dragged the countdown away from the real fixed schedule.
+
+**Known disconnect:** the dashboard Settings page lets you change
+`interval_minutes` / `batch_size` (`SystemConfig` table, `api/routers/schedule.py`),
+but for this fork those values are cosmetic only — `execution/crontab` is a
+static file baked into the `email_dashboard_cron` image at build time and does
+**not** read `SystemConfig`. Changing Settings today does not reschedule
+anything. (That control's "update the Windows scheduled task" code path is
+also vestigial — this fork uses the Docker cron container, not Task
+Scheduler.) Not fixed as of this writing; see [§15](#15-known-issues--deferred-work).
+
+**Health checks (local only):**
+```bash
+# Is the cron daemon PID 1 (no tail -f in the mix)?
+docker exec email_dashboard_cron sh -c "cat /proc/1/cmdline | tr '\0' ' '"
+
+# Container restart count (0 = healthy since last rebuild)
+docker inspect email_dashboard_cron --format 'RestartCount={{.RestartCount}}'
+
+# Tail the actual pipeline log
+docker exec email_dashboard_cron tail -n 60 /repo/logs/cron.log
+
+# Manual run (bypasses the 2h wait)
+docker exec -w /repo email_dashboard_cron python execution/process_inbox_auto.py --triggered-by manual
+```
 
 ---
 
@@ -378,11 +453,23 @@ config that *is* live: `render.yaml` + `services/dashboard/api/Dockerfile.prod`.
 - **The mislabelled backlog from the Sept 2026 incident** keeps its junk labels
   in Gmail; the fix stopped new damage but didn't retro-clean. A one-off
   label-stripping script can be written if needed.
+- **(This fork's local Docker env only)** Dashboard Settings' `interval_minutes`
+  / `batch_size` controls don't actually reschedule the local cron container —
+  `execution/crontab` is a static file, not read from `SystemConfig`. See
+  [§4b](#4b-this-forks-local-docker-environment).
 
 ---
 
 ## 16. Changelog (infra / architecture only)
 
+- **2026-09-18 (this fork's local Docker env only, not production)** — Cron
+  container's `CMD` changed from `cron && tail -f cron.log` to `exec cron -f`
+  (foreground `cron` as PID 1 directly). The old form let a bind-mounted-log
+  `tail -f` become the container's PID 1; a WSL2/Docker Desktop filesystem
+  hiccup killed that `tail -f`, taking the whole container (and any mid-flight
+  run) down with it. Also fixed the dashboard's "Next run in" countdown to
+  anchor on fixed UTC clock boundaries instead of `last_run_timestamp`, which
+  manual "Run Now" runs had been silently desyncing. See [§4b](#4b-this-forks-local-docker-environment).
 - **2026-09-08** — Move/delete pipeline switched from IMAP sequence numbers to
   **UIDs + Gmail label ops** (`+X-GM-LABELS` / `-X-GM-LABELS \Inbox`), with
   Message-ID re-resolution and UID-scoped spam expunge. Folder names quoted in

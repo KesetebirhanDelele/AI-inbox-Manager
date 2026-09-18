@@ -15,4 +15,15 @@ RUN chmod 0644 /etc/cron.d/inbox-cron && crontab /etc/cron.d/inbox-cron
 
 # /repo/logs is a bind mount at runtime, so cron.log must be (re)created after
 # the mount lands, not baked into the image.
-CMD mkdir -p /repo/logs && touch /repo/logs/cron.log && cron && tail -f /repo/logs/cron.log
+#
+# `cron -f` (foreground) is PID 1 directly -- earlier this was
+# `cron && tail -f cron.log`, which plain-forking `cron` daemonizes out from
+# under, leaving `tail -f` on the bind-mounted log file as PID 1. On 2026-09-18
+# that tail hit "No data available" (a WSL2/Docker Desktop filesystem-bridge
+# hiccup on the bind mount) and exited, killing PID 1 and the whole container
+# -- including whatever pipeline run was mid-flight -- restart policy brought
+# the container back but the run was lost uncleanly. `cron -f` never touches
+# the bind-mounted log itself (only the short-lived job processes it spawns
+# write to it via the crontab's own `>>` redirect), so it isn't exposed to
+# that failure mode.
+CMD mkdir -p /repo/logs && touch /repo/logs/cron.log && exec cron -f

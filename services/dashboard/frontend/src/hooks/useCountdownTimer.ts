@@ -13,42 +13,30 @@ export const useCountdownTimer = () => {
   const queryClient = useQueryClient();
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 
-  const { data: stats } = useQuery({
-    queryKey: ['summaryStats'],
-    queryFn: () => apiClient.getSummaryStats(),
-    refetchInterval: 60000, // Refresh stats every minute
-  });
-
   const { data: scheduleConfig } = useQuery({
     queryKey: ['scheduleConfig'],
     queryFn: () => apiClient.getScheduleConfig(),
   });
 
   useEffect(() => {
-    if (!stats?.last_run_timestamp || !scheduleConfig?.interval_minutes) {
+    if (!scheduleConfig?.interval_minutes) {
       setTimeRemaining(null);
       return;
     }
 
-    // Parse the timestamp - backend sends UTC timestamps, may or may not have Z suffix
-    const timestamp = stats.last_run_timestamp;
-    const utcString = timestamp.endsWith('Z') || timestamp.includes('+') ? timestamp : timestamp + 'Z';
-    const lastRun = new Date(utcString);
     const intervalMs = scheduleConfig.interval_minutes * 60 * 1000;
 
-    // Calculate the next future run time, accounting for overdue schedules.
-    // If the last run was more than one interval ago, project forward by the
-    // number of full intervals elapsed so the countdown always shows a future time.
+    // The real cron job fires on fixed UTC clock boundaries (crontab:
+    // `0 */2 * * *` -- 00:00, 02:00, 04:00 UTC, ...), independent of when any
+    // particular run happened. Anchoring this to `last_run_timestamp` (as a
+    // previous version did) meant every manual "Run Now" click rewrote the
+    // anchor and permanently desynced the countdown from the real schedule.
+    // Unix epoch is itself UTC-midnight-aligned and every offered interval
+    // (5/10/15/30/60/120 min) divides evenly into it, so rounding up to the
+    // next multiple of intervalMs always lands exactly on the true boundary.
     const computeNextRun = (): Date => {
       const now = new Date();
-      const elapsed = now.getTime() - lastRun.getTime();
-      if (elapsed < intervalMs) {
-        // Still within the first interval — simple next run
-        return new Date(lastRun.getTime() + intervalMs);
-      }
-      // Overdue: find the next interval boundary ahead of now
-      const intervalsPassed = Math.floor(elapsed / intervalMs) + 1;
-      return new Date(lastRun.getTime() + intervalsPassed * intervalMs);
+      return new Date(Math.ceil(now.getTime() / intervalMs) * intervalMs);
     };
 
     const updateCountdown = () => {
@@ -57,10 +45,10 @@ export const useCountdownTimer = () => {
       const remaining = nextRun.getTime() - now.getTime();
 
       if (remaining <= 0) {
-        // Still overdue after recompute — trigger a refresh and wait
+        // Boundary just passed — trigger a refresh and wait for the next one
         queryClient.invalidateQueries({ queryKey: ['summaryStats'] });
         queryClient.invalidateQueries({ queryKey: ['processingRuns'] });
-        setTimeRemaining(intervalMs); // show full interval while waiting for refresh
+        setTimeRemaining(intervalMs);
       } else {
         setTimeRemaining(remaining);
       }
@@ -69,7 +57,7 @@ export const useCountdownTimer = () => {
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [stats?.last_run_timestamp, scheduleConfig?.interval_minutes, queryClient]);
+  }, [scheduleConfig?.interval_minutes, queryClient]);
 
   return {
     timeRemaining,
