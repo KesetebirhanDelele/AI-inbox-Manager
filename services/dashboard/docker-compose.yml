@@ -76,6 +76,10 @@ services:
       - ../../config:/app/config
       - ../../logs:/app/logs
       - ../../.env:/app/.env
+      # Shared with the api container's /repo/tmp so both see the same
+      # tmp/process.lock -- without this, "Run Now" and the cron schedule
+      # can't see each other's lock and could run concurrently.
+      - ../../tmp:/app/tmp
     depends_on:
       postgres:
         condition: service_healthy
