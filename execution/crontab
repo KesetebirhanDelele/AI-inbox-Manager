@@ -4,5 +4,5 @@
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Mirrors .github/workflows/process_inbox.yml's schedule (every 2 hours, UTC)
-0 */2 * * * root cd /app && python execution/process_inbox_auto.py >> /app/logs/cron.log 2>&1
+0 */2 * * * root cd /repo && python execution/process_inbox_auto.py >> /repo/logs/cron.log 2>&1
 

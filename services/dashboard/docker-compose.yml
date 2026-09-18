@@ -71,15 +71,13 @@ services:
       context: ../../
       dockerfile: execution/Dockerfile.cron
     container_name: email_dashboard_cron
+    # process_inbox_auto.py adds services/dashboard/api to sys.path (to import
+    # models for writing ProcessRun/Email rows) using a path computed relative
+    # to its own file location. That only resolves if the container mirrors
+    # the real repo layout -- same reasoning as the api service's mount below.
+    working_dir: /repo
     volumes:
-      - ../../execution:/app/execution
-      - ../../config:/app/config
-      - ../../logs:/app/logs
-      - ../../.env:/app/.env
-      # Shared with the api container's /repo/tmp so both see the same
-      # tmp/process.lock -- without this, "Run Now" and the cron schedule
-      # can't see each other's lock and could run concurrently.
-      - ../../tmp:/app/tmp
+      - ../..:/repo
     depends_on:
       postgres:
         condition: service_healthy
