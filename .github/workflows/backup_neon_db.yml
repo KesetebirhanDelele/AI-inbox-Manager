@@ -37,7 +37,10 @@ jobs:
           set -euo pipefail
           mkdir -p backup
           out="backup/neon-backup-$(date +%Y%m%d).sql.gz"
-          pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip > "$out"
+          # Call the versioned binary directly -- update-alternatives only
+          # switched psql's man page, not pg_dump itself, so plain `pg_dump`
+          # on PATH still resolved to Ubuntu's preinstalled 16.x.
+          /usr/lib/postgresql/18/bin/pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip > "$out"
           test -s "$out"  # fail loudly if the dump came out empty
           ls -lh backup/
 
