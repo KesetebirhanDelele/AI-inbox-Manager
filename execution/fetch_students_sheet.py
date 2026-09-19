@@ -110,7 +110,7 @@ def find_student_by_email(email: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def add_new_student(name: str, personal_email: str, phone: str = "") -> Dict[str, Any]:
+def add_new_student(name: str, personal_email: str, phone: str = "") -> Optional[Dict[str, Any]]:
     """
     Add a new student to config/students.py and return their record.
 
@@ -123,8 +123,21 @@ def add_new_student(name: str, personal_email: str, phone: str = "") -> Dict[str
         phone: Student's phone number (optional)
 
     Returns:
-        The new student dict
+        The new student dict, or None if name/email don't look real enough to
+        persist (caller already treats None as "student not found" and skips
+        the notification — see notify_student.py).
     """
+    # 2026-09-18: a body-text regex false-positive ("Ok" from ordinary prose,
+    # not a real candidate name) got auto-persisted into config/students.py
+    # with no email at all, because this function had no validation. Refuse
+    # anything that doesn't look like a real, contactable person rather than
+    # writing garbage into the source of truth for notification routing.
+    if not name or len(name.strip()) < 2 or not personal_email or "@" not in personal_email:
+        logger.warning(
+            f"Refusing to auto-add student with insufficient info: "
+            f"name={name!r} personal_email={personal_email!r}"
+        )
+        return None
     new_student = {
         "name": name,
         "personal_email": personal_email,

@@ -145,8 +145,18 @@ def find_student_name_in_body(body_content: str) -> Optional[str]:
         match = re.search(pattern, body_content)
         if match:
             name = match.group(1).strip()
-            # Basic validation: name should be 2+ characters, not common words
-            common_words = {"Dear", "The", "This", "Your", "Our", "Team", "All"}
+            # Basic validation: name should be 2+ characters, not common words.
+            # 2026-09-18: this list was too thin -- "Ok" (ordinary conversational
+            # prose, not a name) slipped through and got auto-persisted as a
+            # fake student in config/students.py. add_new_student() now also
+            # refuses anything without a real email, but keep this list
+            # reasonably wide too rather than relying on a single guardrail.
+            common_words = {
+                "Dear", "The", "This", "Your", "Our", "Team", "All",
+                "Ok", "Okay", "Hi", "Hello", "Hey", "Thanks", "Thank",
+                "Please", "Sure", "Best", "Regards", "Sincerely", "Yes", "No",
+                "Sorry", "Just", "Hope", "Great", "Good", "Kind", "Warm",
+            }
             if len(name) >= 2 and name not in common_words:
                 logger.info(f"Found potential student name in body: {name}")
                 return name
