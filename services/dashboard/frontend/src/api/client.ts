@@ -179,6 +179,10 @@ class ApiClient {
     failure_rate_7d: number;
     run_count_7d: number;
     failed_run_count_7d: number;
+    db_storage_used_bytes: number | null;
+    db_storage_cap_bytes: number | null;
+    db_storage_pct: number | null;
+    db_storage_days_remaining: number | null;
   }> {
     const response = await this.client.get('/api/stats/engineering-kpis');
     return response.data;

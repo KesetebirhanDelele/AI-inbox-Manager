@@ -196,6 +196,33 @@ anything. (That control's "update the Windows scheduled task" code path is
 also vestigial — this fork uses the Docker cron container, not Task
 Scheduler.) Not fixed as of this writing; see [§15](#15-known-issues--deferred-work).
 
+**Update — 2026-09-18/19, migration completed:** the "in-progress" framing
+above is now done. This fork's actual production scheduler is **this fork's
+own GitHub Actions** (`.github/workflows/process_inbox.yml`, re-enabled with
+its own secrets — completely separate from `Ojobo1800`'s workflow/secrets),
+writing to a dedicated **Neon Postgres project** (`inboxgenius-fork`, free
+tier, 0.5 GB cap). Verified: multiple full unattended scheduled runs
+completed cleanly with `ProcessRun` rows landing in Neon and zero manual
+intervention. The local Docker `cron` container is **stopped** (not
+removed — `docker start email_dashboard_cron` brings it back) to avoid
+double-processing against GitHub Actions on the same `0 */2 * * *` schedule.
+Rollback point if this ever needs reverting: git tag
+`pre-cloud-migration-2026-09-18`.
+
+**Neon storage countdown:** the local dashboard (`view-dashboard.sh`) shows
+a "Neon Storage Left" card (Engineering KPIs row) — days-remaining estimate
+computed from actual DB growth rate (`GET /api/stats/engineering-kpis`,
+`db_storage_*` fields), so the 0.5 GB free-tier cap doesn't run out silently.
+Hitting the cap blocks new writes but does **not** interrupt email
+processing itself (all DB writes in `process_inbox_auto.py` are
+best-effort/non-fatal) — only dashboard visibility would go stale.
+
+**Backup:** Neon's free tier only gives a 6-hour point-in-time-recovery
+window and one manual snapshot (no scheduled ones) — thin for an unattended
+system nobody's watching in real time. `.github/workflows/backup_neon_db.yml`
+runs a daily `pg_dump` (06:00 UTC) and keeps 30 days of gzipped dumps as
+workflow artifacts, independent of Neon's own retention.
+
 **Health checks (local only):**
 ```bash
 # Is the cron daemon PID 1 (no tail -f in the mix)?

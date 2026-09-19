@@ -520,6 +520,53 @@ const DashboardPage = () => {
             </div>
           </div>
         </div>
+
+        {/* Neon Storage Countdown — free tier is capped at 0.5 GB and blocks
+            new writes (doesn't delete data or auto-reset) once full. Hitting
+            it doesn't interrupt email processing itself (DB writes are
+            best-effort), but the dashboard would silently stop getting new
+            data, so this is a reminder to prune/upgrade before that happens. */}
+        {engKPIs?.db_storage_used_bytes != null && (
+          <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className={`text-3xl font-bold ${
+                    engKPIs.db_storage_days_remaining == null ? 'text-gray-400'
+                    : engKPIs.db_storage_days_remaining > 90 ? 'text-green-600'
+                    : engKPIs.db_storage_days_remaining > 30 ? 'text-yellow-600'
+                    : 'text-red-600'
+                  }`}>
+                    {engKPIs.db_storage_days_remaining != null
+                      ? `${Math.round(engKPIs.db_storage_days_remaining)}d`
+                      : '—'}
+                  </div>
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-bold text-gray-800 truncate">Neon Storage Left</dt>
+                    <dd className="mt-1 text-xs text-gray-500">
+                      {((engKPIs.db_storage_used_bytes ?? 0) / (1024 * 1024)).toFixed(1)} MB
+                      {' / '}
+                      {((engKPIs.db_storage_cap_bytes ?? 0) / (1024 * 1024)).toFixed(0)} MB
+                      {' ('}{engKPIs.db_storage_pct}%{')'}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+              <div className="mt-3 h-1.5 w-full rounded-full bg-gray-300 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${
+                    (engKPIs.db_storage_pct ?? 0) > 80 ? 'bg-red-500'
+                    : (engKPIs.db_storage_pct ?? 0) > 50 ? 'bg-yellow-500'
+                    : 'bg-green-500'
+                  }`}
+                  style={{ width: `${Math.min(engKPIs.db_storage_pct ?? 0, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Charts: Category Breakdown + Daily Trends — directly under stat cards */}

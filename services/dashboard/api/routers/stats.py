@@ -4,9 +4,10 @@ Statistics and metrics API endpoints.
 Provides processing statistics, trends, and accuracy metrics.
 """
 
+import logging
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, select
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
@@ -65,6 +66,13 @@ class EngineeringKPIs(BaseModel):
     failure_rate_7d: float       # 0.0–100.0 percent
     run_count_7d: int
     failed_run_count_7d: int
+    # Neon free tier is capped at 0.5 GB/project and blocks new writes (does
+    # not delete data or auto-reset) once full — see RUNBOOK.md §4b. These
+    # are None on non-Postgres DBs (e.g. local SQLite dev fallback).
+    db_storage_used_bytes: Optional[int] = None
+    db_storage_cap_bytes: Optional[int] = None
+    db_storage_pct: Optional[float] = None
+    db_storage_days_remaining: Optional[float] = None
 
 
 @router.get("/summary", response_model=SummaryStats)
@@ -295,12 +303,41 @@ async def get_engineering_kpis(
     ]
     avg_duration = (sum(durations) / len(durations)) if durations else None
 
+    # Neon free-tier storage countdown — Postgres only, best-effort (never
+    # let a monitoring query break the KPI endpoint).
+    NEON_FREE_CAP_BYTES = 512 * 1024 * 1024  # 0.5 GB
+    storage_used = storage_cap = storage_pct = storage_days_left = None
+    try:
+        if db.bind.dialect.name == "postgresql":
+            storage_used = db.execute(
+                select(func.pg_database_size(func.current_database()))
+            ).scalar()
+            storage_cap = NEON_FREE_CAP_BYTES
+            storage_pct = round(storage_used / storage_cap * 100.0, 2)
+
+            first_run = db.query(func.min(ProcessRun.run_timestamp)).scalar()
+            if first_run:
+                # Floor at 1 day so a database that's only a few hours old
+                # doesn't produce a wildly noisy (and needlessly alarming)
+                # extrapolation -- this self-corrects as real history accrues.
+                elapsed_days = max((now - first_run).total_seconds() / 86400.0, 1.0)
+                bytes_per_day = storage_used / elapsed_days
+                if bytes_per_day > 0:
+                    remaining_bytes = max(storage_cap - storage_used, 0)
+                    storage_days_left = round(remaining_bytes / bytes_per_day, 1)
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Could not compute DB storage KPIs: {e}")
+
     return EngineeringKPIs(
         ai_cost_today_usd=round(ai_cost_today, 4),
         avg_duration_seconds_7d=round(avg_duration, 1) if avg_duration is not None else None,
         failure_rate_7d=round(failure_rate, 1),
         run_count_7d=run_count,
         failed_run_count_7d=failed_count,
+        db_storage_used_bytes=storage_used,
+        db_storage_cap_bytes=storage_cap,
+        db_storage_pct=storage_pct,
+        db_storage_days_remaining=storage_days_left,
     )
 
 

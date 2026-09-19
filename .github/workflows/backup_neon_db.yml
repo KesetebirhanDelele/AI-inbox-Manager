@@ -1,0 +1,36 @@
+name: Backup Neon Database
+
+# Neon's free tier only gives a 6-hour point-in-time-recovery window and a
+# single manual snapshot slot (no scheduled snapshots) -- thin insurance for
+# an unattended system that writes to it every 2 hours with nobody watching
+# in real time. This takes a daily pg_dump and keeps 30 days of them as
+# workflow artifacts, independent of Neon's own retention entirely.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Once daily, 6am UTC
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          mkdir -p backup
+          pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip > backup/neon-backup-$(date +%Y%m%d).sql.gz
+          ls -lh backup/
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-backup-${{ github.run_number }}
+          path: backup/
+          retention-days: 30
