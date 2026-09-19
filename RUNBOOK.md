@@ -211,6 +211,34 @@ docker exec email_dashboard_cron tail -n 60 /repo/logs/cron.log
 docker exec -w /repo email_dashboard_cron python execution/process_inbox_auto.py --triggered-by manual
 ```
 
+**In-progress migration (2026-09-18):** moving the scheduler off this laptop
+entirely to GitHub Actions on this fork + a dedicated Neon Postgres (see
+[§16 changelog](#16-changelog-infra--architecture-only) once that lands),
+because this local Docker setup turned out to have a second, worse reliability
+problem beyond the `tail -f` bug: Docker Desktop's **Resource Saver**
+auto-pauses the whole container VM after just 30s of Docker-API inactivity
+(`autoPauseTimeoutSeconds` in Docker Desktop's `settings.json`), silently
+freezing `cron`'s clock through any scheduled fire that happens while nobody's
+run a `docker` command recently. Neither more container fixes nor Windows
+Task Scheduler solve this class of problem — both still depend on this
+laptop/Docker Desktop being awake, which a 2-hour unattended schedule can't
+assume. GitHub Actions runners are cloud-side and immune to both this and
+laptop sleep.
+
+Once that migration is live, the four-container stack above (`postgres` +
+`cron` especially) is only needed for **local pipeline development** (testing
+a code change before pushing) — not for production scheduling. A separate,
+lightweight `docker-compose.viewer.yml` (plus `view-dashboard.ps1` /
+`view-dashboard.sh` wrappers) starts just `api` + `frontend` against the
+shared Neon database, so you can look at the dashboard without running
+Postgres or cron locally at all:
+```bash
+# services/dashboard/ -- requires NEON_DATABASE_URL set in the repo root .env
+# (kept separate from the local DATABASE_URL key, which local manual/cron
+# runs still use against local Postgres)
+./view-dashboard.sh          # or view-dashboard.ps1 on Windows
+```
+
 ---
 
 ## 5. Data stores

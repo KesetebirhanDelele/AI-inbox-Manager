@@ -8,6 +8,19 @@ Claude Code and other coding agents are used to **build and maintain** the syste
 
 ---
 
+## Secret Safety — `NEON_DATABASE_URL`
+
+`NEON_DATABASE_URL` in the root `.env` is the connection string for this
+fork's Neon Postgres project (`inboxgenius-fork`), used by GitHub Actions and
+the local dashboard-viewer mode ([RUNBOOK.md §4b](RUNBOOK.md)). Like every
+other credential in `.env`: **never print, log, or echo its value in a
+conversation, commit, or command output.** Reference it only by key name
+(`grep '^NEON_DATABASE_URL=' .env | wc -c` to confirm presence, never
+`cat`/`echo` the value). When pushing it to a GitHub secret, pipe it directly
+inside a single shell command so the value never appears in tool output.
+
+---
+
 ## ⚠️ Read `RUNBOOK.md` first
 
 **Before debugging any production issue, deploy question, or "what is the current

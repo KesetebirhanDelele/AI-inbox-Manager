@@ -1,0 +1,67 @@
+version: '3.8'
+
+# Explicit project name -- without this, Compose defaults the project name to
+# the current directory ("dashboard", same as docker-compose.yml run from the
+# same folder) and treats this file's "api"/"frontend" services as the SAME
+# services as the main stack's. That collision briefly deleted the real
+# email_dashboard_api container during testing on 2026-09-18: bringing up
+# this file recreated it in place under the viewer's config. Pinning a
+# distinct project name makes that impossible.
+name: dashboard-viewer
+
+# "Look at the dashboard" mode -- no local Postgres, no local cron. Both are
+# replaced by the cloud setup (GitHub Actions on your fork does the every-2h
+# processing; Neon is the shared database it writes to). This file just
+# starts a viewer against that same cloud database, so you see real
+# GitHub-Actions-driven runs, not a local copy.
+#
+# Usage:
+#   1. Put your Neon connection string in the repo root .env as
+#      NEON_DATABASE_URL (kept separate from the local DATABASE_URL key,
+#      which local manual/cron runs still use against local Postgres).
+#   2. From services/dashboard/:
+#        docker compose -f docker-compose.viewer.yml --env-file ../../.env up
+#      (or use view-dashboard.sh / view-dashboard.ps1, which wrap this)
+#   3. Open http://localhost:5173, ctrl+C when done -- nothing needs to stay
+#      running between visits.
+#
+# For local pipeline development/testing (needs a disposable local DB), use
+# the full docker-compose.yml instead.
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: services/dashboard/api/Dockerfile.dev
+    container_name: email_dashboard_api_viewer
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8010:8000"
+    environment:
+      DATABASE_URL: ${NEON_DATABASE_URL:?Set NEON_DATABASE_URL in the repo root .env to your Neon connection string first}
+      ENVIRONMENT: development
+      DEBUG: "false"
+      LOG_LEVEL: INFO
+      SESSION_SECRET: local-dev-session-secret
+      # Local dev login only — password is "admin123". Change/rotate for anything beyond your own machine.
+      ADMIN_PASSWORD_HASH: $$2b$$12$$VrQEs11/UlWqNKsBOmhP..S3.tfe22QTDHfHz2IC43GMe7GFEq4/O
+    working_dir: /repo/services/dashboard/api
+    volumes:
+      - ../..:/repo
+    restart: "no"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: email_dashboard_frontend_viewer
+    environment:
+      VITE_API_BASE_URL: http://localhost:8010
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    restart: "no"
