@@ -22,8 +22,9 @@ name: dashboard-viewer
 #   2. From services/dashboard/:
 #        docker compose -f docker-compose.viewer.yml --env-file ../../.env up
 #      (or use view-dashboard.sh / view-dashboard.ps1, which wrap this)
-#   3. Open http://localhost:5173, ctrl+C when done -- nothing needs to stay
-#      running between visits.
+#   3. Open http://localhost:5174 (5174/8011, not 5173/8010 -- those are the
+#      main stack's ports and would collide if both run at once), ctrl+C when
+#      done -- nothing needs to stay running between visits.
 #
 # For local pipeline development/testing (needs a disposable local DB), use
 # the full docker-compose.yml instead.
@@ -36,13 +37,16 @@ services:
     container_name: email_dashboard_api_viewer
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ports:
-      - "8010:8000"
+      - "8011:8000"
     environment:
       DATABASE_URL: ${NEON_DATABASE_URL:?Set NEON_DATABASE_URL in the repo root .env to your Neon connection string first}
       ENVIRONMENT: development
       DEBUG: "false"
       LOG_LEVEL: INFO
       SESSION_SECRET: local-dev-session-secret
+      # Must match the frontend's actual port (5174, not the main stack's 5173)
+      # or the browser silently blocks the login request's credentialed CORS check.
+      CORS_ORIGINS: http://localhost:5174
       # Local dev login only — password is "admin123". Change/rotate for anything beyond your own machine.
       ADMIN_PASSWORD_HASH: $$2b$$12$$VrQEs11/UlWqNKsBOmhP..S3.tfe22QTDHfHz2IC43GMe7GFEq4/O
     working_dir: /repo/services/dashboard/api
@@ -56,9 +60,9 @@ services:
       dockerfile: Dockerfile.dev
     container_name: email_dashboard_frontend_viewer
     environment:
-      VITE_API_BASE_URL: http://localhost:8010
+      VITE_API_BASE_URL: http://localhost:8011
     ports:
-      - "5173:5173"
+      - "5174:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules

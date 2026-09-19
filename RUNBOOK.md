@@ -265,6 +265,8 @@ Postgres or cron locally at all:
 # runs still use against local Postgres)
 ./view-dashboard.sh          # or view-dashboard.ps1 on Windows
 ```
+Runs on **5174/8011** (not 5173/8010, the main stack's ports) so both stacks
+can run side by side without a port collision. Open http://localhost:5174.
 
 ---
 
