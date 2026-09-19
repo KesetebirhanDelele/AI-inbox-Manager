@@ -17,15 +17,28 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Install postgresql-client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      # Ubuntu's default postgresql-client (16.x) refuses to dump from Neon's
+      # Postgres 18 server ("aborting because of server version mismatch") --
+      # use PGDG's official repo to get a client new enough.
+      - name: Install PostgreSQL 18 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
 
       - name: Dump database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          # pipefail so a failed pg_dump fails this step instead of being
+          # masked by gzip's own (successful) exit code -- this exact bug
+          # produced a "successful" 20-byte empty backup on 2026-09-19.
+          set -euo pipefail
           mkdir -p backup
-          pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip > backup/neon-backup-$(date +%Y%m%d).sql.gz
+          out="backup/neon-backup-$(date +%Y%m%d).sql.gz"
+          pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip > "$out"
+          test -s "$out"  # fail loudly if the dump came out empty
           ls -lh backup/
 
       - name: Upload backup artifact
