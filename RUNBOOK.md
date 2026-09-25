@@ -5,8 +5,9 @@
 > file first**, then run the checks in [§14 "Verify this doc is still current"](#14-verify-this-doc-is-still-current)
 > before trusting any older notes, chat history, or memory.
 >
-> **Last verified: 2026-09-08** — against live infra, the `master` branch, and a
-> manual `workflow_dispatch` run (GH Actions run 34238068620).
+> **Last verified: 2026-09-25** — this fork's GH Actions `process_inbox.yml`
+> runs + Neon (`inboxgenius-fork`), during the SQLAlchemy 2.1 incident (§16).
+> Previously 2026-09-08 against `Ojobo1800` production (run 34238068620).
 
 ---
 
@@ -120,6 +121,13 @@ Entry point: `python execution/process_inbox_auto.py`
     (`inbox-logs-<run#>`, 7-day retention).
 12. On fatal error: `send_failure_alert()` emails `ALERT_EMAIL_TO`. Script always
     `sys.exit(0)` so the scheduler reports success.
+13. **DB writes are best-effort** — a DB failure never blocks Gmail processing.
+    But if *any* DB write failed (engine init or `ProcessRun`), the first error
+    is put in `stats["db_error"]` and `main()` logs `DASHBOARD DB WRITES FAILED`,
+    emits a GitHub Actions `::error::` annotation (visible on the run page; the
+    job itself stays green) and sends a `send_failure_alert()` email.
+    `DATABASE_URL` is passed through `execution/db_url.normalize_db_url()`, which
+    pins `postgresql://` → `postgresql+psycopg2://` (see §16 2026-09-25).
 
 **Categories → Gmail folders/labels:** see `CATEGORY_TO_FOLDER` in
 `execution/process_inbox_auto.py` (~line 584). All flat label names.
@@ -382,7 +390,7 @@ no trailing slash).
 - **UID + Message-ID addressing** — moves/deletes can't hit the wrong message
   when sequence numbers shift (see changelog 2026-09-08).
 - **Failure alerts** — `send_failure_alert()` → `ALERT_EMAIL_TO` on fatal errors
-  / cost aborts.
+  / cost aborts / dashboard DB write failures.
 
 ---
 
@@ -439,6 +447,7 @@ rm tmp/process.lock             # if the PID is dead / lock > 3h old
 
 | Symptom | First checks |
 |---|---|
+| **Dashboard shows 0 emails today but runs are green** | Run log: `grep -E "Could not initialize database|DB import skipped|DASHBOARD DB WRITES FAILED|ProcessRun record created"`. `No module named 'psycopg'` = SQLAlchemy driver mismatch (§16 2026-09-25) — check `pip` installed `sqlalchemy` version in the run log and that `normalize_db_url()` is still applied. Emails moved out of INBOX during the outage are **not** backfilled automatically; interview emails (kept UNSEEN in INBOX) self-heal on the next good run. |
 | **Dashboard shows no / stale data** | `curl .../health` → is `database` `connected`? Is Render awake (cold start ≈ 20 s)? `gh run list` — are cron runs green? Check a run log for `Dashboard ProcessRun record created`. |
 | **Emails not being sorted** | `gh run view <id> --log` → look for `Successfully moved N of N`, `Move: … skipping`, `BAD Could not parse command`. Check `Total Processed` vs inbox size. Confirm `EMAIL_PASSWORD` / Gmail OAuth still valid (`AUTHENTICATE failed` / `invalid_grant`). |
 | **Cron not running at all** | GH Actions → is "Process Inbox" **disabled**? (re-enable; keepalive should prevent this). Check `keepalive` ran in the last week. |
@@ -518,6 +527,24 @@ config that *is* live: `render.yaml` + `services/dashboard/api/Dockerfile.prod`.
 ---
 
 ## 16. Changelog (infra / architecture only)
+
+- **2026-09-25 (this fork)** — Dashboard showed 0 emails from 2026-09-24
+  22:10 UTC while every GH Actions run was green. Cause: `execution/requirements.txt`
+  had unpinned `sqlalchemy>=2.0.0`; SQLAlchemy **2.1.0** was released between
+  runs and changed the default driver for bare `postgresql://` URLs to psycopg
+  v3 (not installed) → every DB write failed with `No module named 'psycopg'`,
+  logged only as a WARNING. Same commit, same secret — only the pip resolution
+  changed. Fix: new `execution/db_url.py` pins `postgresql+psycopg2://` for all
+  pipeline engines; `sqlalchemy>=2.0.0,<2.1`; DB write failures now alert
+  (email + `::error::` annotation, §3 step 13). Tests: `tests/execution/test_db_url.py`.
+  The dashboard API (`services/dashboard/api/requirements.txt`) pins
+  `sqlalchemy==2.0.36` and was unaffected.
+  **Backfill:** `execution/backfill_missed_runs.py` rebuilt the 10 missing
+  `ProcessRun` rows from the GH Actions job logs and re-imported 262 moved
+  emails from Gmail (read-only `EXAMINE`, matched by subject + arrival window,
+  deduped on Message-ID). 65 could not be matched (~60 Spam Review mail already
+  purged). Reusable for any future "runs green, DB writes failed" gap — save
+  each run's `gh run view <id> --log` into a dir, dry-run, then `--apply`.
 
 - **2026-09-18 (this fork's local Docker env only, not production)** — Cron
   container's `CMD` changed from `cron && tail -f cron.log` to `exec cron -f`

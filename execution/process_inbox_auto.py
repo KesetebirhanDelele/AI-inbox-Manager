@@ -64,6 +64,7 @@ logging.basicConfig(
 # Import our execution modules
 from fetch_emails import fetch_emails, delete_emails, move_emails, EmailConnectionError, EmailFetchError
 from classify_email import classify_email
+from db_url import normalize_db_url
 
 # Add project root so execution.* package imports work (e.g. draft_notification → execution.email_templates)
 sys.path.insert(0, str(project_root))
@@ -73,6 +74,16 @@ sys.path.insert(0, str(project_root / "services" / "dashboard" / "api"))
 # Database and interview processing imports (lazy loaded)
 _db_session = None
 _db_engine = None
+# First DB failure seen this run (init or ProcessRun write). DB writes are
+# best-effort so they never block email processing, but a run that silently
+# writes nothing to the dashboard must still be surfaced (see main()).
+_db_error: Optional[str] = None
+
+
+def _record_db_error(msg: str) -> None:
+    global _db_error
+    if _db_error is None:
+        _db_error = msg
 
 
 def get_db_session():
@@ -83,7 +94,7 @@ def get_db_session():
             from sqlalchemy import create_engine
             from sqlalchemy.orm import sessionmaker
 
-            db_url = os.getenv("DATABASE_URL")
+            db_url = normalize_db_url(os.getenv("DATABASE_URL"))
             if not db_url:
                 db_path = project_root / "services" / "dashboard" / "api" / "email_dashboard.db"
                 db_url = f"sqlite:///{db_path}"
@@ -100,6 +111,7 @@ def get_db_session():
             _db_session = SessionLocal()
         except Exception as e:
             logging.getLogger(__name__).warning(f"Could not initialize database: {e}")
+            _record_db_error(f"Could not initialize database: {e}")
             return None
     return _db_session
 
@@ -1240,6 +1252,8 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
         if not _run_logged and stats.get("total_emails", 0) > 0:
             stats["duration_seconds"] = (datetime.now() - start_time).total_seconds()
             _log_process_run(stats, status="failed")
+        if _db_error:
+            stats["db_error"] = _db_error
         # Clean up database session
         close_db_session()
 
@@ -1255,7 +1269,7 @@ def _log_process_run(stats: Dict[str, Any], summary_file=None, status: str = "su
         from sqlalchemy.orm import sessionmaker
 
         # Use DATABASE_URL env var if set (cloud deployment), else fall back to local SQLite
-        dashboard_db_url = os.getenv("DATABASE_URL")
+        dashboard_db_url = normalize_db_url(os.getenv("DATABASE_URL"))
         if not dashboard_db_url:
             db_path = project_root / "services" / "dashboard" / "api" / "email_dashboard.db"
             if not db_path.exists():
@@ -1307,12 +1321,14 @@ def _log_process_run(stats: Dict[str, Any], summary_file=None, status: str = "su
         except Exception as e:
             db.rollback()
             logger.warning(f"Could not write ProcessRun to dashboard DB: {e}")
+            _record_db_error(f"Could not write ProcessRun to dashboard DB: {e}")
         finally:
             db.close()
             engine.dispose()
 
     except Exception as e:
         logger.warning(f"_log_process_run failed: {e}")
+        _record_db_error(f"_log_process_run failed: {e}")
 
 
 def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
@@ -1508,6 +1524,24 @@ def main():
                 f"Action: Check logs, then increase MAX_COST_PER_RUN_USD in .env if needed.\n"
                 f"  The emails remain unread in Gmail — next run will retry them.",
             )
+
+        # ── Alert: dashboard DB unreachable (emails sorted, nothing recorded) ─
+        db_error = stats.get("db_error")
+        if db_error:
+            logger.error(f"DASHBOARD DB WRITES FAILED this run: {db_error}")
+            if os.getenv("GITHUB_ACTIONS") == "true":
+                # Annotation shows on the run page even though the job stays green
+                print(f"::error title=Dashboard DB writes failed::{db_error}")
+            if send_failure_alert:
+                send_failure_alert(
+                    "Dashboard DB writes FAILED — emails sorted but not recorded",
+                    f"Gmail processing completed, but writes to the dashboard\n"
+                    f"database failed, so this run's emails, interview events,\n"
+                    f"notification drafts and ProcessRun row are missing.\n\n"
+                    f"  First error : {db_error}\n"
+                    f"  Emails seen : {stats.get('total_emails', '?')}\n\n"
+                    f"Action: see RUNBOOK.md §12 'Dashboard shows no / stale data'.",
+                )
 
         if stats["interview_requests"] > 0:
             logger.info(f"ACTION REQUIRED: {stats['interview_requests']} interview request(s) in inbox.")

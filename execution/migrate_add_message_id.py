@@ -36,11 +36,12 @@ project_root = Path(__file__).parent.parent
 load_dotenv(project_root / ".env")
 sys.path.insert(0, str(project_root / "execution"))
 
+from db_url import normalize_db_url  # noqa: E402
 from process_inbox_auto import _ensure_schema  # noqa: E402
 
 
 def _database_url() -> str:
-    url = os.getenv("DATABASE_URL")
+    url = normalize_db_url(os.getenv("DATABASE_URL"))
     if url:
         return url
     db_path = project_root / "services" / "dashboard" / "api" / "email_dashboard.db"
