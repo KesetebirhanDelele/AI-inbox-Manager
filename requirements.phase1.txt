@@ -9,14 +9,16 @@ python-multipart>=0.0.6
 pydantic-settings>=2.1.0
 
 # Google integrations (Gmail + Sheets)
-google-api-python-client>=2.161.0
+# <3.0: cap at next major, API surface changes on major bumps
+google-api-python-client>=2.161.0,<3.0.0
 google-auth>=2.38.0
 google-auth-oauthlib>=1.2.1
 google-auth-httplib2>=0.2.0
 gspread>=6.1.4
 
 # SQL Server connectivity
-sqlalchemy>=2.0.25
+# <2.1: 2.1 switched bare postgresql:// to psycopg v3 (see execution/db_url.py)
+sqlalchemy>=2.0.25,<2.1
 pyodbc>=5.2.0
 
 # WhatsApp notifications
