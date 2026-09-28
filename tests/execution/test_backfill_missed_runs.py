@@ -64,6 +64,12 @@ def test_moved_entries_exclude_inbox_interviews():
     ]
 
 
+def test_interview_subjects_recorded():
+    assert parse_run_log(SAMPLE_LOG)["interview_subjects"] == [
+        "Remote: Data Engineer", "Power BI Developer",
+    ]
+
+
 def test_categories_breakdown_matches_pipeline_counting():
     # Pipeline counts interview + organized emails (not spam) in categories.
     cats = parse_run_log(SAMPLE_LOG)["categories"]
@@ -104,3 +110,27 @@ def test_pick_candidate_skips_known_message_ids_and_used_uids():
 
 def test_pick_candidate_none_when_nothing_eligible():
     assert pick_candidate([_c("1", 9, 0)], *_W, set(), set()) is None
+
+
+# ── folder_from_labels ───────────────────────────────────────────────────────
+
+from backfill_missed_runs import folder_from_labels  # noqa: E402
+
+
+def test_folder_from_labels():
+    assert folder_from_labels(r'1 (UID 5 X-GM-LABELS ("\Inbox" "Job Alerts") FLAGS ()') == "INBOX"
+    assert folder_from_labels(r'1 (X-GM-LABELS (\Important "Instant Interview") INTERNALDATE') == "Instant Interview"
+    assert folder_from_labels('1 (X-GM-LABELS () FLAGS ()') == "Archive"
+
+
+from backfill_missed_runs import same_subject, subject_search_words  # noqa: E402
+
+
+def test_subject_search_words_drops_symbols_gmail_cannot_search():
+    assert subject_search_words("Remote: Data Engineer – U.S. Mortgage & Snowflake") == "Remote Data Engineer"
+
+
+def test_same_subject_matches_log_truncation_and_whitespace():
+    full = "REMOTE|| AMI DATA ANALYST|| REMOTE|| IMMEDIATE INTERVIEW || only W2"
+    assert same_subject(full, full[:60].rstrip())
+    assert not same_subject("Great Opportunity || AMI Data Analyst || Remote", full[:60])

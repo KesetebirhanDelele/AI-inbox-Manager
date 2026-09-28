@@ -57,7 +57,9 @@ _ORGANIZED = re.compile(
     r"^\[\d+/\d+\] \[(?P<cat>[^\]]+)\] \((?P<conf>\d+)%\) → (?P<folder>.+?) — (?P<subj>.*)$"
 )
 _SPAM = re.compile(r"^\[\d+/\d+\] \[POSSIBLE SPAM → (?P<folder>[^\]]+)\] - (?P<subj>.*)$")
-_INTERVIEW = re.compile(r"^\[\d+/\d+\] \*\* (?:INTERVIEW REQUEST|SAFETY PROTECTED) \((?:NEW|ALREADY)")
+_INTERVIEW = re.compile(
+    r"^\[\d+/\d+\] \*\* (?:INTERVIEW REQUEST|SAFETY PROTECTED) \((?:NEW|ALREADY)[^)]*\) \*\* - (?P<subj>.*)$"
+)
 _ALREADY = re.compile(r"^\[\d+/\d+\] \[ALREADY PROCESSED\] - ")
 _CAT_LINE = re.compile(r"^\s+Category: (?P<cat>.+?) \(confidence")
 
@@ -74,6 +76,7 @@ def parse_run_log(text: str) -> Dict[str, Any]:
         "timestamp": None, "total_emails": 0, "interview_requests": 0,
         "organized": 0, "spam_deleted": 0, "categories": {},
         "duration_seconds": 0.0, "gpt_cost_usd": 0.0, "entries": [],
+        "interview_subjects": [],
     }
     start = end = None
     pending_interview = False
@@ -126,7 +129,10 @@ def parse_run_log(text: str) -> Dict[str, Any]:
                 "category": "Other", "confidence": 0.0,
                 "folder": sm.group("folder"), "subject60": sm.group("subj"),
             })
-        elif _INTERVIEW.match(msg) or _ALREADY.match(msg):
+        elif (im := _INTERVIEW.match(msg)):
+            result["interview_subjects"].append(im.group("subj"))
+            pending_interview = True
+        elif _ALREADY.match(msg):
             pending_interview = True
 
     if pending_interview:
@@ -222,6 +228,121 @@ def fetch_full(imap, uid: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+# ── Interview emails the failed runs never recorded ─────────────────────────
+
+def folder_from_labels(fetch_header: str) -> str:
+    """Current Gmail location from an ``X-GM-LABELS (...)`` FETCH response."""
+    m = re.search(r"X-GM-LABELS \((.*?)\)", fetch_header)
+    # Labels are quoted ("Needs Review", "\\Inbox") or bare atoms (\Important).
+    tokens = re.findall(r'"([^"]*)"|(\S+)', m.group(1)) if m else []
+    names = [(q or a).replace("\\\\", "\\") for q, a in tokens]
+    if any(n.lower() == "\\inbox" for n in names):
+        return "INBOX"
+    user = [n for n in names if not n.startswith("\\")]
+    return user[0] if user else "Archive"
+
+
+def subject_search_words(subject: str, n: int = 3) -> str:
+    """First ``n`` plain words of a subject, for Gmail's IMAP SUBJECT search."""
+    return " ".join(re.findall(r"[A-Za-z0-9]+", subject)[:n])
+
+
+def same_subject(full_subject: str, logged60: str) -> bool:
+    """True if ``full_subject`` is the email the log printed (first 60 chars)."""
+    norm = lambda s: re.sub(r"\s+", " ", s).strip()  # noqa: E731
+    return norm(full_subject[:60]) == norm(logged60)
+
+
+def backfill_interviews(pia, db, runs, apply: bool) -> Dict[str, int]:
+    """Record interview emails the failed runs kept in INBOX but never saved.
+
+    Healthy runs pick these up automatically while they stay UNSEEN in INBOX;
+    this covers the ones someone opened or moved in the meantime, so it
+    searches All Mail by subject. Each candidate not already in the DB is
+    re-classified (the interview pipeline needs extracted fields the logs
+    don't carry); only genuine interview requests then go through the
+    pipeline's own import_email_to_db() + process_interview_email().
+    Dry run lists candidates without GPT calls.
+    """
+    import imaplib
+    import time
+    from fetch_emails import connect_to_imap
+    from models import Email
+
+    subjects = list(dict.fromkeys(s.strip() for _, p in runs for s in p["interview_subjects"]))
+    since = min(run_datetime(p["timestamp"]) for _, p in runs) - timedelta(days=2)
+    print(f"  {len(subjects)} distinct interview subjects; All Mail since {since:%d-%b}")
+
+    counts: Dict[str, int] = defaultdict(int)
+    seen_uids: set = set()
+    imap = connect_to_imap(os.getenv("EMAIL_SERVER"), int(os.getenv("EMAIL_PORT", "993")),
+                           os.getenv("EMAIL_ADDRESS"), os.getenv("EMAIL_PASSWORD"))
+    try:
+        # Read-only (EXAMINE): cannot change flags or labels.
+        imap.select('"[Gmail]/All Mail"', readonly=True)
+        for subj in subjects:
+            # Gmail's SUBJECT search silently returns nothing for queries with
+            # "&" or "–", so search on the first plain words and then require
+            # an exact subject-prefix match on what comes back.
+            imap.literal = subject_search_words(subj).encode("utf-8")
+            status, data = imap.uid("SEARCH", "CHARSET", "UTF-8",
+                                    "SINCE", since.strftime("%d-%b-%Y"), "SUBJECT")
+            uids = data[0].split() if status == "OK" and data and data[0] else []
+            for uid_b in uids:
+                uid = uid_b.decode()
+                if uid in seen_uids:
+                    continue
+                status, rows = imap.uid(
+                    "FETCH", uid,
+                    "(X-GM-LABELS INTERNALDATE BODY.PEEK[HEADER.FIELDS (MESSAGE-ID SUBJECT)])")
+                row = next((r for r in rows if isinstance(r, tuple)), None)
+                if status != "OK" or row is None:
+                    counts["fetch_failed"] += 1
+                    continue
+                if not same_subject(_decode_subject(row[1]), subj):
+                    continue
+                seen_uids.add(uid)
+                header = row[0].decode(errors="replace")
+                mid = (email_lib.message_from_bytes(row[1]).get("Message-ID") or "").strip()
+                if mid and db.query(Email).filter(Email.message_id == mid).first():
+                    counts["already_in_db"] += 1
+                    continue
+                folder = folder_from_labels(header)
+                tt = imaplib.Internaldate2tuple(row[0])
+                arrived = datetime.utcfromtimestamp(time.mktime(tt)) if tt else datetime.utcnow()
+                if not apply:
+                    print(f"    would check: {subj[:55]}  [{folder}, arrived {arrived:%m-%d %H:%M} UTC]")
+                    counts["would_check"] += 1
+                    continue
+                data = fetch_full(imap, uid)
+                if not data:
+                    counts["fetch_failed"] += 1
+                    continue
+                cls = pia.classify_email(data, validate_only=False)
+                if not (pia.is_genuine_interview_request(cls) or pia.is_from_known_company(data, cls)):
+                    print(f"    skip (re-classified as {cls.get('category')}): {subj[:55]}")
+                    counts["not_interview"] += 1
+                    continue
+                email_db_id = pia.import_email_to_db(data, cls, folder)
+                if email_db_id is None:
+                    counts["import_failed"] += 1
+                    continue
+                # Attribute to when it arrived, not to the moment of the backfill.
+                db.get(Email, email_db_id).fetch_timestamp = arrived
+                db.commit()
+                ok = pia.process_interview_email(data, email_db_id, cls)
+                company = (cls.get("extracted_data") or {}).get("company_name")
+                print(f"    {'event created' if ok else 'EVENT FAILED'}: [{cls.get('category')}] "
+                      f"{company} — {subj[:55]}  [{folder}]")
+                counts["event_created" if ok else "event_failed"] += 1
+    finally:
+        try:
+            imap.logout()
+        except Exception:
+            pass
+    return counts
+
+
 # ── Orchestration of one backfill ────────────────────────────────────────────
 
 def main() -> int:
@@ -231,6 +352,8 @@ def main() -> int:
                     help="Name of the env var (from .env) holding the target DB URL, e.g. NEON_DATABASE_URL")
     ap.add_argument("--apply", action="store_true", help="Write to the DB (default: dry run)")
     ap.add_argument("--skip-emails", action="store_true", help="Only backfill ProcessRun rows")
+    ap.add_argument("--interviews", action="store_true",
+                    help="Only backfill interview emails still in INBOX (re-classifies with GPT on --apply)")
     args = ap.parse_args()
     # Subjects contain emoji/arrows; Windows consoles default to cp1252.
     if hasattr(sys.stdout, "reconfigure"):
@@ -262,6 +385,14 @@ def main() -> int:
     if db is None:
         print(f"ERROR: could not open DB: {pia._db_error}")
         return 1
+
+    if args.interviews:
+        try:
+            counts = backfill_interviews(pia, db, runs, args.apply)
+        finally:
+            pia.close_db_session()
+        print(f"Done. interviews: {dict(counts)}")
+        return 0
 
     # ── ProcessRun rows ──────────────────────────────────────────────────────
     runs_added = 0
