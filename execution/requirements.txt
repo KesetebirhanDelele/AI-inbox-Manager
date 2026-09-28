@@ -1,6 +1,8 @@
 python-dotenv>=1.0.0
-openai>=1.0.0
-google-api-python-client>=2.100.0
+# <2.0: cap at next major, API surface changes on major bumps
+openai>=1.0.0,<2.0.0
+# <3.0: cap at next major, API surface changes on major bumps
+google-api-python-client>=2.100.0,<3.0.0
 google-auth>=2.23.0
 google-auth-oauthlib>=1.1.0
 # <2.1: 2.1 switched bare postgresql:// to psycopg v3 (see execution/db_url.py)
