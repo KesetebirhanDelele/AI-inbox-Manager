@@ -1,0 +1,24 @@
+# Server (Hetzner) scheduler image -- replaces .github/workflows/process_inbox.yml.
+# Build context is the repo root (see services/dashboard/docker-compose.prod.yml).
+#
+# Dependencies only; code is bind-mounted at /repo. `cron -f` is PID 1 directly
+# (never `cron && tail -f` -- see RUNBOOK.md 4b, 2026-09-18). cron itself must run
+# as root, but the pipeline job runs as appuser (uid 1000) so the files it writes
+# under the bind-mounted repo (logs/, tmp/, config/gmail_token.json) are owned by
+# the same uid the API container uses.
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends cron \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -u 1000 appuser
+
+WORKDIR /tmp/build
+COPY execution/requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && rm -rf /tmp/build
+
+COPY execution/crontab.server /etc/cron.d/inbox-cron
+RUN chmod 0644 /etc/cron.d/inbox-cron
+
+WORKDIR /repo
+CMD ["cron", "-f"]

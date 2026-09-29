@@ -1,0 +1,11 @@
+# Hetzner server crontab (used by execution/Dockerfile.cron.server).
+# cron-spawned jobs get a minimal PATH and none of the container's environment,
+# so PATH is set here and every secret is read from /repo/.env by the pipeline
+# itself (python-dotenv), exactly like on GitHub Actions.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Every 2 hours, UTC, on the hour. A real cron on our own host fires on time --
+# no GitHub Actions scheduler queue (RUNBOOK.md 16, 2026-09-29).
+# Job runs as appuser (uid 1000) so files it writes match the API container.
+0 */2 * * * appuser cd /repo && python execution/process_inbox_auto.py >> /repo/logs/cron.log 2>&1
+

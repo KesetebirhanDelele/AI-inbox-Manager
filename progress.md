@@ -17,6 +17,45 @@ Newest first.
 
 ---
 
+## 2026-09-29 — Hetzner deployment: repo files added (branch `feat/hetzner-deployment`, not yet deployed)
+
+**Added the files needed to run the whole system on one Hetzner server** (CPX22,
+`2.29.47.89`, hostname `2-29-47-89.nip.io`). Nothing existing was modified and
+production (Render/Vercel/Neon/GitHub Actions) is untouched. Goal: fix the
+GitHub Actions scheduler lateness (real cron on our own host), give the
+dashboard a public HTTPS URL, and move storage into Postgres in Docker.
+
+New files:
+- `services/dashboard/docker-compose.prod.yml` — `postgres` (no published port),
+  `api` (non-root), `web` (Caddy: static frontend + HTTPS + reverse proxy),
+  `cron` (behind the opt-in `scheduler` profile so it can't double-process the
+  mailbox while GitHub Actions is live).
+- `services/dashboard/api/Dockerfile.server`, `execution/Dockerfile.cron.server`,
+  `services/dashboard/frontend/Dockerfile.prod`, `frontend/Caddyfile`,
+  `execution/crontab.server`, plus per-Dockerfile `.dockerignore` files that keep
+  secrets out of the build context.
+- `scripts/hetzner_init_secrets.sh` (generates secrets on the server, never
+  prints them), `scripts/backup_postgres.sh` (daily dump, 30-day retention),
+  `services/dashboard/compose.env.example`.
+- `.gitattributes` — forces LF for shell scripts, crontabs, Dockerfiles, the
+  Caddyfile and the prod compose file (this repo runs `core.autocrlf=true` on
+  Windows; CRLF would break shebangs and `/etc/cron.d` files on Linux).
+- `directives/hetzner-deployment.md` — the SOP.
+- `tests/deploy/test_prod_compose.py` — 9 guardrail tests (Postgres unpublished,
+  only `web` publishes ports, cron is opt-in, no hard-coded secrets, ...).
+
+Verified locally: 9/9 new tests pass; `docker compose config` valid; Caddyfile
+valid; all three images build; frontend build bakes the nip.io URL with zero
+Render references; cron job runs as uid 1000; API image runs non-root.
+
+**Deferred / not done yet:** actual server deploy, Neon → Postgres data
+migration, cutover (disable GitHub Actions cron), backup cron install, SSH
+hardening, and the RUNBOOK.md rewrite (RUNBOOK §4c added as "in progress"; make
+it authoritative only after cutover). Stakeholder login hash still lives only in
+Render env vars — needs to be carried over or regenerated.
+
+---
+
 ## 2026-09-29 — Cron offset fix + Ojobo1800 reference cleanup
 
 **Fixed `process_inbox.yml`'s cron congestion.** Investigated why the 8pm EDT

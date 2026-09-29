@@ -1,0 +1,90 @@
+# Production stack for a single Hetzner VPS (see directives/hetzner-deployment.md).
+#
+# Usage (on the server, from services/dashboard/):
+#   docker compose -f docker-compose.prod.yml --env-file .env.compose up -d --build
+#   # the scheduler is a separate profile so it never starts by accident:
+#   docker compose -f docker-compose.prod.yml --env-file .env.compose --profile scheduler up -d cron
+#
+# .env.compose (gitignored) supplies POSTGRES_PASSWORD and SITE_HOST only. All
+# other secrets live in the repo-root .env, which python-dotenv reads inside the
+# containers (the same file the GitHub Actions workflow writes). Never put real
+# values in this file.
+name: inboxgenius
+
+services:
+  # PostgreSQL -- internal network only, deliberately NO published port.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inboxgenius
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.compose}
+      POSTGRES_DB: inboxgenius
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inboxgenius -d inboxgenius"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI dashboard backend -- reachable only through the web (Caddy) service.
+  api:
+    build:
+      context: ../..
+      dockerfile: services/dashboard/api/Dockerfile.server
+    restart: unless-stopped
+    user: "1000:1000"
+    # process_runner.py locates the repo root by walking up from its own file,
+    # so the whole repo is mounted at /repo (same layout as docker-compose.yml).
+    working_dir: /repo/services/dashboard/api
+    volumes:
+      - ../..:/repo
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://inboxgenius:${POSTGRES_PASSWORD}@postgres:5432/inboxgenius
+      CORS_ORIGINS: https://${SITE_HOST:?set SITE_HOST in .env.compose}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Static frontend + reverse proxy + automatic HTTPS. The only public entry point.
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_BASE_URL: https://${SITE_HOST}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_HOST: ${SITE_HOST}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  # Replaces .github/workflows/process_inbox.yml. Off by default (profile) so the
+  # mailbox is never processed by two schedulers at once -- enable only at cutover.
+  cron:
+    profiles: ["scheduler"]
+    build:
+      context: ../..
+      dockerfile: execution/Dockerfile.cron.server
+    restart: unless-stopped
+    working_dir: /repo
+    volumes:
+      - ../..:/repo
+    environment:
+      DATABASE_URL: postgresql://inboxgenius:${POSTGRES_PASSWORD}@postgres:5432/inboxgenius
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

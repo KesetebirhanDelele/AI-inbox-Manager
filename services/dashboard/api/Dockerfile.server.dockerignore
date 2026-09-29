@@ -1,0 +1,5 @@
+# Only the two requirements files are needed to build this image -- keep secrets
+# (.env, config/*.json), .git and node_modules out of the build context entirely.
+*
+!services/dashboard/api/requirements.txt
+!execution/requirements.txt

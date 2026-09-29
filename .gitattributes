@@ -1,0 +1,8 @@
+# Files that run on Linux (server / containers) must keep LF line endings even when
+# checked out on Windows -- CRLF breaks shell shebangs and cron.d files.
+*.sh                       text eol=lf
+execution/crontab*         text eol=lf
+Dockerfile*                text eol=lf
+**/Dockerfile*             text eol=lf
+services/dashboard/frontend/Caddyfile text eol=lf
+services/dashboard/docker-compose.prod.yml text eol=lf

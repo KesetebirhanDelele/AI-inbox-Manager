@@ -1,0 +1,26 @@
+# Server (Hetzner) image for the FastAPI dashboard API.
+# Build context is the repo root (see services/dashboard/docker-compose.prod.yml).
+#
+# Dependencies only -- the code itself is bind-mounted at /repo by compose so the
+# layout matches process_runner.py's path math and "Run Now" can shell out to
+# execution/process_inbox_auto.py. Both requirements sets are installed for that
+# reason (same approach as Dockerfile.dev). Runs as non-root uid 1000.
+
+FROM python:3.11-slim
+
+WORKDIR /tmp/build
+COPY services/dashboard/api/requirements.txt api-requirements.txt
+COPY execution/requirements.txt execution-requirements.txt
+RUN pip install --no-cache-dir -r api-requirements.txt -r execution-requirements.txt \
+    && rm -rf /tmp/build
+
+RUN useradd -m -u 1000 appuser
+USER appuser
+WORKDIR /repo/services/dashboard/api
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,18 @@
+# Production frontend: build the Vite app, then serve it with Caddy, which also
+# reverse-proxies /api and /health to the API container and handles HTTPS.
+# The API base URL is baked in at build time (VITE_API_BASE_URL build arg); a
+# process env var beats frontend/.env.production, so the Render URL there is
+# overridden.
+
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+RUN npm run build
+
+FROM caddy:2-alpine
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/dist /srv

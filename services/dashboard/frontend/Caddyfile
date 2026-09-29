@@ -1,0 +1,30 @@
+# Site address comes from the SITE_HOST env var (e.g. 2-29-47-89.nip.io). Naming a
+# real hostname (not :80) makes Caddy obtain and renew the HTTPS certificate
+# automatically and redirect HTTP -> HTTPS.
+{$SITE_HOST} {
+	encode gzip
+
+	# API and health check go to the FastAPI container. /docs and /openapi.json
+	# are intentionally NOT proxied, so the API schema is not public.
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /health {
+		reverse_proxy api:8000
+	}
+
+	# Everything else is the React single-page app.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}

@@ -278,6 +278,28 @@ can run side by side without a port collision. Open http://localhost:5174.
 
 ---
 
+## 4c. Hetzner deployment — IN PROGRESS (not live)
+
+> **Status (2026-09-29): server provisioned, repo files added, NOT yet deployed
+> or cut over.** Everything in §1–§4 above is still the live system. Do not treat
+> this section as current infrastructure until the cutover is done and this
+> banner is removed.
+
+Target: one Hetzner Cloud server (CPX22, Helsinki, `2.29.47.89`, public hostname
+`2-29-47-89.nip.io`, cloud firewall = inbound 22/80/443 only) running
+`services/dashboard/docker-compose.prod.yml`: Postgres 16 (internal only), the
+FastAPI API, a Caddy-served frontend with automatic HTTPS, and the 2-hourly
+pipeline cron (`execution/crontab.server`, behind the `scheduler` compose
+profile). It replaces Render + Vercel + Neon + the GitHub Actions cron, mainly to
+fix GitHub's scheduler lateness (§16, 2026-09-29) and to give the dashboard a
+public URL. Step-by-step SOP and safety constraints:
+[`directives/hetzner-deployment.md`](directives/hetzner-deployment.md).
+
+**Never run the GitHub Actions cron and the Hetzner `cron` service at the same
+time** — both process the same mailbox.
+
+---
+
 ## 5. Data stores
 
 | Store | Holds | Notes |
