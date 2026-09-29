@@ -5,8 +5,8 @@
 > file first**, then run the checks in [§14 "Verify this doc is still current"](#14-verify-this-doc-is-still-current)
 > before trusting any older notes, chat history, or memory.
 >
-> **Last verified: 2026-09-25** — this fork's GH Actions `process_inbox.yml`
-> runs + Neon (`inboxgenius-fork`), during the SQLAlchemy 2.1 incident (§16).
+> **Last verified: 2026-09-29** — cron offset changed to dodge GitHub's
+> top-of-hour scheduling congestion (§16).
 
 ---
 
@@ -527,6 +527,16 @@ config that *is* live: `render.yaml` + `services/dashboard/api/Dockerfile.prod`.
 ---
 
 ## 16. Changelog (infra / architecture only)
+
+- **2026-09-29 (this fork)** — `process_inbox.yml`'s cron changed from
+  `0 */2 * * *` to `20 */2 * * *`. Cause: the 00:00 UTC slot (8pm EDT) was
+  consistently the latest-firing run of the day, 29-34 min after trigger for
+  4 straight days, vs. 9-27 min for every other slot — GitHub Actions'
+  scheduler is most congested at the top of the hour, worst at 00:00 UTC
+  specifically (a globally common "midnight" cron pick across all of GitHub).
+  The pipeline itself was never broken — every delayed run still completed
+  successfully in under 2 minutes once dispatched. Offsetting 20 min off the
+  hour avoids that congestion window; still every-2-hours cadence.
 
 - **2026-09-25 (this fork)** — Dashboard showed 0 emails from 2026-09-24
   22:10 UTC while every GH Actions run was green. Cause: `execution/requirements.txt`

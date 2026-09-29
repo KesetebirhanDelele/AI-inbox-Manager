@@ -17,6 +17,27 @@ Newest first.
 
 ---
 
+## 2026-09-29 — Cron offset fix + Ojobo1800 reference cleanup
+
+**Fixed `process_inbox.yml`'s cron congestion.** Investigated why the 8pm EDT
+(00:00 UTC) scheduled run appeared to not fire — it did fire, but 29-34 min
+late, every day for 4 straight days, vs. 9-27 min for every other 2-hour
+slot. Root cause: GitHub Actions' scheduler is most congested at the top of
+the hour, worst at 00:00 UTC (a globally common cron pick). Changed the cron
+from `0 */2 * * *` to `20 */2 * * *` in `.github/workflows/process_inbox.yml`
+to dodge that window. `RUNBOOK.md` §16 and "Last verified" updated in the
+same change.
+
+**Removed all references to the original upstream repo
+(`Ojobo1800/AI-inbox-Manager`) from this repo.** Deleted the `upstream` git
+remote and rewrote 5 spots in `RUNBOOK.md` that named it. Two of those spots
+(the Scheduler/CI + Git repo URLs in §1, and the secrets header in §8) were
+actually pointing at the wrong repo — stale from before the 2026-09-18
+migration to this fork's own independent GitHub Actions/Neon setup, not just
+confusing. Rewritten to describe this fork as self-contained.
+
+---
+
 ## 2026-09-28 — Repo maintenance session
 
 **Removed 17 dead files (PR #2, merged to fork `master`).**
