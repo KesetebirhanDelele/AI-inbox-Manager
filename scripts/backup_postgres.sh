@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Daily Postgres backup for the Hetzner stack. Run ON THE SERVER (host cron).
-# Replaces .github/workflows/backup_neon_db.yml once Neon is retired.
+# Postgres dump for the Hetzner stack. Run ON THE SERVER. OPTIONAL: nothing
+# schedules this by default (owner decision 2026-09-29) -- run it by hand, or add
+# a host cron entry (see directives/hetzner-deployment.md step 6).
 #
 #   BACKUP_DIR (default /opt/backups/inboxgenius)   KEEP_DAYS (default 30)
 #

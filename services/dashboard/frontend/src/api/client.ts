@@ -338,17 +338,9 @@ class ApiClient {
     return response.data;
   }
 
-  // Schedule Configuration
+  // Schedule info (read-only: the real cron interval and per-run email cap)
   async getScheduleConfig(): Promise<ScheduleConfig> {
     const response = await this.client.get('/api/schedule/config');
-    return response.data;
-  }
-
-  async updateScheduleConfig(intervalMinutes?: number, batchSize?: number): Promise<any> {
-    const response = await this.client.post('/api/schedule/config', {
-      interval_minutes: intervalMinutes,
-      batch_size: batchSize,
-    });
     return response.data;
   }
 

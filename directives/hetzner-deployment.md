@@ -22,7 +22,7 @@ system (RUNBOOK.md §1–§4) **stays live until the Hetzner system is verified*
 | `services/dashboard/frontend/Dockerfile.prod` + `Caddyfile` | frontend build + Caddy (HTTPS, reverse proxy) |
 | `execution/Dockerfile.cron.server` + `crontab.server` | scheduler image, `0 */2 * * *` UTC |
 | `scripts/hetzner_init_secrets.sh` | one-time secret generation (never prints values) |
-| `scripts/backup_postgres.sh` | daily Postgres dump, 30-day retention |
+| `scripts/backup_postgres.sh` | optional manual Postgres dump (not scheduled — see step 6) |
 | `services/dashboard/compose.env.example` | template for the gitignored `.env.compose` |
 
 ## Steps
@@ -40,7 +40,13 @@ system (RUNBOOK.md §1–§4) **stays live until the Hetzner system is verified*
 5. **Cutover** — disable `process_inbox.yml` and `keepalive.yml` in GitHub,
    then `docker compose ... --profile scheduler up -d cron`. Manually trigger one
    run and confirm a `ProcessRun` row appears.
-6. **Backups** — install `/etc/cron.d/inboxgenius-backup` running `scripts/backup_postgres.sh` daily.
+6. **Backups** — none scheduled (owner decision 2026-09-29: no Hetzner server
+   backups; emails stay in Gmail and the DB is dashboard history). A daily-dump
+   cron was installed and then removed the same evening. To take a dump on
+   demand run `scripts/backup_postgres.sh`; to schedule it, add
+   `30 3 * * * root /opt/ai-inbox-manager/scripts/backup_postgres.sh` to
+   `/etc/cron.d/inboxgenius-backup`. Note dumps contain email data and sit on
+   the same server as the database.
 7. **Harden** — done 2026-09-29: `/etc/ssh/sshd_config.d/01-hardening.conf`
    (key-only, MaxAuthTries 3, no X11), `fail2ban` sshd jail; unattended-upgrades
    was already active. Verify with a *fresh* SSH connection and a refused
@@ -49,6 +55,10 @@ system (RUNBOOK.md §1–§4) **stays live until the Hetzner system is verified*
 ## Optional settings
 - `DB_STORAGE_CAP_MB` (root `.env`): cap for the dashboard's storage card.
   Default 512 (Neon free tier); the Hetzner server uses 40960.
+- `MAX_EMAILS_PER_RUN` (root `.env`): emails fetched per pipeline run. Default
+  100; the Hetzner server uses 150. Shown read-only on the dashboard Settings
+  page. The run interval is the cron line in `execution/crontab.server`
+  (change it there and rebuild the `cron` image); it is not editable in the UI.
 
 ## Safety constraints
 - **Never** run the GitHub Actions cron and the Hetzner `cron` service at the same

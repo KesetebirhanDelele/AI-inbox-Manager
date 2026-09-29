@@ -45,6 +45,11 @@ this repo (permanent rule).
 
 ## 1. Live URLs & accounts
 
+> ⚠️ **Previous setup — fallback until retired (see §4c).** The live dashboard is
+> now `https://2-29-47-89.nip.io` on Hetzner. The Vercel/Render/Neon URLs below
+> are frozen at 2026-09-29 18:44 UTC and show stale data. The Gmail mailbox and
+> Google Sheet rows below are unchanged.
+
 | Component | URL / location |
 |---|---|
 | **Dashboard (frontend)** | https://ai-inbox-manager-vert.vercel.app — Vercel, auto-deploys from `master` |
@@ -141,6 +146,10 @@ Entry point: `python execution/process_inbox_auto.py`
 
 ## 4. Scheduling & GitHub Actions workflows
 
+> ⚠️ **Previous setup — all four workflows below are DISABLED since 2026-09-29.**
+> The scheduler is now the Hetzner `cron` container (§4c). Do not re-enable
+> `process_inbox.yml` while that container is running (double-processing).
+
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/process_inbox.yml` | cron `0 */2 * * *` (every 2 h UTC) + manual `workflow_dispatch` | Installs deps, writes `.env` + `config/*.json` from secrets, runs `process_inbox_auto.py`, refreshes the `GMAIL_TOKEN_JSON` secret with the rotated token, uploads logs. `timeout-minutes: 30`. |
@@ -199,14 +208,15 @@ timestamp. An earlier version anchored off `last_run_timestamp`, which meant
 every manual "Run Now" click (which also writes a `ProcessRun` row) silently
 dragged the countdown away from the real fixed schedule.
 
-**Known disconnect:** the dashboard Settings page lets you change
-`interval_minutes` / `batch_size` (`SystemConfig` table, `api/routers/schedule.py`),
-but for this fork those values are cosmetic only — `execution/crontab` is a
-static file baked into the `email_dashboard_cron` image at build time and does
-**not** read `SystemConfig`. Changing Settings today does not reschedule
-anything. (That control's "update the Windows scheduled task" code path is
-also vestigial — this fork uses the Docker cron container, not Task
-Scheduler.) Not fixed as of this writing; see [§15](#15-known-issues--deferred-work).
+**Settings page (resolved 2026-09-29):** it used to let you change
+`interval_minutes` / `batch_size`, but those values were cosmetic —
+`execution/crontab` is a static file baked into the cron image and never read
+them (and the "update the Windows scheduled task" path was vestigial). The
+controls and the save endpoint were **removed**; Settings and the countdown now
+show read-only real values (`api/routers/schedule.py`: interval 120 min = the
+cron line, batch size = the `MAX_EMAILS_PER_RUN` env var). To change the
+schedule, edit `execution/crontab*` and rebuild the cron image; to change the
+cap, edit `MAX_EMAILS_PER_RUN` in `.env`.
 
 **Update — 2026-09-18/19, migration completed:** the "in-progress" framing
 above is now done. This fork's actual production scheduler is **this fork's
@@ -293,8 +303,9 @@ can run side by side without a port collision. Open http://localhost:5174.
 | Database | Postgres 18 in Docker volume `inboxgenius_postgres_data`. Migrated from Neon 2026-09-29 (row counts identical, 12 tables). |
 | Secrets | `/opt/ai-inbox-manager/.env` (pipeline + API), `services/dashboard/.env.compose` (compose interpolation), `config/gmail_*.json` — all mode 600, generated on the server; **never print them**. Admin password: `/root/inboxgenius_admin_password.txt` (root only). |
 | Firewall / SSH | Hetzner cloud firewall: inbound TCP 22/80/443 only. SSH is key-only (`/etc/ssh/sshd_config.d/01-hardening.conf`), `fail2ban` sshd jail active. Postgres and the API are never published. |
-| Backups | `/etc/cron.d/inboxgenius-backup` → `scripts/backup_postgres.sh`, daily 03:30 UTC → `/opt/backups/inboxgenius/` (30-day retention). ⚠️ Same-server only — enable Hetzner server backups or copy off-box. Pre-migration Neon dumps are kept there too. |
+| Backups | **None scheduled** (owner decision 2026-09-29: no Hetzner server backups, no daily dump; emails remain in Gmail, the DB is dashboard history). `scripts/backup_postgres.sh` exists as an optional manual tool. Leftover files in `/opt/backups/inboxgenius/` (contain email data): two `neon_premigration_*` dumps and one test dump. |
 | Storage card | `DB_STORAGE_CAP_MB=40960` in `.env` (default 512 = Neon). |
+| Per-run email cap | `MAX_EMAILS_PER_RUN=150` in `.env` (default 100; raised 2026-09-29 because 100 was hit on 3 consecutive runs at peak, and 15 of the last 30 days' runs were ≥90). Read by the pipeline at start of each run — no restart needed. Cost guardrail: 150 × ~$0.015 = $2.25 est. < `MAX_COST_PER_RUN_USD` 5.0. If the cap is hit, the *newest* mail is processed first and the rest waits for the next run; nothing is lost. |
 | SSH | `ssh -i ~/.ssh/hetzner_ai_inbox root@2.29.47.89` |
 
 All four GitHub workflows (`process_inbox`, `keepalive`, `backup_neon_db`,
@@ -312,7 +323,7 @@ tail -n 100 /opt/ai-inbox-manager/logs/cron.log   # pipeline log (has email subj
 docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/process_inbox_auto.py --triggered-by manual   # run now
 $DC up -d --build web                             # redeploy frontend after a code change
 $DC restart api                                   # API code is bind-mounted; restart picks up changes
-/opt/ai-inbox-manager/scripts/backup_postgres.sh  # backup now
+/opt/ai-inbox-manager/scripts/backup_postgres.sh  # optional manual DB dump (nothing is scheduled)
 docker exec inboxgenius-postgres-1 psql -U inboxgenius -d inboxgenius -c "select id, run_timestamp, status from process_runs order by id desc limit 5"
 ```
 
@@ -326,10 +337,22 @@ above. `git archive` overwrites tracked files only — `.env`, `.env.compose` an
 `gh workflow enable process_inbox.yml`. Neon only has data up to 2026-09-29
 18:44 UTC, so the Render/Vercel dashboard would be stale until it catches up.
 
-**Still deferred:** off-server backups; the stakeholder login hash (only in
-Render env vars); retiring Render/Vercel/Neon and deleting their stale
-sections; a real domain to replace nip.io; rewriting §1–§4, §8, §10, §12 for
-Hetzner. Full SOP and safety constraints:
+**Hetzner failure playbook**
+
+| Symptom | First checks |
+|---|---|
+| Dashboard down / cert error | `$DC ps`; `docker logs inboxgenius-web-1 --tail 50` (Caddy: certificate issuance/renewal errors — nip.io is a shared domain and can hit Let's Encrypt rate limits; Caddy falls back to ZeroSSL). Ports 80/443 must be open in the Hetzner cloud firewall. |
+| Login fails | Admin password is in `/root/inboxgenius_admin_password.txt`. `docker logs inboxgenius-api-1 --tail 50`. The old `admin123` login no longer exists. |
+| Dashboard stale / 0 emails | Did the cron fire? `grep "Run lock acquired" /opt/ai-inbox-manager/logs/cron.log \| tail -3` (expect one per even UTC hour, on time). `docker logs inboxgenius-cron-1 --tail 30`. Check `process_runs` (query above). |
+| Emails not sorted | `tail -n 300 /opt/ai-inbox-manager/logs/cron.log \| grep -E "Successfully moved\|ERROR\|Traceback\|AUTHENTICATE failed\|invalid_grant"`. Gmail OAuth expiry: re-run `scripts/authorize_gmail.py` locally, `scp` the new `config/gmail_token.json` to the server (mode 600, owner 1000). |
+| Run never finishes / stuck lock | `ls /opt/ai-inbox-manager/tmp/process.lock`; if the PID is dead (or >3 h old) delete it. |
+| Cost guardrail / OpenAI errors | Same as §12 (`MAX_COST_PER_RUN_USD`, key rotation) — but edit `/opt/ai-inbox-manager/.env` on the server, then `$DC restart cron api`. |
+| Locked out of SSH | Hetzner console → server → Console (VNC) or Rescue mode. SSH is key-only; `fail2ban` may have banned your IP (`fail2ban-client status sshd`; `fail2ban-client set sshd unbanip <ip>`). |
+
+**Still deferred:** the stakeholder login hash (only in Render env vars);
+retiring Render/Vercel/Neon and deleting their sections (§1, §4, §8, §10, §12,
+§14 are banner-marked as the previous setup until then); a real domain to
+replace nip.io. Full SOP and safety constraints:
 [`directives/hetzner-deployment.md`](directives/hetzner-deployment.md).
 
 ---
@@ -394,6 +417,12 @@ no trailing slash).
 
 ## 8. Secrets & credentials
 
+> ⚠️ The GitHub-secret / Render-env locations below are the **previous setup**.
+> On Hetzner the same values live in `/opt/ai-inbox-manager/.env` and
+> `config/gmail_*.json` on the server (§4c) — rotate them there (edit the file,
+> then `$DC restart cron api`). Rotate the old copies too, and delete them when
+> Render/GitHub are retired.
+
 **Nothing secret is committed.** `.gitignore` covers `.env`, `config/gmail_token.json`,
 `config/gmail_credentials.json`, `config/service-account-key.json`, `*.db`, `logs/`.
 
@@ -452,6 +481,10 @@ no trailing slash).
 
 ## 10. Common operations
 
+> ⚠️ The `gh workflow` / Render commands below are the **previous setup**
+> (workflows disabled). For production run/deploy/log commands use the Hetzner
+> block in §4c. Local dev and lock-recovery commands at the end still apply.
+
 ```bash
 # --- Trigger a processing run now (instead of waiting for the 2h cron) ---
 gh workflow run process_inbox.yml --ref master
@@ -501,6 +534,11 @@ rm tmp/process.lock             # if the PID is dead / lock > 3h old
 
 ## 12. Failure playbook
 
+> ⚠️ Written for the previous GitHub Actions / Render setup. For production on
+> Hetzner start with the **Hetzner failure playbook** in §4c; rows here about
+> pipeline behaviour (moves, OpenAI, cost guardrail) still apply, but read
+> "GH Actions run log" as `/opt/ai-inbox-manager/logs/cron.log`.
+
 | Symptom | First checks |
 |---|---|
 | **Dashboard shows 0 emails today but runs are green** | Run log: `grep -E "Could not initialize database|DB import skipped|DASHBOARD DB WRITES FAILED|ProcessRun record created"`. `No module named 'psycopg'` = SQLAlchemy driver mismatch (§16 2026-09-25) — check `pip` installed `sqlalchemy` version in the run log and that `normalize_db_url()` is still applied. Emails moved out of INBOX during the outage are **not** backfilled automatically; interview emails (kept UNSEEN in INBOX) self-heal on the next good run. |
@@ -527,7 +565,18 @@ label ops, folder quoting — **step 7 is the authority on the move pipeline**).
 
 ## 14. Verify this doc is still current
 
-Run these; if any disagree with the above, **the doc is stale — update it**:
+**Hetzner (current production) — run these first:**
+
+```bash
+curl -s https://2-29-47-89.nip.io/health                     # {"status":"healthy",...,"database":"connected"}
+ssh -i ~/.ssh/hetzner_ai_inbox root@2.29.47.89 'docker ps --format "{{.Names}}: {{.Status}}"'   # 4 containers up
+ssh -i ~/.ssh/hetzner_ai_inbox root@2.29.47.89 'docker exec inboxgenius-postgres-1 psql -U inboxgenius -d inboxgenius -tAc "select id, run_timestamp, status from process_runs order by id desc limit 3"'   # newest run within the last 2 h (:00 UTC)
+gh workflow list --repo KesetebirhanDelele/AI-inbox-Manager --all   # all four should say "disabled_manually"
+```
+
+The checks below are for the **previous** GitHub/Render/Neon setup; run them
+only while it is still a fallback. If any disagree with the above, **the doc is
+stale — update it**:
 
 ```bash
 # Backend host & DB (expect onrender.com + "database":"connected")
@@ -575,10 +624,9 @@ config that *is* live: `render.yaml` + `services/dashboard/api/Dockerfile.prod`.
 - **The mislabelled backlog from the Sept 2026 incident** keeps its junk labels
   in Gmail; the fix stopped new damage but didn't retro-clean. A one-off
   label-stripping script can be written if needed.
-- **(This fork's local Docker env only)** Dashboard Settings' `interval_minutes`
-  / `batch_size` controls don't actually reschedule the local cron container —
-  `execution/crontab` is a static file, not read from `SystemConfig`. See
-  [§4b](#4b-this-forks-local-docker-environment).
+- ~~Dashboard Settings' `interval_minutes` / `batch_size` controls were
+  cosmetic~~ — **fixed 2026-09-29**: controls removed, Settings is read-only
+  (see [§4b](#4b-this-forks-local-docker-environment)).
 
 ---
 
@@ -592,7 +640,8 @@ config that *is* live: `render.yaml` + `services/dashboard/api/Dockerfile.prod`.
   Postgres in Docker. First scheduled run 20:00:01 UTC, success. Hardening:
   key-only SSH + fail2ban (574 failed logins in 24 h observed beforehand).
   Postgres 18 chosen to match Neon 18.6 (a 16 server cannot restore an 18
-  dump). See §4c.
+  dump). No scheduled backups by owner decision (the daily-dump cron that was
+  installed during cutover was removed the same evening). See §4c.
 
 - **2026-09-29 (this fork)** — `process_inbox.yml`'s cron changed from
   `0 */2 * * *` to `20 */2 * * *`. Cause: the 00:00 UTC slot (8pm EDT) was

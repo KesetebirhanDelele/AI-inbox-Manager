@@ -1,15 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
 import { format } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz';
 
 const SettingsPage = () => {
   const queryClient = useQueryClient();
   const [newCompany, setNewCompany] = useState('');
   const [notes, setNotes] = useState('');
-  const [selectedInterval, setSelectedInterval] = useState<number>(10);
-  const [selectedBatchSize, setSelectedBatchSize] = useState<number>(20);
   const [processingResult, setProcessingResult] = useState<any>(null);
 
   const { data: whitelist, isLoading } = useQuery({
@@ -37,22 +34,6 @@ const SettingsPage = () => {
   const { data: scheduleConfig, isLoading: scheduleLoading } = useQuery({
     queryKey: ['scheduleConfig'],
     queryFn: () => apiClient.getScheduleConfig(),
-  });
-
-  useEffect(() => {
-    if (scheduleConfig) {
-      setSelectedInterval(scheduleConfig.interval_minutes);
-      setSelectedBatchSize(scheduleConfig.batch_size || 20);
-    }
-  }, [scheduleConfig]);
-
-  const updateScheduleMutation = useMutation({
-    mutationFn: (params: { intervalMinutes?: number; batchSize?: number }) =>
-      apiClient.updateScheduleConfig(params.intervalMinutes, params.batchSize),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scheduleConfig'] });
-      queryClient.invalidateQueries({ queryKey: ['summaryStats'] });
-    },
   });
 
   const runProcessingMutation = useMutation({
@@ -87,68 +68,20 @@ const SettingsPage = () => {
     }
   };
 
-  const handleUpdateSchedule = () => {
-    const intervalChanged = selectedInterval !== scheduleConfig?.interval_minutes;
-    const batchChanged = selectedBatchSize !== scheduleConfig?.batch_size;
-
-    if (intervalChanged || batchChanged) {
-      updateScheduleMutation.mutate({
-        intervalMinutes: intervalChanged ? selectedInterval : undefined,
-        batchSize: batchChanged ? selectedBatchSize : undefined,
-      });
-    }
-  };
-
-  // Slider positions map to these minute values
-  const intervalSteps = [5, 10, 15, 30, 60, 120];
-  const batchSizeSteps = [10, 20, 30, 50, 75, 100];
-
-  const intervalToSliderPos = (minutes: number): number => {
-    const idx = intervalSteps.indexOf(minutes);
-    return idx >= 0 ? idx : 1; // default to 10 min position
-  };
-
-  const sliderPosToInterval = (pos: number): number => {
-    return intervalSteps[pos] || 10;
-  };
-
-  const batchToSliderPos = (size: number): number => {
-    const idx = batchSizeSteps.indexOf(size);
-    return idx >= 0 ? idx : 1; // default to 20 position
-  };
-
-  const sliderPosToBatch = (pos: number): number => {
-    return batchSizeSteps[pos] || 20;
-  };
-
   const getIntervalLabel = (minutes: number): string => {
-    if (minutes === 60) return 'Every hour';
-    if (minutes === 120) return 'Every 2 hours';
+    if (minutes % 60 === 0) {
+      const hours = minutes / 60;
+      return hours === 1 ? 'Every hour' : `Every ${hours} hours`;
+    }
     return `Every ${minutes} minutes`;
   };
-
-  const getBatchLabel = (size: number): string => {
-    return `${size} emails per run`;
-  };
-
-  // Convert UTC to CST (America/Chicago)
-  const formatDateCST = (dateString: string) => {
-    const utcString = dateString.endsWith('Z') || dateString.includes('+') ? dateString : dateString + 'Z';
-    const date = new Date(utcString);
-    const cstDate = toZonedTime(date, 'America/Chicago');
-    return format(cstDate, 'MMM d, yyyy h:mm a');
-  };
-
-  const hasChanges =
-    selectedInterval !== scheduleConfig?.interval_minutes ||
-    selectedBatchSize !== scheduleConfig?.batch_size;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Manage processing schedule, batch size, and whitelist
+          View the processing schedule and manage the whitelist
         </p>
       </div>
 
@@ -159,7 +92,8 @@ const SettingsPage = () => {
             Processing Schedule
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            Configure how often and how many emails are processed each run.
+            How often emails are processed and how many are handled each run.
+            These are set on the server and can't be changed from this page.
           </p>
 
           {scheduleLoading ? (
@@ -167,100 +101,20 @@ const SettingsPage = () => {
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
             </div>
           ) : (
-            <div className="space-y-6">
-              {/* Interval Slider */}
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 max-w-xl">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Processing Interval
-                </label>
-                <div className="max-w-md">
-                  <input
-                    type="range"
-                    min={0}
-                    max={intervalSteps.length - 1}
-                    step={1}
-                    value={intervalToSliderPos(selectedInterval)}
-                    onChange={(e) => setSelectedInterval(sliderPosToInterval(Number(e.target.value)))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                  />
-                  <div className="flex justify-between mt-1">
-                    {intervalSteps.map((val) => (
-                      <span
-                        key={val}
-                        className={`text-xs ${
-                          val === selectedInterval ? 'text-primary-600 font-semibold' : 'text-gray-400'
-                        }`}
-                      >
-                        {val === 120 ? '2h' : val === 60 ? '60m' : `${val}m`}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-sm font-medium text-gray-900">
-                    {getIntervalLabel(selectedInterval)}
-                  </p>
-                </div>
+                <dt className="text-sm font-medium text-gray-700">Processing interval</dt>
+                <dd className="mt-1 text-sm font-medium text-gray-900">
+                  {scheduleConfig ? getIntervalLabel(scheduleConfig.interval_minutes) : '—'}
+                </dd>
               </div>
-
-              {/* Batch Size Slider */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Batch Size
-                </label>
-                <div className="max-w-md">
-                  <input
-                    type="range"
-                    min={0}
-                    max={batchSizeSteps.length - 1}
-                    step={1}
-                    value={batchToSliderPos(selectedBatchSize)}
-                    onChange={(e) => setSelectedBatchSize(sliderPosToBatch(Number(e.target.value)))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                  />
-                  <div className="flex justify-between mt-1">
-                    {batchSizeSteps.map((val) => (
-                      <span
-                        key={val}
-                        className={`text-xs ${
-                          val === selectedBatchSize ? 'text-primary-600 font-semibold' : 'text-gray-400'
-                        }`}
-                      >
-                        {val}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-sm font-medium text-gray-900">
-                    {getBatchLabel(selectedBatchSize)}
-                  </p>
-                </div>
+                <dt className="text-sm font-medium text-gray-700">Emails per run</dt>
+                <dd className="mt-1 text-sm font-medium text-gray-900">
+                  {scheduleConfig ? `Up to ${scheduleConfig.batch_size}` : '—'}
+                </dd>
               </div>
-
-              {scheduleConfig?.last_updated && (
-                <div className="text-sm text-gray-500">
-                  Last updated: {formatDateCST(scheduleConfig.last_updated)} CST
-                  {scheduleConfig.updated_by && ` by ${scheduleConfig.updated_by}`}
-                </div>
-              )}
-
-              <button
-                onClick={handleUpdateSchedule}
-                disabled={!hasChanges || updateScheduleMutation.isPending}
-                className="px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {updateScheduleMutation.isPending ? 'Updating...' : 'Update Settings'}
-              </button>
-
-              {updateScheduleMutation.isSuccess && (
-                <div className="text-sm text-green-600">
-                  Settings updated successfully!
-                </div>
-              )}
-
-              {updateScheduleMutation.isError && (
-                <div className="text-sm text-red-600">
-                  Failed to update settings. Please try again.
-                </div>
-              )}
-            </div>
+            </dl>
           )}
         </div>
       </div>
@@ -273,7 +127,7 @@ const SettingsPage = () => {
           </h3>
           <p className="text-sm text-gray-600 mb-4">
             Trigger email processing manually to fetch and classify new emails from your inbox.
-            This will process up to {selectedBatchSize} emails.
+            This will process up to {scheduleConfig?.batch_size ?? 'the configured number of'} emails.
           </p>
           <button
             onClick={() => runProcessingMutation.mutate()}

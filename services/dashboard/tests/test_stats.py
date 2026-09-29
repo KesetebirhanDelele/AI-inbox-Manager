@@ -64,7 +64,11 @@ class TestCategoryBreakdown:
         assert resp.status_code == 200
         data = resp.json()
         categories = [item["category"] for item in data]
-        assert "Job Alert" in categories
+        # "Job Alert" and "Application Notification" are deliberately hidden from
+        # the breakdown chart (job-board noise; see EXCLUDED_CATEGORIES in
+        # routers/stats.py) -- only meaningful categories should appear.
+        assert "Job Alert" not in categories
+        assert "Application Notification" not in categories
         assert "Interview Request" in categories
 
     def test_categories_date_filter(self, client, db, auth_cookies):

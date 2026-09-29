@@ -52,7 +52,35 @@ Newest first.
   the big "Nd" number is gone and the card is now "Database Storage" (size, %,
   usage bar). The API still returns `db_storage_days_remaining` (unused by the
   UI; left in place to avoid an API/type change).
-- **Deferred:** off-server backups (backups are same-server only); stakeholder
+- **Settings controls removed; schedule endpoint now read-only:**
+  `routers/schedule.py` rewritten — GET reports interval 120 (= cron
+  `0 */2 * * *`) and batch size from `MAX_EMAILS_PER_RUN`; the POST endpoint, the
+  `system_config` writes and the Windows PowerShell `update_scheduled_task` call
+  are gone (POST now 405). `SettingsPage.tsx`: sliders / Update button replaced
+  by a read-only card; `client.ts`: `updateScheduleConfig` removed. Tests:
+  `test_schedule.py` rewritten (env cap, bad-env fallbacks, POST 405, auth).
+- **Per-run cap 100 → 150:** `MAX_EMAILS_PER_RUN=150` added to the server `.env`
+  (100 was hit on 3 consecutive runs 09-29 14:32/16:35/18:37 UTC; 15 of the last
+  30 days' runs were ≥90). Cost guardrail unaffected (150 × $0.015 = $2.25 < $5).
+  Schedule stays every 2 hours.
+- **Stale test fixed:** `test_categories_with_data` expected "Job Alert" in the
+  category breakdown, but commit `23f0c0d` deliberately excludes "Job Alert" and
+  "Application Notification" (job-board noise; they only sort mail into the
+  "Job Alerts" folder and never notify students). Test now asserts they are
+  hidden. Full dashboard suite: 175 pass; 3 `test_notifications.py` failures
+  occur only in my dashboard-only scratch copy (`No module named 'execution'`),
+  identical on HEAD, not a code regression.
+- **Backups dropped (owner decision):** Kes will not enable Hetzner server backups
+  and doesn't want the daily dump. Removed `/etc/cron.d/inboxgenius-backup` from
+  the server (verified gone). `scripts/backup_postgres.sh` is kept as an optional
+  manual tool (header + directive step 6 updated). Three dump files remain in
+  `/opt/backups/inboxgenius/` (two `neon_premigration_*`, one test dump; they
+  contain email data) — left in place, not deleted.
+- **RUNBOOK cleanup:** §1, §4, §8, §10, §12 now carry "previous setup / fallback"
+  banners pointing to §4c; added a Hetzner failure playbook (§4c) and Hetzner
+  verify commands (§14); §4c backups row and "still deferred" list corrected;
+  changelog notes the no-backup decision.
+- **Deferred:** (backup item removed); stakeholder
   login hash; a real domain to replace nip.io; retire Render/Vercel/Neon and
   remove their RUNBOOK sections; the Settings page / `schedule.py` still has
   vestigial "Windows scheduled task" wording.
