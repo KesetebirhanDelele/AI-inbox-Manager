@@ -17,6 +17,48 @@ Newest first.
 
 ---
 
+## 2026-09-29 (evening) — Hetzner live: first scheduled run confirmed, SSH hardened, storage card
+
+- **First scheduled run confirmed:** started 20:00:01 UTC (GitHub was 9–34 min
+  late), `triggered_by=scheduled`, success, 54 processed / 38 moved, 0 errors,
+  `ProcessRun` #134. Cutover complete; RUNBOOK §4c is now the authoritative
+  production section (header, §0 table and §16 changelog updated too; §1–§3,
+  §8, §10, §12 still describe the old setup — flagged in the header).
+- **SSH hardening (verified with a fresh connection):**
+  `/etc/ssh/sshd_config.d/01-hardening.conf` (PasswordAuthentication no,
+  PermitRootLogin prohibit-password, MaxAuthTries 3, X11Forwarding no);
+  `fail2ban` sshd jail (5 tries / 10 min → 1 h ban) banned an attacker within
+  seconds; password login now returns `Permission denied (publickey)`.
+- **"Neon Storage Left" card → "Database Storage Left"** (`DashboardPage.tsx`,
+  `routers/stats.py`): the cap comes from env `DB_STORAGE_CAP_MB` (default 512,
+  so Render/Neon behave as before; the Hetzner `.env` sets 40960); sizes ≥1 GB
+  display in GB. 7 new unit tests in `services/dashboard/tests/test_stats.py`
+  (pass). Note: `TestCategoryBreakdown::test_categories_with_data` fails on the
+  committed baseline too (pre-existing, unrelated, not investigated). Verified
+  live: the API returns a 40960 MB cap, and the served bundle has the new label
+  and not the old one.
+- **Countdown timer fixed:** the dashboard's "Next run in" showed the time to the
+  next 10-minute boundary (e.g. `6:40` at 16:13 UTC) because
+  `routers/schedule.py` defaulted `interval_minutes` to 10 when the `system_config`
+  table has no row (it's empty here). Default is now 120, matching the real
+  cron `0 */2 * * *` (test in `test_schedule.py` updated). `useCountdownTimer.ts`
+  now formats ≥1 h as `h:mm:ss` (was `m:ss`, would read "90:28"), and the card
+  caption says "runs every 2 hours". Verified live: API returns 120; at 20:30 UTC
+  the countdown computes to 22:00 UTC (`1:29:26`). Known limit: the Settings
+  page's interval/batch controls are still cosmetic (cron is a static file) and
+  changing the interval there would desync the countdown again; the batch-size
+  default (20) also doesn't match `MAX_EMAILS_PER_RUN` (100).
+- **Days-to-full-storage removed** from the storage card (`DashboardPage.tsx`):
+  the big "Nd" number is gone and the card is now "Database Storage" (size, %,
+  usage bar). The API still returns `db_storage_days_remaining` (unused by the
+  UI; left in place to avoid an API/type change).
+- **Deferred:** off-server backups (backups are same-server only); stakeholder
+  login hash; a real domain to replace nip.io; retire Render/Vercel/Neon and
+  remove their RUNBOOK sections; the Settings page / `schedule.py` still has
+  vestigial "Windows scheduled task" wording.
+
+---
+
 ## 2026-09-29 — Hetzner deployment: repo files added (branch `feat/hetzner-deployment`, not yet deployed)
 
 **Added the files needed to run the whole system on one Hetzner server** (CPX22,

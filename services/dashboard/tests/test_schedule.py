@@ -12,7 +12,7 @@ class TestGetScheduleConfig:
         resp = client.get("/api/schedule/config", cookies=auth_cookies)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["interval_minutes"] == 10   # default
+        assert data["interval_minutes"] == 120  # default = real cron (0 */2 * * *)
         assert data["batch_size"] == 20          # default
         assert data["last_updated"] is None
 

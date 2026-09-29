@@ -5,6 +5,7 @@ Provides processing statistics, trends, and accuracy metrics.
 """
 
 import logging
+import os
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, select
@@ -28,6 +29,27 @@ from models import ProcessRun, Classification, Approval, Email, UserSession, Int
 from integration.process_runner import run_email_processing, get_run_lock_status
 
 router = APIRouter()
+
+# Neon's free tier (0.5 GB) is the historical default, so the Render/Neon
+# deployment behaves exactly as before. On the Hetzner server set
+# DB_STORAGE_CAP_MB in the root .env to the disk budget for Postgres.
+DEFAULT_DB_STORAGE_CAP_MB = 512
+
+
+def _db_storage_cap_bytes() -> int:
+    """Storage cap for the countdown card, from DB_STORAGE_CAP_MB.
+
+    Unset, blank, non-numeric or non-positive values fall back to the default
+    rather than raising -- a bad env var must never break the KPI endpoint.
+    """
+    raw = os.getenv("DB_STORAGE_CAP_MB", "").strip()
+    try:
+        cap_mb = float(raw) if raw else DEFAULT_DB_STORAGE_CAP_MB
+    except ValueError:
+        cap_mb = DEFAULT_DB_STORAGE_CAP_MB
+    if cap_mb <= 0:
+        cap_mb = DEFAULT_DB_STORAGE_CAP_MB
+    return int(cap_mb * 1024 * 1024)
 
 
 # Pydantic models
@@ -303,16 +325,15 @@ async def get_engineering_kpis(
     ]
     avg_duration = (sum(durations) / len(durations)) if durations else None
 
-    # Neon free-tier storage countdown — Postgres only, best-effort (never
-    # let a monitoring query break the KPI endpoint).
-    NEON_FREE_CAP_BYTES = 512 * 1024 * 1024  # 0.5 GB
+    # Database storage countdown — Postgres only, best-effort (never let a
+    # monitoring query break the KPI endpoint). Cap comes from DB_STORAGE_CAP_MB.
     storage_used = storage_cap = storage_pct = storage_days_left = None
     try:
         if db.bind.dialect.name == "postgresql":
             storage_used = db.execute(
                 select(func.pg_database_size(func.current_database()))
             ).scalar()
-            storage_cap = NEON_FREE_CAP_BYTES
+            storage_cap = _db_storage_cap_bytes()
             storage_pct = round(storage_used / storage_cap * 100.0, 2)
 
             first_run = db.query(func.min(ProcessRun.run_timestamp)).scalar()

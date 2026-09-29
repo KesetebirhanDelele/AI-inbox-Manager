@@ -5,8 +5,11 @@
 > file first**, then run the checks in [§14 "Verify this doc is still current"](#14-verify-this-doc-is-still-current)
 > before trusting any older notes, chat history, or memory.
 >
-> **Last verified: 2026-09-29** — cron offset changed to dodge GitHub's
-> top-of-hour scheduling congestion (§16).
+> **Last verified: 2026-09-29 20:15 UTC** — production moved to a **Hetzner
+> server** (§4c). The first scheduled run there fired at 20:00:01 UTC (1 s late,
+> vs 9–34 min late on GitHub Actions). §1–§4, §8, §10 and §12 below still
+> describe the previous GitHub Actions / Render / Vercel / Neon setup, which is
+> now **disabled/fallback only** — read §4c first.
 
 ---
 
@@ -17,7 +20,8 @@ that **is no longer in use**. Current reality:
 
 | Thing | ❌ OLD (ignore) | ✅ CURRENT |
 |---|---|---|
-| Scheduler | Windows Task Scheduler on a laptop | **GitHub Actions cron**, cloud, laptop-independent |
+| **Where production runs (since 2026-09-29)** | GitHub Actions + Render + Vercel + Neon | **One Hetzner server** — `https://2-29-47-89.nip.io`, see §4c. The GitHub workflows are disabled; Render/Vercel/Neon are an untouched fallback (Neon frozen at 2026-09-29 18:44 UTC) |
+| Scheduler (previous setup, now fallback) | Windows Task Scheduler on a laptop | GitHub Actions cron (disabled 2026-09-29), cloud, laptop-independent |
 | Backend host | Railway | **Render** (Docker web service) |
 | Database | Railway PostgreSQL | **Neon PostgreSQL** (free tier, never expires) |
 | Backend URL | `inboxgenius-api-production.up.railway.app` | `https://ai-inbox-manager-5l6p.onrender.com` |
@@ -278,29 +282,55 @@ can run side by side without a port collision. Open http://localhost:5174.
 
 ---
 
-## 4c. Hetzner deployment — CUT OVER 2026-09-29 (pending first scheduled-run check)
+## 4c. Hetzner deployment — LIVE (authoritative for production since 2026-09-29)
 
-> **Status (2026-09-29 18:46 UTC): the Hetzner server is now the live scheduler
-> and database.** All four GitHub workflows (`process_inbox`, `keepalive`, `backup_neon_db`,
-> `deploy_backend`) are **disabled** (re-enable with `gh workflow enable <name>`). A manual run on the server succeeded (52 emails, 38
-> moved, `ProcessRun` #133 written). **Not yet confirmed:** the first
-> *scheduled* run at the top of an even UTC hour, and this runbook's §0–§4, §8, §10
-> and §12 still describe the old GitHub/Render/Neon setup — they will be
-> rewritten once a scheduled run is confirmed. Render, Vercel and Neon are still
-> up, unchanged, as a fallback (Neon is frozen at 2026-09-29 18:44 UTC).
+| Thing | Value |
+|---|---|
+| Server | Hetzner Cloud `CPX22` (2 vCPU / 4 GB / 80 GB), Ubuntu 26.04, Helsinki, IPv4 `2.29.47.89`, project "AI-Inbox-Manager" |
+| Dashboard + API | `https://2-29-47-89.nip.io` (Caddy, Let's Encrypt cert, auto-renew). `/health` is public; `/docs` is **not** exposed. |
+| Stack | `services/dashboard/docker-compose.prod.yml` at `/opt/ai-inbox-manager`: `postgres` (18, internal only), `api` (non-root), `web` (Caddy + frontend, the only public ports 80/443), `cron` (compose profile `scheduler`) |
+| Scheduler | `cron` container, `0 */2 * * *` UTC, job runs as uid 1000. First scheduled run confirmed 2026-09-29 20:00:01 UTC, `ProcessRun` #134. |
+| Database | Postgres 18 in Docker volume `inboxgenius_postgres_data`. Migrated from Neon 2026-09-29 (row counts identical, 12 tables). |
+| Secrets | `/opt/ai-inbox-manager/.env` (pipeline + API), `services/dashboard/.env.compose` (compose interpolation), `config/gmail_*.json` — all mode 600, generated on the server; **never print them**. Admin password: `/root/inboxgenius_admin_password.txt` (root only). |
+| Firewall / SSH | Hetzner cloud firewall: inbound TCP 22/80/443 only. SSH is key-only (`/etc/ssh/sshd_config.d/01-hardening.conf`), `fail2ban` sshd jail active. Postgres and the API are never published. |
+| Backups | `/etc/cron.d/inboxgenius-backup` → `scripts/backup_postgres.sh`, daily 03:30 UTC → `/opt/backups/inboxgenius/` (30-day retention). ⚠️ Same-server only — enable Hetzner server backups or copy off-box. Pre-migration Neon dumps are kept there too. |
+| Storage card | `DB_STORAGE_CAP_MB=40960` in `.env` (default 512 = Neon). |
+| SSH | `ssh -i ~/.ssh/hetzner_ai_inbox root@2.29.47.89` |
 
-Target: one Hetzner Cloud server (CPX22, Helsinki, `2.29.47.89`, public hostname
-`2-29-47-89.nip.io`, cloud firewall = inbound 22/80/443 only) running
-`services/dashboard/docker-compose.prod.yml`: Postgres 18 (internal only), the
-FastAPI API, a Caddy-served frontend with automatic HTTPS, and the 2-hourly
-pipeline cron (`execution/crontab.server`, behind the `scheduler` compose
-profile). It replaces Render + Vercel + Neon + the GitHub Actions cron, mainly to
-fix GitHub's scheduler lateness (§16, 2026-09-29) and to give the dashboard a
-public URL. Step-by-step SOP and safety constraints:
+All four GitHub workflows (`process_inbox`, `keepalive`, `backup_neon_db`,
+`deploy_backend`) are **disabled**. **Never run the GitHub Actions cron and the
+Hetzner `cron` service at the same time** — both process the same mailbox.
+Render, Vercel and Neon are untouched as a fallback (Neon is frozen at
+2026-09-29 18:44 UTC).
+
+```bash
+# On the server:  cd /opt/ai-inbox-manager/services/dashboard
+DC="docker compose -f docker-compose.prod.yml --env-file .env.compose --profile scheduler"
+$DC ps                                            # container status
+curl -s https://2-29-47-89.nip.io/health          # {"status":"healthy",...,"database":"connected"}
+tail -n 100 /opt/ai-inbox-manager/logs/cron.log   # pipeline log (has email subjects, no secrets)
+docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/process_inbox_auto.py --triggered-by manual   # run now
+$DC up -d --build web                             # redeploy frontend after a code change
+$DC restart api                                   # API code is bind-mounted; restart picks up changes
+/opt/ai-inbox-manager/scripts/backup_postgres.sh  # backup now
+docker exec inboxgenius-postgres-1 psql -U inboxgenius -d inboxgenius -c "select id, run_timestamp, status from process_runs order by id desc limit 5"
+```
+
+**Deploying a code change:** commit to the branch, then
+`git archive <branch> | ssh root@2.29.47.89 'tar -x -C /opt/ai-inbox-manager'`,
+`chown` `logs/ tmp/ config/` to `1000:1000` if needed, and rebuild/restart as
+above. `git archive` overwrites tracked files only — `.env`, `.env.compose` and
+`config/gmail_*.json` are untracked and untouched.
+
+**Rollback to the previous system:** `docker compose ... stop cron`, then
+`gh workflow enable process_inbox.yml`. Neon only has data up to 2026-09-29
+18:44 UTC, so the Render/Vercel dashboard would be stale until it catches up.
+
+**Still deferred:** off-server backups; the stakeholder login hash (only in
+Render env vars); retiring Render/Vercel/Neon and deleting their stale
+sections; a real domain to replace nip.io; rewriting §1–§4, §8, §10, §12 for
+Hetzner. Full SOP and safety constraints:
 [`directives/hetzner-deployment.md`](directives/hetzner-deployment.md).
-
-**Never run the GitHub Actions cron and the Hetzner `cron` service at the same
-time** — both process the same mailbox.
 
 ---
 
@@ -553,6 +583,16 @@ config that *is* live: `render.yaml` + `services/dashboard/api/Dockerfile.prod`.
 ---
 
 ## 16. Changelog (infra / architecture only)
+
+- **2026-09-29 (this fork)** — **Production moved to Hetzner.** Server
+  `2.29.47.89` (CPX22); stack in `docker-compose.prod.yml`; data migrated from
+  Neon (row counts verified identical); all four GitHub workflows disabled; the
+  Hetzner `cron` container is the scheduler. Cause: GitHub's scheduler ran
+  9–34 min late and could auto-disable; wanted a public dashboard URL and
+  Postgres in Docker. First scheduled run 20:00:01 UTC, success. Hardening:
+  key-only SSH + fail2ban (574 failed logins in 24 h observed beforehand).
+  Postgres 18 chosen to match Neon 18.6 (a 16 server cannot restore an 18
+  dump). See §4c.
 
 - **2026-09-29 (this fork)** — `process_inbox.yml`'s cron changed from
   `0 */2 * * *` to `20 */2 * * *`. Cause: the 00:00 UTC slot (8pm EDT) was

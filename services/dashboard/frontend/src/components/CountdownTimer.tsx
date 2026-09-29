@@ -34,7 +34,9 @@ const CountdownTimer = ({ variant = 'nav' }: CountdownTimerProps) => {
               {formatted}
             </div>
             <div className="text-xs text-gray-400 mt-1">
-              runs every {intervalMinutes} min
+              {intervalMinutes && intervalMinutes >= 60 && intervalMinutes % 60 === 0
+                ? `runs every ${intervalMinutes / 60 === 1 ? 'hour' : `${intervalMinutes / 60} hours`}`
+                : `runs every ${intervalMinutes} min`}
             </div>
           </>
         ) : isScheduled ? (

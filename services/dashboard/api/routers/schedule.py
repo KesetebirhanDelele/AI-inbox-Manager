@@ -50,8 +50,10 @@ async def get_schedule_config(
         SystemConfig.key == "email_batch_size"
     ).first()
 
-    # Use defaults if not set
-    interval_minutes = int(interval_config.value) if interval_config else 10
+    # Use defaults if not set. The interval default must match the real
+    # scheduler (crontab `0 */2 * * *`, i.e. 120 min): the dashboard countdown
+    # is computed from this value, so a wrong default shows a wrong "Next run in".
+    interval_minutes = int(interval_config.value) if interval_config else 120
     batch_size = int(batch_config.value) if batch_config else 20
 
     # Use most recent update timestamp

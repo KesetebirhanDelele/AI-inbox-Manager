@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+import pytest
+
 from conftest import make_email, make_classification, make_approval, make_process_run
 
 
@@ -124,6 +126,26 @@ class TestEngineeringKPIs:
         assert data["failed_run_count_7d"] == 1
         assert data["failure_rate_7d"] == 50.0
         assert data["ai_cost_today_usd"] == round(0.07, 4)
+
+
+class TestDbStorageCap:
+    """DB_STORAGE_CAP_MB drives the storage-countdown card's cap."""
+
+    def test_default_is_neon_free_tier(self, monkeypatch):
+        from routers.stats import _db_storage_cap_bytes
+        monkeypatch.delenv("DB_STORAGE_CAP_MB", raising=False)
+        assert _db_storage_cap_bytes() == 512 * 1024 * 1024
+
+    def test_env_override(self, monkeypatch):
+        from routers.stats import _db_storage_cap_bytes
+        monkeypatch.setenv("DB_STORAGE_CAP_MB", "40960")
+        assert _db_storage_cap_bytes() == 40960 * 1024 * 1024
+
+    @pytest.mark.parametrize("bad", ["", "  ", "abc", "0", "-5"])
+    def test_bad_values_fall_back_to_default(self, monkeypatch, bad):
+        from routers.stats import _db_storage_cap_bytes
+        monkeypatch.setenv("DB_STORAGE_CAP_MB", bad)
+        assert _db_storage_cap_bytes() == 512 * 1024 * 1024
 
 
 class TestProcessingRuns:

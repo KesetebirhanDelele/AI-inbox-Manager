@@ -33,6 +33,13 @@ const TYPE_LABELS: Record<string, string> = {
   'job_machine': 'Job Machine',
 };
 
+// Sizes under 1 GB stay in MB (the Neon-era 512 MB cap); larger caps (e.g. the
+// Hetzner disk budget set via DB_STORAGE_CAP_MB) read better in GB.
+const formatStorage = (bytes: number | null | undefined): string => {
+  const mb = (bytes ?? 0) / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(mb < 100 ? 1 : 0)} MB`;
+};
+
 const DashboardPage = () => {
   const queryClient = useQueryClient();
   const [expandedInterviewId, setExpandedInterviewId] = useState<number | null>(null);
@@ -521,34 +528,24 @@ const DashboardPage = () => {
           </div>
         </div>
 
-        {/* Neon Storage Countdown — free tier is capped at 0.5 GB and blocks
-            new writes (doesn't delete data or auto-reset) once full. Hitting
-            it doesn't interrupt email processing itself (DB writes are
-            best-effort), but the dashboard would silently stop getting new
-            data, so this is a reminder to prune/upgrade before that happens. */}
+        {/* Database Storage — used vs DB_STORAGE_CAP_MB (default 512 MB =
+            Neon's free tier, which blocks new writes once full; on Hetzner it
+            is the disk budget). Hitting the cap doesn't interrupt email
+            processing itself (DB writes are best-effort), but the dashboard
+            would silently stop getting new data, so this is a reminder to
+            prune/upgrade before that happens. The days-to-full estimate was
+            removed on purpose (2026-09-29). */}
         {engKPIs?.db_storage_used_bytes != null && (
           <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className={`text-3xl font-bold ${
-                    engKPIs.db_storage_days_remaining == null ? 'text-gray-400'
-                    : engKPIs.db_storage_days_remaining > 90 ? 'text-green-600'
-                    : engKPIs.db_storage_days_remaining > 30 ? 'text-yellow-600'
-                    : 'text-red-600'
-                  }`}>
-                    {engKPIs.db_storage_days_remaining != null
-                      ? `${Math.round(engKPIs.db_storage_days_remaining)}d`
-                      : '—'}
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
+                <div className="w-0 flex-1">
                   <dl>
-                    <dt className="text-sm font-bold text-gray-800 truncate">Neon Storage Left</dt>
+                    <dt className="text-sm font-bold text-gray-800 truncate">Database Storage</dt>
                     <dd className="mt-1 text-xs text-gray-500">
-                      {((engKPIs.db_storage_used_bytes ?? 0) / (1024 * 1024)).toFixed(1)} MB
+                      {formatStorage(engKPIs.db_storage_used_bytes)}
                       {' / '}
-                      {((engKPIs.db_storage_cap_bytes ?? 0) / (1024 * 1024)).toFixed(0)} MB
+                      {formatStorage(engKPIs.db_storage_cap_bytes)}
                       {' ('}{engKPIs.db_storage_pct}%{')'}
                     </dd>
                   </dl>

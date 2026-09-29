@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
 
+// h:mm:ss once the wait is an hour or more (the real schedule is every 2 hours,
+// so "90:28" would be hard to read); m:ss below an hour.
 const formatDuration = (ms: number): string => {
   const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+  return hours > 0
+    ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds}`
+    : `${minutes}:${seconds}`;
 };
 
 export const useCountdownTimer = () => {

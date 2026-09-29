@@ -41,7 +41,14 @@ system (RUNBOOK.md §1–§4) **stays live until the Hetzner system is verified*
    then `docker compose ... --profile scheduler up -d cron`. Manually trigger one
    run and confirm a `ProcessRun` row appears.
 6. **Backups** — install `/etc/cron.d/inboxgenius-backup` running `scripts/backup_postgres.sh` daily.
-7. **Harden** — key-only SSH, fail2ban, unattended upgrades (see the `vps-hardening` skill).
+7. **Harden** — done 2026-09-29: `/etc/ssh/sshd_config.d/01-hardening.conf`
+   (key-only, MaxAuthTries 3, no X11), `fail2ban` sshd jail; unattended-upgrades
+   was already active. Verify with a *fresh* SSH connection and a refused
+   password attempt (see the `vps-hardening` skill).
+
+## Optional settings
+- `DB_STORAGE_CAP_MB` (root `.env`): cap for the dashboard's storage card.
+  Default 512 (Neon free tier); the Hetzner server uses 40960.
 
 ## Safety constraints
 - **Never** run the GitHub Actions cron and the Hetzner `cron` service at the same
