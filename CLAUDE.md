@@ -37,6 +37,21 @@ and changelog) in the same commit.**
 
 ---
 
+## ⚠️ Maintain `progress.md` after every code change
+
+`RUNBOOK.md` §16 only logs infra/architecture incidents. Nothing tracked
+day-to-day code changes (cleanups, refactors, small fixes) — which is exactly
+why dead files and duplicate fixes kept slipping through unnoticed across
+sessions: nobody had a single place to check "what already happened here"
+before starting new work.
+
+**After any code change, append a dated entry to `progress.md`** (repo root)
+in the same commit: what changed, why, files touched, and any deferred
+follow-up. Read `progress.md` before starting new work, the same way you read
+`RUNBOOK.md` before diagnosing production issues.
+
+---
+
 ## Core Principle
 
 LLMs are probabilistic.  
@@ -227,6 +242,13 @@ not infallible. When a production symptom doesn't match it, run the checks in
 `RUNBOOK.md` §14 (health endpoint, `gh run list`, workflow entrypoint, model
 constant) and reconcile — update the doc if reality has moved.
 
+### 7. Log every code change to `progress.md`
+
+Same commit as the change, not a follow-up. See "Maintain `progress.md`"
+above. This applies to cleanups and deletions too, not just features/fixes —
+those are the changes most likely to get silently forgotten and rediscovered
+the hard way.
+
 ---
 
 ## Tooling Assumptions
@@ -270,6 +292,7 @@ A change is not complete unless:
 - no secrets are introduced
 - validation scripts pass
 - changes are understandable by a junior developer
+- `progress.md` has a dated entry for the change
 
 ---
 
