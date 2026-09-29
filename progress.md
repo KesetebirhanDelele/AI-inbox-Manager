@@ -30,8 +30,12 @@ branch. `master` sits at `24443cf` (the one push that already happened).
   `:00–:11` of an even UTC hour or while `tmp/process.lock` is fresh (the cause of
   the 22:00 UTC incident); `--dry-run`, `--force`, `--build-web`; deploys tracked
   files only via `git archive`, restarts the API, health-checks, records
-  `.deployed_commit` on the server. 23 tests in `tests/deploy/test_deploy_script.py`
-  (window rule incl. octal-looking "08"/"09", `--help`, bad option, no secrets).
+  `.deployed_commit` on the server, and **removes files that were deleted in git
+  since the last deploy** (tar only adds/overwrites, so deleted files would linger
+  and could mask a broken import; a strict `is_safe_relpath` guard protects
+  `.env`, `.env.compose`, `config/gmail_*`, `logs/`, `tmp/`). 42 tests in
+  `tests/deploy/test_deploy_script.py` (window rule incl. octal-looking "08"/"09",
+  path guard, `--help`, bad option, no secrets).
 - **ProcessRun for runs that go wrong:** `process_inbox_auto.py` `finally` now
   writes a `failed` row for a crash at ANY point (e.g. Gmail auth failure before a
   single email was fetched — previously no trace on the dashboard) and a
@@ -51,8 +55,28 @@ branch. `master` sits at `24443cf` (the one push that already happened).
   the production dashboard at all, so an un-enforced role can't start runs; it can
   still approve/reject notifications and edit the whitelist.
 - Comments in `process_inbox_auto.py` no longer mention Windows Task Scheduler.
-- Laptop check: the old Windows task `ColaberryEmailProcessing` does not exist on
-  this machine, so nothing can double-process the mailbox from here.
+- Laptop check: the old Windows tasks `ColaberryEmailProcessing` and
+  `InboxAI_StartAPI_OnLogon` do not exist on this machine, so nothing can
+  double-process the mailbox from here.
+
+**Stale-file / wording cleanup (docs + deletions, no runtime effect):**
+- **Deleted** (verified zero references from code, workflows or other docs; all
+  recoverable from git history): `scripts/update_schedule.ps1` (only the removed
+  Settings save path called it), `scripts/setup_hourly_task.bat` + `.ps1`
+  (would recreate a second, laptop-based scheduler → double-processing risk),
+  `services/dashboard/api/railway.json`, `services/dashboard/QUICKSTART.md`,
+  `services/dashboard/FULLSTACK_QUICKSTART.md` (Railway-era).
+- **Rewritten:** `services/dashboard/README.md` (327 stale lines → a short,
+  accurate README; states that the stakeholder role isn't enforced).
+- **Reworded:** Railway comments in `api/database.py` (behaviour unchanged),
+  the deprecated-infra sentence in `CLAUDE.md`, RUNBOOK §4 (laptop task history)
+  and §14 (stale-file list → what was removed, what stays until Render is
+  retired), RUNBOOK §4c deploy procedure (now the deploy script; no master pushes).
+- **Bannered as obsolete** (kept for history): `docs/AUTOMATED_EMAIL_PROCESSING.md`,
+  and a production note in `docs/email-integration-setup.md` (Option 2, Windows).
+- **Deliberately kept until Render is retired:** `render.yaml`,
+  `api/Procfile`, `api/runtime.txt`, `api/Dockerfile.prod`,
+  `.github/workflows/deploy_backend.yml`.
 
 ---
 
@@ -67,11 +91,12 @@ disabled; Render/Vercel/Neon are untouched fallbacks (Neon frozen at
 lands this entry).
 
 **Decisions made by Kes (2026-09-29):**
-- **No PR needed** — solo project. PR #3 was opened, then dropped: the branch is
-  landed directly on `master` with a fast-forward push (GitHub marks PR #3
-  merged automatically). Work now goes straight to `master`; deploy with
-  `git archive master | ssh …` (RUNBOOK §4c). The `feat/hetzner-deployment`
-  branch is left in place, no longer needed.
+- **No PR needed** — solo project. PR #3 was opened, then dropped: the branch was
+  fast-forwarded into `master` once (`24443cf`; GitHub marked PR #3 merged
+  automatically). **Superseded later the same night:** to avoid triggering
+  Vercel/Render rebuilds of the fallback stack, nothing more is pushed to `master`
+  until the old stack is retired — work continues on `feat/hetzner-deployment`
+  and is deployed with `scripts/deploy_hetzner.sh` (RUNBOOK §4c).
 - **No backups:** no Hetzner server backups and no scheduled DB dump (emails
   stay in Gmail; the DB is dashboard history). Optional manual script kept.
 - **Redundant dumps deleted after 1 week:** one-shot cron
@@ -100,12 +125,12 @@ lands this entry).
    exist on Render/GitHub), delete `render.yaml` and the Render/Neon workflows,
    remove the old RUNBOOK sections (§1–§4, §8, §10, §12, §14 are banner-marked as
    previous setup until then), delete the final dump.
-6. **Known small gaps:** deploys must avoid the `:00`–`:10` window of even UTC
-   hours (RUNBOOK §4c); a run that fails *entirely* before any email is fetched
-   writes no `ProcessRun` row (the alert email covers it); `db_storage_days_remaining`
-   is still returned by the API though the UI no longer shows it; stale
-   "Windows scheduled task" wording may remain elsewhere; the Railway-era stale
-   files listed in RUNBOOK §14 are still in the repo.
+6. ~~Known small gaps~~ — **addressed 2026-09-29 (late night, see the section
+   above):** deploy-window rule is now enforced by `scripts/deploy_hetzner.sh`;
+   crashed/partial runs now write a `ProcessRun`; `db_storage_days_remaining`
+   removed; stale Windows/Railway wording fixed, Railway-era files deleted, dashboard
+   README rewritten. Leftovers tied to item 5 (delete with Render): `render.yaml`,
+   `Procfile`, `runtime.txt`, `Dockerfile.prod`, the disabled workflows.
 
 **Test status:** repo suite 365 pass / 18 fail — all 18 pre-existing in
 `tests/execution/test_log_interview.py` (`No module named 'models'`). Dashboard

@@ -27,9 +27,11 @@ inside a single shell command so the value never appears in tool output.
 setup" question — read [`RUNBOOK.md`](RUNBOOK.md).** It is the single source of
 truth for live infrastructure (hosting, database, scheduler, URLs, the processing
 pipeline, the frontend stack). Older chat sessions and memory frequently point at
-**deprecated infra** (Railway, Windows Task Scheduler) — `RUNBOOK.md` §0 lists
-what changed, and §14 has commands to confirm the doc is still accurate against
-live systems. Do not diagnose from memory; verify against `RUNBOOK.md`.
+**deprecated infra** (Railway, Windows Task Scheduler, and — since 2026-09-29 —
+the GitHub Actions / Render / Vercel / Neon setup, now a frozen fallback; production
+runs on a Hetzner server, `RUNBOOK.md` §4c) — `RUNBOOK.md` §0 lists what changed,
+and §14 has commands to confirm the doc is still accurate against live systems.
+Do not diagnose from memory; verify against `RUNBOOK.md`.
 
 **When you change hosting, the database, the scheduler, the processing pipeline,
 secrets, or the frontend stack, update `RUNBOOK.md` (and its "Last verified" date

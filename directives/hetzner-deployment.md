@@ -22,6 +22,7 @@ system (RUNBOOK.md §1–§4) **stays live until the Hetzner system is verified*
 | `services/dashboard/frontend/Dockerfile.prod` + `Caddyfile` | frontend build + Caddy (HTTPS, reverse proxy) |
 | `execution/Dockerfile.cron.server` + `crontab.server` | scheduler image, `0 */2 * * *` UTC |
 | `scripts/hetzner_init_secrets.sh` | one-time secret generation (never prints values) |
+| `scripts/deploy_hetzner.sh` | deploy a committed ref; refuses during a scheduled run (`--dry-run`, `--build-web`, `--force`) |
 | `scripts/backup_postgres.sh` | optional manual Postgres dump (not scheduled — see step 6) |
 | `services/dashboard/compose.env.example` | template for the gitignored `.env.compose` |
 

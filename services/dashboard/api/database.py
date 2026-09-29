@@ -13,7 +13,7 @@ from config import settings
 
 import os
 
-# Railway may provide DATABASE_PUBLIC_URL or DATABASE_URL
+# Prefer DATABASE_URL; DATABASE_PUBLIC_URL is a legacy fallback some hosts provide.
 # Fall back to local SQLite if neither is set
 _db_url = (
     os.getenv("DATABASE_URL") or
@@ -21,7 +21,7 @@ _db_url = (
     settings.database_url or
     "sqlite:///./email_dashboard.db"
 )
-# Railway/Heroku use postgres:// but SQLAlchemy requires postgresql://
+# Some hosts hand out postgres:// URLs but SQLAlchemy requires postgresql://
 if _db_url.startswith("postgres://"):
     _db_url = _db_url.replace("postgres://", "postgresql://", 1)
 

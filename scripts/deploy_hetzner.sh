@@ -37,6 +37,21 @@ deploy_window_unsafe() {
   (( hour % 2 == 0 && minute < UNSAFE_MINUTES ))
 }
 
+# Pure function (unit tested): succeeds when a git-relative path is safe to `rm` on
+# the server after it was deleted in git. Rejects empty/absolute/option-like paths,
+# any `..` component, and anything under (or equal to) server-only state. Belt and
+# braces: paths come from `git diff --diff-filter=D`, so they were tracked files.
+is_safe_relpath() {
+  local p="$1"
+  [[ -n "$p" ]] || return 1
+  [[ "$p" != /* && "$p" != -* ]] || return 1
+  [[ "$p" != *..* ]] || return 1
+  case "$p" in
+    .env|.env.compose|*/.env|*/.env.compose|.deployed_commit|logs|logs/*|tmp|tmp/*|config/gmail_*|config/service-account-key.json) return 1 ;;
+  esac
+  return 0
+}
+
 usage() {
   sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
@@ -96,7 +111,23 @@ main() {
   fi
 
   # ── deploy ────────────────────────────────────────────────────────────────
+  # Files deleted in git since the last deploy (tar only adds/overwrites, so they
+  # would otherwise linger on the server and could mask a broken import).
+  local prev
+  prev="$("${ssh_cmd[@]}" "cut -d' ' -f1 $REMOTE_DIR/.deployed_commit 2>/dev/null || true" | tr -d '[:space:]')"
+
   git archive --format=tar "$ref" | "${ssh_cmd[@]}" "tar -x -C $REMOTE_DIR"
+
+  if [[ -n "$prev" ]] && git rev-parse --verify --quiet "$prev^{commit}" >/dev/null; then
+    local removed=() f
+    while IFS= read -r f; do
+      if is_safe_relpath "$f"; then removed+=("$f"); else echo "skipping unsafe path: $f"; fi
+    done < <(git diff --name-only --diff-filter=D "$prev" "$ref")
+    if (( ${#removed[@]} > 0 )); then
+      "${ssh_cmd[@]}" "cd $REMOTE_DIR && rm -f -- $(printf '%q ' "${removed[@]}")"
+      echo "Removed ${#removed[@]} file(s) on the server that were deleted in git since $prev."
+    fi
+  fi
 
   "${ssh_cmd[@]}" bash -s -- "$REMOTE_DIR" "$build_web" "$sha" <<'REMOTE'
 set -euo pipefail

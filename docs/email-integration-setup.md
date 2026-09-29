@@ -297,6 +297,12 @@ Location: `tmp/inbox_results/batch_summary.json`
 
 ## Automated Processing
 
+> **Production note (2026-09-29):** the live pipeline is scheduled by the `cron`
+> container on the Hetzner server (`execution/crontab.server`, every 2 hours);
+> see [`RUNBOOK.md`](../RUNBOOK.md) §4c. Never run a second scheduler against the
+> production mailbox. The options below are generic reference for other setups;
+> Option 2 (Windows Task Scheduler) is no longer used by this project.
+
 ### Option 1: Cron Job (Linux/Mac)
 
 Add to crontab:

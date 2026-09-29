@@ -161,9 +161,12 @@ Entry point: `python execution/process_inbox_auto.py`
 `services/dashboard/frontend/.env.production`
 (`VITE_API_BASE_URL=https://ai-inbox-manager-5l6p.onrender.com`).
 
-**Local Windows Task Scheduler** job `ColaberryEmailProcessing` — **DISABLED on
-purpose.** Re-enable only if the cloud cron dies. `InboxAI_StartAPI_OnLogon`
-(starts a local API on logon) is harmless and still active.
+**Local Windows Task Scheduler** — *history:* a laptop job
+`ColaberryEmailProcessing` (and `InboxAI_StartAPI_OnLogon`) used to run the
+pipeline. Checked 2026-09-29: **neither task exists on Kes's laptop any more**, and
+their setup scripts (`scripts/setup_hourly_task.*`, `update_schedule.ps1`) were
+removed from the repo. Do **not** recreate a laptop scheduler — the Hetzner `cron`
+container (§4c) is the only scheduler; a second one would double-process the mailbox.
 
 ---
 
@@ -336,12 +339,26 @@ nothing is lost). Deploy between `:10` and `:55` past an even UTC hour, and chec
 `grep -c "fetch_emails - ERROR" logs/cron.log` afterwards. If a run was hurt,
 run one manually (command above) once the server is idle.
 
-**Deploying a code change:** commit to `master` (solo project — no PR needed,
-owner decision 2026-09-29), then
-`git archive master | ssh root@2.29.47.89 'tar -x -C /opt/ai-inbox-manager'`,
-`chown` `logs/ tmp/ config/` to `1000:1000` if needed, and rebuild/restart as
-above. `git archive` overwrites tracked files only — `.env`, `.env.compose` and
-`config/gmail_*.json` are untracked and untouched.
+**Deploying a code change:** commit to `feat/hetzner-deployment` and run
+
+```bash
+scripts/deploy_hetzner.sh --dry-run         # safety checks only, changes nothing
+scripts/deploy_hetzner.sh                   # deploy the current branch (restarts the API)
+scripts/deploy_hetzner.sh --build-web       # ...and rebuild the frontend (only if frontend/ changed)
+```
+
+The script refuses to run in `:00–:11` of an even UTC hour or while a run is active
+(`--force` overrides), copies **tracked files only** (`git archive`, so `.env`,
+`.env.compose` and `config/gmail_*.json` are never touched), removes files that were
+deleted in git since the last deploy, restarts the API, health-checks the site and
+records the commit in `/opt/ai-inbox-manager/.deployed_commit`.
+Python changes under `execution/` need no restart — the next scheduled run
+picks them up.
+
+**Do not push to `master` until Render/Vercel/Neon are retired** (owner decision
+2026-09-29): pushes to `master` can trigger Vercel/Render rebuilds of the frozen
+fallback stack. There are no PRs — this is a solo project — so `master` stays at
+`24443cf` for now and the branch is the working line.
 
 **Rollback to the previous system:** `docker compose ... stop cron`, then
 `gh workflow enable process_inbox.yml`. Neon only has data up to 2026-09-29
@@ -609,12 +626,16 @@ gh secret list | grep DATABASE_URL
 cat services/dashboard/frontend/.env.production
 ```
 
-**Known stale files still in the repo (do not treat as current):**
-`services/dashboard/api/railway.json`, `services/dashboard/README.md`,
-`services/dashboard/QUICKSTART.md`, `services/dashboard/FULLSTACK_QUICKSTART.md`,
-and the `# Railway…` comments in `services/dashboard/api/database.py` (the
-`postgres://` → `postgresql://` normalization there is still valid). Deployment
-config that *is* live: `render.yaml` + `services/dashboard/api/Dockerfile.prod`.
+**Stale-file cleanup (2026-09-29):** the Railway-era files were removed
+(`railway.json`, `QUICKSTART.md`, `FULLSTACK_QUICKSTART.md`), the dashboard
+`README.md` was rewritten to match reality, the `# Railway…` comments in
+`database.py` were reworded (the `postgres://` → `postgresql://` normalization
+there is still valid), and the two Windows-era docs in `docs/` carry an "obsolete"
+banner. **Still in the repo on purpose** because the Render fallback depends on
+them until it is retired: `render.yaml`, `services/dashboard/api/Procfile`,
+`services/dashboard/api/runtime.txt`, `services/dashboard/api/Dockerfile.prod`,
+`.github/workflows/deploy_backend.yml` (disabled) — delete them together with
+Render (see `progress.md` open item 5).
 
 ---
 

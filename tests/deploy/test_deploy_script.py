@@ -8,6 +8,7 @@ Background: on 2026-09-29 a deploy overlapped the 22:00 UTC scheduled run, starv
 the server, and Gmail dropped the IMAP connection. The script now refuses to
 deploy while a run is likely executing.
 """
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -59,6 +60,37 @@ def _unsafe(hour, minute) -> bool:
 ])
 def test_deploy_window(hour, minute, expected_unsafe):
     assert _unsafe(hour, minute) is expected_unsafe
+
+
+def _safe(path) -> bool:
+    r = _bash(f"source {SCRIPT}; is_safe_relpath {shlex.quote(path)}")
+    assert r.returncode in (0, 1), r.stderr
+    return r.returncode == 0
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("scripts/update_schedule.ps1", True),
+    ("services/dashboard/QUICKSTART.md", True),
+    ("execution/old module.py", True),           # spaces are fine (quoted with %q)
+    ("", False),
+    ("/etc/passwd", False),                       # absolute
+    ("../outside", False),                        # traversal
+    ("a/../../b", False),
+    ("-rf", False),                               # would be read as an option
+    (".env", False),                              # server-only state
+    (".env.compose", False),
+    ("services/dashboard/.env.compose", False),   # the server's real compose env file
+    ("services/dashboard/.env", False),
+    (".env.example", True),                       # a tracked template may legitimately be deleted
+    (".deployed_commit", False),
+    ("logs/cron.log", False),
+    ("tmp/process.lock", False),
+    ("config/gmail_token.json", False),
+    ("config/gmail_credentials.json", False),
+    ("config/service-account-key.json", False),
+])
+def test_is_safe_relpath(path, expected):
+    assert _safe(path) is expected
 
 
 def test_script_has_valid_bash_syntax():

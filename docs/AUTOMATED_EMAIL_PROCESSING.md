@@ -1,5 +1,13 @@
 # Automated Email Processing System
 
+> ⚠️ **Partly obsolete (2026-09-29).** Production no longer runs from a Windows
+> scheduled task, and not hourly: the pipeline runs **every 2 hours, on the hour
+> (UTC)** from the `cron` container on the Hetzner server — see
+> [`RUNBOOK.md`](../RUNBOOK.md) §4c. The Windows Task Scheduler setup described
+> below (`scripts/setup_hourly_task.*`, `Register-/Get-ScheduledTask …`) was
+> removed from the repo; do **not** recreate it, or two schedulers would process the
+> same mailbox. The safety-feature sections (whitelist, folder rules) still apply.
+
 ## Overview
 
 This system automatically processes emails from the c_interviews@colaberry.com inbox hourly, organizing them into folders and keeping genuine interview requests in the inbox for manual review.
