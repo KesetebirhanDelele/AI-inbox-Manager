@@ -17,6 +17,64 @@ Newest first.
 
 ---
 
+## 2026-09-29 (night) — STATUS SNAPSHOT: Hetzner is live; decisions and open items
+
+**Where things stand.** Production runs on the Hetzner server
+(`2.29.47.89`, https://2-29-47-89.nip.io) — see RUNBOOK §4c. Scheduled runs fire
+on the hour (first confirmed 20:00:01 UTC). All four GitHub workflows are
+disabled; Render/Vercel/Neon are untouched fallbacks (Neon frozen at
+2026-09-29 18:44 UTC). Per-run cap is 150 (`MAX_EMAILS_PER_RUN`), schedule every
+2 h. Latest code is deployed from git (commit `4008510` + the docs commit that
+lands this entry).
+
+**Decisions made by Kes (2026-09-29):**
+- **No PR needed** — solo project. PR #3 was opened, then dropped: the branch is
+  landed directly on `master` with a fast-forward push (GitHub marks PR #3
+  merged automatically). Work now goes straight to `master`; deploy with
+  `git archive master | ssh …` (RUNBOOK §4c). The `feat/hetzner-deployment`
+  branch is left in place, no longer needed.
+- **No backups:** no Hetzner server backups and no scheduled DB dump (emails
+  stay in Gmail; the DB is dashboard history). Optional manual script kept.
+- **Redundant dumps deleted after 1 week:** one-shot cron
+  `/etc/cron.d/inboxgenius-cleanup-dumps` removes two dumps on 2026-10-06 12:00
+  UTC; the final cutover dump (`neon_premigration_…184445Z`) stays until Neon is
+  retired.
+- Domain stays `2-29-47-89.nip.io` for now.
+
+**Open items (nothing below is blocking production):**
+1. **Stakeholder role is not enforced** — the API never checks `role`, so a
+   "stakeholder" login can do everything an admin can (Run Now, approve/reject
+   student notifications, edit whitelist). No stakeholder login exists on Hetzner
+   (`STAKEHOLDER_PASSWORD_HASH` only in Render, unverified). Fix = admin-only on
+   all POST/PUT/DELETE endpoints + UI, with tests; then create a stakeholder
+   password on the server. **Do not hand out a stakeholder login before that.**
+2. **Verify the new fetch code live** — the 00:00 UTC run (2026-09-30) is the first
+   with the reconnect/`partial_failure` code and the 150 cap; check
+   `grep -c "fetch_emails - ERROR" logs/cron.log`, run status, and that no
+   "Email fetch incomplete" alert fired. The reconnect path has only been tested
+   with fakes, not against real Gmail.
+3. **Real domain** to replace nip.io (Let's Encrypt rate limits on the shared
+   domain could refuse renewal ~2026-12-28).
+4. **Tell the team the new URL** — the old Vercel dashboard is stale and won't update.
+5. **Retire Render, Vercel, Neon** after ~a week of stable Hetzner runs: take a
+   final Neon dump first, rotate the OpenAI key + Gmail app password (old copies
+   exist on Render/GitHub), delete `render.yaml` and the Render/Neon workflows,
+   remove the old RUNBOOK sections (§1–§4, §8, §10, §12, §14 are banner-marked as
+   previous setup until then), delete the final dump.
+6. **Known small gaps:** deploys must avoid the `:00`–`:10` window of even UTC
+   hours (RUNBOOK §4c); a run that fails *entirely* before any email is fetched
+   writes no `ProcessRun` row (the alert email covers it); `db_storage_days_remaining`
+   is still returned by the API though the UI no longer shows it; stale
+   "Windows scheduled task" wording may remain elsewhere; the Railway-era stale
+   files listed in RUNBOOK §14 are still in the repo.
+
+**Test status:** repo suite 365 pass / 18 fail — all 18 pre-existing in
+`tests/execution/test_log_interview.py` (`No module named 'models'`). Dashboard
+suite passes in the API image (3 `test_notifications.py` tests only fail in a
+dashboard-only scratch copy for lack of the `execution` package).
+
+---
+
 ## 2026-09-29 (evening) — Hetzner live: first scheduled run confirmed, SSH hardened, storage card
 
 - **First scheduled run confirmed:** started 20:00:01 UTC (GitHub was 9–34 min
@@ -67,6 +125,12 @@ Newest first.
   errors occur, so a "green" run with 176 errors isn't silent. Note the manual
   run (91 emails) did not reach the 150 cap, so the cap itself is not yet
   stress-tested.
+- **Dump cleanup scheduled (owner request: "delete after 1 week"):** one-shot
+  `/etc/cron.d/inboxgenius-cleanup-dumps` on the server removes
+  `neon_premigration_…160602Z` and `inboxgenius_…185028Z` on 2026-10-06 12:00 UTC,
+  then deletes itself. `neon_premigration_…184445Z` (final cutover copy) is
+  deliberately kept until Neon is retired. (PR #3 was opened, then dropped in
+  favour of landing directly on `master` — see the status snapshot above.)
 - **IMAP fetch resilience + alerting (fix for the incident above):**
   `execution/fetch_emails.py` — new `EmailConnectionLost` (socket/SSL/timeout/EOF/
   `IMAP4.abort` during a FETCH) and `FetchedEmails` (list subclass with `skipped`,

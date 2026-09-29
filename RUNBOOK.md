@@ -303,7 +303,7 @@ can run side by side without a port collision. Open http://localhost:5174.
 | Database | Postgres 18 in Docker volume `inboxgenius_postgres_data`. Migrated from Neon 2026-09-29 (row counts identical, 12 tables). |
 | Secrets | `/opt/ai-inbox-manager/.env` (pipeline + API), `services/dashboard/.env.compose` (compose interpolation), `config/gmail_*.json` — all mode 600, generated on the server; **never print them**. Admin password: `/root/inboxgenius_admin_password.txt` (root only). |
 | Firewall / SSH | Hetzner cloud firewall: inbound TCP 22/80/443 only. SSH is key-only (`/etc/ssh/sshd_config.d/01-hardening.conf`), `fail2ban` sshd jail active. Postgres and the API are never published. |
-| Backups | **None scheduled** (owner decision 2026-09-29: no Hetzner server backups, no daily dump; emails remain in Gmail, the DB is dashboard history). `scripts/backup_postgres.sh` exists as an optional manual tool. Leftover files in `/opt/backups/inboxgenius/` (contain email data): two `neon_premigration_*` dumps and one test dump. |
+| Backups | **None scheduled** (owner decision 2026-09-29: no Hetzner server backups, no daily dump; emails remain in Gmail, the DB is dashboard history). `scripts/backup_postgres.sh` exists as an optional manual tool. Leftover files in `/opt/backups/inboxgenius/` (contain email data): two `neon_premigration_*` dumps and one test dump. A one-shot job (`/etc/cron.d/inboxgenius-cleanup-dumps`) deletes the two redundant ones (`…160602Z` and the test dump) on **2026-10-06 12:00 UTC** and then removes itself; the final cutover dump (`neon_premigration_20260929T184445Z.sql.gz`) is kept until Neon is retired — delete it by hand then. |
 | Storage card | `DB_STORAGE_CAP_MB=40960` in `.env` (default 512 = Neon). |
 | Per-run email cap | `MAX_EMAILS_PER_RUN=150` in `.env` (default 100; raised 2026-09-29 because 100 was hit on 3 consecutive runs at peak, and 15 of the last 30 days' runs were ≥90). Read by the pipeline at start of each run — no restart needed. Cost guardrail: 150 × ~$0.015 = $2.25 est. < `MAX_COST_PER_RUN_USD` 5.0. If the cap is hit, the *newest* mail is processed first and the rest waits for the next run; nothing is lost. |
 | SSH | `ssh -i ~/.ssh/hetzner_ai_inbox root@2.29.47.89` |
@@ -336,8 +336,9 @@ nothing is lost). Deploy between `:10` and `:55` past an even UTC hour, and chec
 `grep -c "fetch_emails - ERROR" logs/cron.log` afterwards. If a run was hurt,
 run one manually (command above) once the server is idle.
 
-**Deploying a code change:** commit to the branch, then
-`git archive <branch> | ssh root@2.29.47.89 'tar -x -C /opt/ai-inbox-manager'`,
+**Deploying a code change:** commit to `master` (solo project — no PR needed,
+owner decision 2026-09-29), then
+`git archive master | ssh root@2.29.47.89 'tar -x -C /opt/ai-inbox-manager'`,
 `chown` `logs/ tmp/ config/` to `1000:1000` if needed, and rebuild/restart as
 above. `git archive` overwrites tracked files only — `.env`, `.env.compose` and
 `config/gmail_*.json` are untracked and untouched.
