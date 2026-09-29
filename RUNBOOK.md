@@ -7,7 +7,6 @@
 >
 > **Last verified: 2026-09-25** — this fork's GH Actions `process_inbox.yml`
 > runs + Neon (`inboxgenius-fork`), during the SQLAlchemy 2.1 incident (§16).
-> Previously 2026-09-08 against `Ojobo1800` production (run 34238068620).
 
 ---
 
@@ -29,13 +28,14 @@ that **is no longer in use**. Current reality:
 The frontend URL (`https://ai-inbox-manager-vert.vercel.app`) and the Gmail
 account (`c_interviews@colaberry.com`) are unchanged.
 
-**Fork note:** everything above describes the `Ojobo1800/AI-inbox-Manager`
-production system. This repo is a fork (`KesetebirhanDelele/AI-inbox-Manager`)
-that also runs its own **separate local Docker environment** against the same
-Gmail mailbox — see [§4b](#4b-this-forks-local-docker-environment). Fixes
-developed locally are **never pushed to `Ojobo1800`** (permanent rule); the
-production system above keeps running its own older code until someone with
-access to that repo/Render account updates it.
+**Fork note:** this repo (`KesetebirhanDelele/AI-inbox-Manager`) runs its own
+independent pipeline — its own GitHub Actions cron, its own secrets, and its
+own dedicated Neon Postgres project (`inboxgenius-fork`). It also has a
+**separate local Docker environment** against the same Gmail mailbox — see
+[§4b](#4b-this-forks-local-docker-environment). This fork does not read from,
+write to, or depend on any other GitHub repo, Render service, or database.
+**Push policy:** all commits, branches, and PRs for this project stay within
+this repo (permanent rule).
 
 ---
 
@@ -48,8 +48,8 @@ access to that repo/Render account updates it.
 | **API health** | https://ai-inbox-manager-5l6p.onrender.com/health → `{"status":"healthy","database":"connected"}` |
 | **API docs (OpenAPI)** | https://ai-inbox-manager-5l6p.onrender.com/docs |
 | **Database** | Neon PostgreSQL — host `ep-super-shadow-aqsoxad0.c-8.us-east-1.aws.neon.tech`, db `neondb` |
-| **Scheduler / CI** | https://github.com/Ojobo1800/AI-inbox-Manager/actions |
-| **Git repo** | https://github.com/Ojobo1800/AI-inbox-Manager (branch: `master`) |
+| **Scheduler / CI** | https://github.com/KesetebirhanDelele/AI-inbox-Manager/actions |
+| **Git repo** | https://github.com/KesetebirhanDelele/AI-inbox-Manager (branch: `master`) |
 | **Monitored mailbox** | `c_interviews@colaberry.com` (Gmail, IMAP + SMTP) |
 | **Google Sheet audit log** | id in `GOOGLE_SHEET_ID` secret |
 
@@ -207,7 +207,7 @@ Scheduler.) Not fixed as of this writing; see [§15](#15-known-issues--deferred-
 **Update — 2026-09-18/19, migration completed:** the "in-progress" framing
 above is now done. This fork's actual production scheduler is **this fork's
 own GitHub Actions** (`.github/workflows/process_inbox.yml`, re-enabled with
-its own secrets — completely separate from `Ojobo1800`'s workflow/secrets),
+its own secrets, fully self-contained),
 writing to a dedicated **Neon Postgres project** (`inboxgenius-fork`, free
 tier, 0.5 GB cap). Verified: multiple full unattended scheduled runs
 completed cleanly with `ProcessRun` rows landing in Neon and zero manual
@@ -341,7 +341,7 @@ no trailing slash).
 **Nothing secret is committed.** `.gitignore` covers `.env`, `config/gmail_token.json`,
 `config/gmail_credentials.json`, `config/service-account-key.json`, `*.db`, `logs/`.
 
-### GitHub repo secrets (`Ojobo1800/AI-inbox-Manager` → Settings → Secrets → Actions)
+### GitHub repo secrets (this repo → Settings → Secrets → Actions)
 `DATABASE_URL`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `EMAIL_SERVER`, `EMAIL_PORT`,
 `OPENAI_API_KEY`, `SMTP_APP_PASSWORD`, `ALERT_EMAIL_TO`, `GOOGLE_SHEET_ID`,
 `GMAIL_TOKEN_JSON` (base64, auto-refreshed each run), `GMAIL_CREDENTIALS_JSON`
