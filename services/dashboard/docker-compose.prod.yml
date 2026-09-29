@@ -13,15 +13,18 @@ name: inboxgenius
 
 services:
   # PostgreSQL -- internal network only, deliberately NO published port.
+  # Version matches the Neon project we migrate from (18.x) -- pg_dump can't
+  # restore a newer dump into an older server. PG 18 images keep data under
+  # /var/lib/postgresql/18/docker, so the volume mounts one level up.
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: inboxgenius
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.compose}
       POSTGRES_DB: inboxgenius
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U inboxgenius -d inboxgenius"]
       interval: 10s

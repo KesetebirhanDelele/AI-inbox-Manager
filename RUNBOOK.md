@@ -287,7 +287,7 @@ can run side by side without a port collision. Open http://localhost:5174.
 
 Target: one Hetzner Cloud server (CPX22, Helsinki, `2.29.47.89`, public hostname
 `2-29-47-89.nip.io`, cloud firewall = inbound 22/80/443 only) running
-`services/dashboard/docker-compose.prod.yml`: Postgres 16 (internal only), the
+`services/dashboard/docker-compose.prod.yml`: Postgres 18 (internal only), the
 FastAPI API, a Caddy-served frontend with automatic HTTPS, and the 2-hourly
 pipeline cron (`execution/crontab.server`, behind the `scheduler` compose
 profile). It replaces Render + Vercel + Neon + the GitHub Actions cron, mainly to

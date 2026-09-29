@@ -48,6 +48,10 @@ Verified locally: 9/9 new tests pass; `docker compose config` valid; Caddyfile
 valid; all three images build; frontend build bakes the nip.io URL with zero
 Render references; cron job runs as uid 1000; API image runs non-root.
 
+**Follow-up same day:** Neon turned out to run Postgres **18.6**, so the prod compose
+uses `postgres:18-alpine` (volume mounted at `/var/lib/postgresql`, the PG 18 image
+layout) to allow a clean `pg_dump` → restore; a 16 container can't take an 18 dump.
+
 **Deferred / not done yet:** actual server deploy, Neon → Postgres data
 migration, cutover (disable GitHub Actions cron), backup cron install, SSH
 hardening, and the RUNBOOK.md rewrite (RUNBOOK §4c added as "in progress"; make
