@@ -18,6 +18,7 @@ import logging
 import os
 import json
 import re
+import time
 from datetime import datetime
 from email.header import decode_header
 from typing import Dict, Any, List, Optional, Tuple
@@ -40,6 +41,45 @@ class EmailFetchError(Exception):
 class EmailConnectionError(Exception):
     """Raised when connection to email server fails."""
     pass
+
+
+class EmailConnectionLost(EmailFetchError):
+    """The IMAP connection died mid-fetch (dropped socket, TLS EOF, timeout).
+
+    Distinct from a per-message failure (bad/corrupt email): the *connection* is
+    unusable, so every further command on it fails too. fetch_emails() reconnects
+    and retries instead of skipping every remaining message.
+    """
+    pass
+
+
+class FetchedEmails(list):
+    """List of parsed emails, plus what went wrong while fetching them.
+
+    Behaves exactly like the plain ``list`` fetch_emails() used to return, so
+    existing callers are unaffected; the extra attributes let the pipeline notice
+    a *partly failed* fetch instead of reporting it as a normal run.
+
+    Attributes:
+        skipped: UIDs that could not be fetched this run (any reason). They stay
+            unread in Gmail and are retried by the next run.
+        abandoned: subset of ``skipped`` given up on because the connection was
+            lost and could not be re-established within the retry budget.
+        reconnects: how many times the connection was re-established.
+    """
+
+    def __init__(self, *args, skipped: int = 0, abandoned: int = 0, reconnects: int = 0):
+        super().__init__(*args)
+        self.skipped = skipped
+        self.abandoned = abandoned
+        self.reconnects = reconnects
+
+
+# Connection re-establishments allowed per fetch_emails() call, and the pause
+# before each (seconds). A dropped Gmail IMAP session is normally fixed by one
+# reconnect; the budget stops a truly unreachable server from looping forever.
+_MAX_RECONNECTS = 3
+_RECONNECT_BACKOFF_SECONDS = (2, 5, 10)
 
 
 # ── Stable-identifier helpers ────────────────────────────────────────────────
@@ -662,6 +702,12 @@ def fetch_email_by_uid(imap: imaplib.IMAP4_SSL, uid: str) -> bytes:
 
     except EmailFetchError:
         raise
+    except (imaplib.IMAP4.abort, EOFError, OSError) as e:
+        # OSError covers socket.error, ssl.SSLError ("EOF occurred in violation
+        # of protocol"), timeouts and connection resets: the connection is dead,
+        # not this one message.
+        logger.error(f"IMAP connection lost while fetching UID {uid}: {e}")
+        raise EmailConnectionLost(f"Fetch failed: {str(e)}")
     except Exception as e:
         logger.error(f"Failed to fetch email UID {uid}: {e}")
         raise EmailFetchError(f"Fetch failed: {str(e)}")
@@ -700,11 +746,19 @@ def fetch_emails(
         newest_first: process the newest mail first (default False)
 
     Returns:
-        List of parsed email dictionaries. ``email_id`` holds the message UID.
+        A :class:`FetchedEmails` (a ``list``) of parsed email dictionaries.
+        ``email_id`` holds the message UID. Its ``skipped`` / ``abandoned`` /
+        ``reconnects`` attributes report partial failures (see FetchedEmails).
 
     Raises:
         EmailConnectionError: If connection fails
         EmailFetchError: If fetching/parsing fails
+
+    If the IMAP connection drops mid-fetch (Gmail closes long or busy sessions;
+    seen 2026-09-29 as ``socket error: EOF`` on every remaining UID), the
+    connection is re-established and the same UID retried, up to
+    ``_MAX_RECONNECTS`` times. UIDs are stable across sessions, so resuming is
+    safe. Anything still unfetched stays unread in Gmail for the next run.
     """
     imap = None
     try:
@@ -723,11 +777,13 @@ def fetch_emails(
 
         if not uids:
             logger.info("No emails found matching criteria")
-            return []
+            return FetchedEmails()
 
         # Fetch and parse each email
-        emails = []
-        for uid in uids:
+        emails = FetchedEmails()
+        i = 0
+        while i < len(uids):
+            uid = uids[i]
             try:
                 logger.info(f"Fetching email UID {uid}")
                 raw_email = fetch_email_by_uid(imap, uid)
@@ -739,11 +795,55 @@ def fetch_emails(
                     imap.uid("STORE", uid, "+FLAGS", "(\\Seen)")
                     logger.info(f"Marked email UID {uid} as read")
 
+                i += 1
+
+            except EmailConnectionLost as e:
+                remaining = len(uids) - i
+                if emails.reconnects >= _MAX_RECONNECTS:
+                    logger.error(
+                        f"IMAP connection lost and reconnect budget "
+                        f"({_MAX_RECONNECTS}) exhausted; abandoning {remaining} "
+                        f"unfetched email(s) — they stay unread for the next run"
+                    )
+                    emails.skipped += remaining
+                    emails.abandoned += remaining
+                    break
+
+                delay = _RECONNECT_BACKOFF_SECONDS[
+                    min(emails.reconnects, len(_RECONNECT_BACKOFF_SECONDS) - 1)
+                ]
+                emails.reconnects += 1
+                logger.warning(
+                    f"IMAP connection lost at UID {uid} ({e}); reconnecting in "
+                    f"{delay}s (attempt {emails.reconnects}/{_MAX_RECONNECTS})"
+                )
+                time.sleep(delay)
+                try:
+                    try:
+                        imap.logout()
+                    except Exception:
+                        pass  # the old connection is already dead
+                    imap = connect_to_imap(server, port, email_address, password)
+                    select_folder(imap, folder)
+                except (EmailConnectionError, EmailFetchError) as re_err:
+                    logger.error(
+                        f"Reconnect failed ({re_err}); abandoning {remaining} "
+                        f"unfetched email(s) — they stay unread for the next run"
+                    )
+                    emails.skipped += remaining
+                    emails.abandoned += remaining
+                    break
+                # loop again on the SAME uid (i unchanged)
+
             except EmailFetchError as e:
                 logger.error(f"Skipping email UID {uid}: {e}")
-                continue
+                emails.skipped += 1
+                i += 1
 
-        logger.info(f"Successfully fetched {len(emails)} emails")
+        logger.info(
+            f"Successfully fetched {len(emails)} emails "
+            f"(skipped={emails.skipped}, reconnects={emails.reconnects})"
+        )
         return emails
 
     finally:

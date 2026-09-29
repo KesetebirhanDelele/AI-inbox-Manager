@@ -52,6 +52,35 @@ Newest first.
   the big "Nd" number is gone and the card is now "Database Storage" (size, %,
   usage bar). The API still returns `db_storage_days_remaining` (unused by the
   UI; left in place to avoid an API/type change).
+- **Incident (22:00 UTC scheduled run, run #135):** a deploy (`git archive` sync +
+  Docker image rebuilds) overlapped the run. All 176 IMAP fetches failed at once
+  with `socket error: EOF`, so only 2 emails were processed — yet the run was
+  recorded as `success` and no alert fired. No mail lost (skipped emails stay
+  unread). Recovered with a manual run on the idle server (#136: 91 processed,
+  74 moved, 0 errors, 345 s). Cause is most likely CPU/network starvation from
+  the build (all earlier runs, including three at the 100 cap, had 0 fetch
+  errors) — inferred, not proven. **Lessons:** deploy between `:10` and `:55`
+  past an even UTC hour (RUNBOOK §4c). **Follow-ups (both now done — see the
+  next bullet):** (a) reconnect/retry the IMAP fetch when
+  the connection drops instead of failing every remaining UID, (b) send a
+  failure alert (`send_failure_alert`) and/or mark the run `partial` when fetch
+  errors occur, so a "green" run with 176 errors isn't silent. Note the manual
+  run (91 emails) did not reach the 150 cap, so the cap itself is not yet
+  stress-tested.
+- **IMAP fetch resilience + alerting (fix for the incident above):**
+  `execution/fetch_emails.py` — new `EmailConnectionLost` (socket/SSL/timeout/EOF/
+  `IMAP4.abort` during a FETCH) and `FetchedEmails` (list subclass with `skipped`,
+  `abandoned`, `reconnects`); `fetch_emails()` now reconnects (backoff 2/5/10 s,
+  max 3), re-selects the folder and retries the same UID, and abandons the rest
+  only if that fails. `execution/process_inbox_auto.py` — records fetch stats
+  (before the empty-inbox return, so a total fetch failure is no longer reported
+  as "No unread emails"), sets ProcessRun status `partial_failure` (the model's
+  documented value) via `_run_status()`, and `main()` sends a "Email fetch
+  incomplete" alert when a UID was abandoned or ≥5 emails failed
+  (`_FETCH_ERROR_ALERT_THRESHOLD`); a recovered reconnect or 1–4 bad emails only
+  log. Tests: 29 new (`test_fetch_resilience.py`, `test_fetch_alerting.py`); full
+  suite 365 pass / 18 fail, the 18 all pre-existing in `test_log_interview.py`.
+  Directive `email-integration.md` v1.2 + RUNBOOK §4c playbook row added.
 - **Settings controls removed; schedule endpoint now read-only:**
   `routers/schedule.py` rewritten — GET reports interval 120 (= cron
   `0 */2 * * *`) and batch size from `MAX_EMAILS_PER_RUN`; the POST endpoint, the

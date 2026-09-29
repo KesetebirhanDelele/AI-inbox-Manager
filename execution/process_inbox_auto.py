@@ -543,6 +543,25 @@ logger = logging.getLogger(__name__)
 # Prevents runaway cost if a backlog builds up.
 _MAX_EMAILS_PER_RUN: int = int(os.getenv("MAX_EMAILS_PER_RUN", "100"))
 
+# A run whose IMAP fetch left emails behind is a *partial* failure: the emails
+# stay unread and are retried next run, but the run must not look like a normal
+# success. Connection-loss give-ups always count; isolated per-message failures
+# (one corrupt email, which would recur every run) only count from this many.
+_FETCH_ERROR_ALERT_THRESHOLD: int = 5
+
+
+def _fetch_had_problems(stats: Dict[str, Any]) -> bool:
+    """True if this run's INBOX fetch was partly unsuccessful (see above)."""
+    return (
+        stats.get("fetch_abandoned", 0) > 0
+        or stats.get("fetch_errors", 0) >= _FETCH_ERROR_ALERT_THRESHOLD
+    )
+
+
+def _run_status(stats: Dict[str, Any]) -> str:
+    """ProcessRun.status for a run that finished: 'success' or 'partial_failure'."""
+    return "partial_failure" if _fetch_had_problems(stats) else "success"
+
 # Maximum estimated USD cost for GPT calls in a single run.
 # If the post-classification actual cost exceeds this, Gmail mutations are
 # skipped (move/delete) to prevent compounding an already expensive run.
@@ -853,6 +872,21 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
             newest_first=True,  # Sort today's mail before draining any backlog
         )
 
+        # How the fetch itself went (FetchedEmails carries these; a plain list
+        # from a test double has none). Recorded before the empty-inbox return
+        # below so a fetch that failed for EVERY email is not reported as
+        # "no unread emails".
+        stats["fetch_errors"] = getattr(emails, "skipped", 0)
+        stats["fetch_abandoned"] = getattr(emails, "abandoned", 0)
+        stats["fetch_reconnects"] = getattr(emails, "reconnects", 0)
+        if stats["fetch_errors"] or stats["fetch_reconnects"]:
+            logger.warning(
+                f"FETCH PROBLEMS: skipped={stats['fetch_errors']} "
+                f"abandoned_after_connection_loss={stats['fetch_abandoned']} "
+                f"reconnects={stats['fetch_reconnects']} "
+                f"— unfetched emails stay unread and are retried next run"
+            )
+
         if not emails:
             logger.info("No unread emails found")
             return {
@@ -860,7 +894,10 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
                 "total_emails": 0,
                 "interview_requests": 0,
                 "organized": 0,
-                "spam_deleted": 0
+                "spam_deleted": 0,
+                "fetch_errors": stats["fetch_errors"],
+                "fetch_abandoned": stats["fetch_abandoned"],
+                "fetch_reconnects": stats["fetch_reconnects"],
             }
 
         # Apply --limit flag first (from caller / Task Scheduler config)
@@ -1235,8 +1272,9 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
         logger.info(f"Summary saved to: {summary_file}")
         logger.info("=" * 60)
 
-        # Log this run to the dashboard ProcessRun table
-        _log_process_run(stats, summary_file)
+        # Log this run to the dashboard ProcessRun table. A run whose fetch left
+        # emails behind is recorded as a partial failure, not a plain success.
+        _log_process_run(stats, summary_file, status=_run_status(stats))
         _run_logged = True
 
         return stats
@@ -1541,6 +1579,26 @@ def main():
                     f"  First error : {db_error}\n"
                     f"  Emails seen : {stats.get('total_emails', '?')}\n\n"
                     f"Action: see RUNBOOK.md §12 'Dashboard shows no / stale data'.",
+                )
+
+        # ── Alert: IMAP fetch left emails behind (run looks green but isn't) ──
+        if _fetch_had_problems(stats):
+            logger.error(
+                f"FETCH INCOMPLETE this run: {stats.get('fetch_errors', 0)} email(s) "
+                f"not fetched ({stats.get('fetch_abandoned', 0)} after connection loss)"
+            )
+            if send_failure_alert:
+                send_failure_alert(
+                    "Email fetch incomplete — some emails were not processed",
+                    f"The IMAP fetch could not retrieve every email this run.\n\n"
+                    f"  Not fetched          : {stats.get('fetch_errors', 0)}\n"
+                    f"  Given up after a lost connection: {stats.get('fetch_abandoned', 0)}\n"
+                    f"  Reconnects performed : {stats.get('fetch_reconnects', 0)}\n"
+                    f"  Emails processed     : {stats.get('total_emails', 0)}\n\n"
+                    f"Nothing is lost: unfetched emails stay unread in Gmail and the\n"
+                    f"next scheduled run picks them up. The run is recorded as\n"
+                    f"'partial_failure' on the dashboard.\n"
+                    f"If this repeats, see RUNBOOK.md §4c (Hetzner failure playbook).",
                 )
 
         if stats["interview_requests"] > 0:

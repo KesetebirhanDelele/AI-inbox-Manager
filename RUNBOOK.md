@@ -327,6 +327,15 @@ $DC restart api                                   # API code is bind-mounted; re
 docker exec inboxgenius-postgres-1 psql -U inboxgenius -d inboxgenius -c "select id, run_timestamp, status from process_runs order by id desc limit 5"
 ```
 
+**⚠️ Don't deploy while a scheduled run is executing.** Runs start at
+`00/02/04/…:00` UTC and take up to ~6 min; a Docker image rebuild on this
+2-vCPU box starves the run and Gmail drops the IMAP connection (2026-09-29
+22:00 UTC: 176 `socket error: EOF` fetch errors, only 2 emails processed, run
+still recorded as `success` — emails stay unread and are picked up next run, so
+nothing is lost). Deploy between `:10` and `:55` past an even UTC hour, and check
+`grep -c "fetch_emails - ERROR" logs/cron.log` afterwards. If a run was hurt,
+run one manually (command above) once the server is idle.
+
 **Deploying a code change:** commit to the branch, then
 `git archive <branch> | ssh root@2.29.47.89 'tar -x -C /opt/ai-inbox-manager'`,
 `chown` `logs/ tmp/ config/` to `1000:1000` if needed, and rebuild/restart as
@@ -344,6 +353,7 @@ above. `git archive` overwrites tracked files only — `.env`, `.env.compose` an
 | Dashboard down / cert error | `$DC ps`; `docker logs inboxgenius-web-1 --tail 50` (Caddy: certificate issuance/renewal errors — nip.io is a shared domain and can hit Let's Encrypt rate limits; Caddy falls back to ZeroSSL). Ports 80/443 must be open in the Hetzner cloud firewall. |
 | Login fails | Admin password is in `/root/inboxgenius_admin_password.txt`. `docker logs inboxgenius-api-1 --tail 50`. The old `admin123` login no longer exists. |
 | Dashboard stale / 0 emails | Did the cron fire? `grep "Run lock acquired" /opt/ai-inbox-manager/logs/cron.log \| tail -3` (expect one per even UTC hour, on time). `docker logs inboxgenius-cron-1 --tail 30`. Check `process_runs` (query above). |
+| Run recorded `partial_failure` / alert "Email fetch incomplete" | The IMAP connection dropped mid-fetch (`grep -E "FETCH PROBLEMS\|IMAP connection lost\|reconnect" logs/cron.log`). The fetch now reconnects and resumes automatically; this alert means it gave up (3 reconnects) or ≥5 emails failed individually. Nothing is lost — unfetched mail stays unread and the next run retries. Usual cause: something starving the server (a deploy/build during a run — see the deploy warning above). Check `uptime` load and Gmail status; run one manually when idle. |
 | Emails not sorted | `tail -n 300 /opt/ai-inbox-manager/logs/cron.log \| grep -E "Successfully moved\|ERROR\|Traceback\|AUTHENTICATE failed\|invalid_grant"`. Gmail OAuth expiry: re-run `scripts/authorize_gmail.py` locally, `scp` the new `config/gmail_token.json` to the server (mode 600, owner 1000). |
 | Run never finishes / stuck lock | `ls /opt/ai-inbox-manager/tmp/process.lock`; if the PID is dead (or >3 h old) delete it. |
 | Cost guardrail / OpenAI errors | Same as §12 (`MAX_COST_PER_RUN_USD`, key rotation) — but edit `/opt/ai-inbox-manager/.env` on the server, then `$DC restart cron api`. |

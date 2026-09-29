@@ -110,6 +110,27 @@ This directive enables the email classification system to process real emails fr
 - **Scenario**: Cannot connect to IMAP server (network, credentials, server down)
 - **Handling**: Retry 3 times with exponential backoff, then fail gracefully and alert
 
+### Connection Dropped Mid-Fetch
+- **Scenario**: Gmail closes the IMAP session part-way through a batch
+  (`socket error: EOF occurred in violation of protocol`, timeouts, resets) —
+  typically when the host is starved of CPU/network, e.g. during a deploy.
+- **Handling**: `fetch_emails()` classifies these as `EmailConnectionLost`
+  (distinct from a per-message failure), waits (2 s, 5 s, 10 s), reconnects,
+  re-selects the folder and **retries the same UID**, up to 3 reconnects per
+  call. UIDs are stable across sessions, so resuming is safe. If the budget is
+  exhausted or a reconnect fails, the remaining UIDs are **abandoned** — they stay
+  unread in Gmail and the next run retries them (nothing is lost).
+- **Reporting**: the returned `FetchedEmails` (a `list` subclass) carries
+  `skipped`, `abandoned` and `reconnects`. The pipeline records them in the run
+  stats; if any UID was abandoned after a connection loss, or `skipped >= 5`, the
+  run is recorded as `partial_failure` (not `success`) and a failure alert is
+  emailed. A recovered reconnect alone only logs a warning, and 1–4 isolated bad
+  emails do not alert (a corrupt email would otherwise alert every 2 hours).
+- **History (2026-09-29)**: before this, the loop skipped every remaining UID
+  instantly once the socket died (176 errors in 6 ms, 2 emails processed), the run
+  was recorded as `success`, and nothing alerted. Also: a fetch that failed for
+  *every* email used to be reported as "No unread emails found".
+
 ### Authentication Errors
 - **Scenario**: Invalid credentials or expired app password
 - **Handling**: Do not retry (avoid account lockout), log error, alert administrator
@@ -251,6 +272,12 @@ Before going live:
 - [ ] Rate limits understood and respected
 
 ## Revision History
+
+- **v1.2** (2026-09-29): Added reconnect-and-resume for a dropped IMAP
+  connection, `FetchedEmails` failure reporting, `partial_failure` run status and
+  the "Email fetch incomplete" alert (see "Connection Dropped Mid-Fetch").
+  Tests: `tests/execution/test_fetch_resilience.py`,
+  `tests/execution/test_fetch_alerting.py`.
 
 - **v1.0** (2026-01-27): Initial email integration directive
 - **v1.1** (2026-08-31): Documented that `email_id` is an ephemeral IMAP sequence
