@@ -182,7 +182,6 @@ class ApiClient {
     db_storage_used_bytes: number | null;
     db_storage_cap_bytes: number | null;
     db_storage_pct: number | null;
-    db_storage_days_remaining: number | null;
   }> {
     const response = await this.client.get('/api/stats/engineering-kpis');
     return response.data;

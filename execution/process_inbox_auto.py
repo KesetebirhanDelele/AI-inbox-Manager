@@ -843,6 +843,7 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
         "categories": {},
     }
     _run_logged = False  # set True once _log_process_run succeeds
+    _crashed = False     # set True if the run dies with an exception
 
     logger.info("=" * 60)
     logger.info("AUTOMATED INBOX PROCESSING")
@@ -900,7 +901,7 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
                 "fetch_reconnects": stats["fetch_reconnects"],
             }
 
-        # Apply --limit flag first (from caller / Task Scheduler config)
+        # Apply --limit flag first (from the caller, e.g. a manual run)
         total_found = len(emails)
         if limit and len(emails) > limit:
             logger.info(f"Found {total_found} unread emails, limiting to {limit} (--limit flag)")
@@ -1280,16 +1281,27 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
         return stats
 
     except Exception as e:
+        _crashed = True
         logger.error(f"Error during processing: {e}", exc_info=True)
         raise
 
     finally:
-        # Always write a ProcessRun when emails were fetched but the run crashed
-        # before _log_process_run() completed, so the dashboard never shows 0
-        # for a run that actually touched emails.
-        if not _run_logged and stats.get("total_emails", 0) > 0:
-            stats["duration_seconds"] = (datetime.now() - start_time).total_seconds()
-            _log_process_run(stats, status="failed")
+        # Make sure the dashboard has a ProcessRun for every run that went wrong,
+        # not just ones that got as far as processing emails:
+        #   * crashed at any point (even before one email was fetched, e.g. Gmail
+        #     auth failure)                              -> "failed"
+        #   * emails were fetched but the run never reached the normal log -> "failed"
+        #   * the fetch left emails behind and nothing else happened (e.g. every
+        #     fetch failed, so "0 emails")                 -> "partial_failure"
+        # A clean, genuinely empty run still writes no row (unchanged).
+        if not _run_logged:
+            _had_emails = stats.get("total_emails", 0) > 0
+            if _crashed or _had_emails or _fetch_had_problems(stats):
+                stats["duration_seconds"] = (datetime.now() - start_time).total_seconds()
+                _log_process_run(
+                    stats,
+                    status="failed" if (_crashed or _had_emails) else _run_status(stats),
+                )
         if _db_error:
             stats["db_error"] = _db_error
         # Clean up database session
@@ -1533,7 +1545,7 @@ def main():
     from run_lock import acquire_lock, release_lock
     if not acquire_lock(triggered_by=args.triggered_by):
         logger.warning("Another processing run is already active — exiting.")
-        sys.exit(2)  # Exit 2 = already running (not an error for Task Scheduler)
+        sys.exit(2)  # Exit 2 = already running (not an error for the scheduler)
 
     try:
         stats = process_unread_emails(limit=args.limit, criteria=args.criteria)
@@ -1603,7 +1615,7 @@ def main():
 
         if stats["interview_requests"] > 0:
             logger.info(f"ACTION REQUIRED: {stats['interview_requests']} interview request(s) in inbox.")
-        sys.exit(0)  # Always exit 0 so Task Scheduler reports success
+        sys.exit(0)  # Always exit 0 so the scheduler (cron) doesn't treat a handled run as a crash
 
     except Exception as e:
         import traceback as _tb

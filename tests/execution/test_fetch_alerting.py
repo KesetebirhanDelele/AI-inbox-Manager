@@ -88,6 +88,62 @@ def test_genuinely_empty_inbox_has_no_fetch_problems(monkeypatch, tmp_path):
     assert not pia._fetch_had_problems(result)
 
 
+# ── ProcessRun rows for runs that go wrong before/without processing emails ──
+
+def _arm_run(monkeypatch, tmp_path, fetch):
+    """Fake everything external for process_unread_emails(); capture ProcessRun logs."""
+    logged = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("EMAIL_SERVER", "imap.test")
+    monkeypatch.setenv("EMAIL_ADDRESS", "a@test")
+    monkeypatch.setenv("EMAIL_PASSWORD", "x")
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setattr(pia, "_run_spam_review_pass", lambda *a, **k: {})
+    monkeypatch.setattr(pia, "fetch_emails", fetch)
+    monkeypatch.setattr(pia, "close_db_session", lambda: None)
+    monkeypatch.setattr(
+        pia, "_log_process_run",
+        lambda stats, summary_file=None, status="success": logged.append(status),
+    )
+    return logged
+
+
+def test_crash_before_any_email_is_fetched_still_records_a_failed_run(monkeypatch, tmp_path):
+    """e.g. Gmail auth failure: used to leave no dashboard trace at all."""
+    from fetch_emails import EmailConnectionError
+
+    def boom(**k):
+        raise EmailConnectionError("Authentication failed")
+
+    logged = _arm_run(monkeypatch, tmp_path, boom)
+    with pytest.raises(EmailConnectionError):
+        pia.process_unread_emails()
+    assert logged == ["failed"]
+
+
+def test_total_fetch_failure_records_a_partial_failure_run(monkeypatch, tmp_path):
+    logged = _arm_run(
+        monkeypatch, tmp_path,
+        lambda **k: FetchedEmails(skipped=4, abandoned=4, reconnects=3),
+    )
+    result = pia.process_unread_emails()
+    assert result["total_emails"] == 0
+    assert logged == ["partial_failure"]
+
+
+def test_clean_empty_run_still_writes_no_row(monkeypatch, tmp_path):
+    """Unchanged behaviour: nothing to process and nothing went wrong -> no row."""
+    logged = _arm_run(monkeypatch, tmp_path, lambda **k: FetchedEmails())
+    pia.process_unread_emails()
+    assert logged == []
+
+
+def test_recovered_reconnect_with_no_emails_writes_no_row(monkeypatch, tmp_path):
+    logged = _arm_run(monkeypatch, tmp_path, lambda **k: FetchedEmails(reconnects=1))
+    pia.process_unread_emails()
+    assert logged == []
+
+
 # ── main(): alert on a partly failed fetch ───────────────────────────────────
 
 def _run_main(monkeypatch, stats):

@@ -14,7 +14,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from dotenv import dotenv_values
 
-from models import ProcessRun, SystemConfig
+from models import ProcessRun
 
 
 def get_run_lock_status() -> Optional[Dict[str, Any]]:
@@ -86,16 +86,17 @@ def run_email_processing(db: Session, triggered_by: str = "manual") -> Dict[str,
     Raises:
         Exception: If the processing script fails
     """
-    # In production (Render), the processing script is not bundled in the Docker image.
-    # It runs locally on the user's machine via Windows Task Scheduler.
+    # In production the pipeline is run only by the server's scheduler (the Hetzner
+    # `cron` container, every 2 hours on the hour, UTC — RUNBOOK.md §4c). Manual runs
+    # from the dashboard are deliberately disabled there: they would let any
+    # logged-in user start a run beside the scheduler (double-processing the
+    # mailbox, extra OpenAI cost). To force a run, use the server command in §4c.
     if os.environ.get("ENVIRONMENT") == "production":
         return {
             "status": "unavailable",
             "message": (
-                "Manual run is not available in the cloud deployment. "
-                "The processing script runs automatically on your local machine "
-                "via Windows Task Scheduler every 2 hours. "
-                "To trigger it manually, run: python execution/process_inbox_auto.py"
+                "Manual runs are disabled in production. The pipeline runs "
+                "automatically every 2 hours, on the hour (UTC), on the server."
             ),
             "triggered_by": triggered_by,
         }
@@ -137,11 +138,15 @@ def run_email_processing(db: Session, triggered_by: str = "manual") -> Dict[str,
         dotenv_vars = dotenv_values(env_file)
         env_vars.update(dotenv_vars)
 
-    # Get batch size from database configuration, default to 20
-    batch_config = db.query(SystemConfig).filter(
-        SystemConfig.key == "email_batch_size"
-    ).first()
-    batch_size = int(batch_config.value) if batch_config else 20
+    # Per-run cap: the same MAX_EMAILS_PER_RUN the scheduled run uses (default 100).
+    # (The editable "email_batch_size" DB setting was removed 2026-09-29 — it was
+    # never applied to the real scheduler.)
+    try:
+        batch_size = int(env_vars.get("MAX_EMAILS_PER_RUN") or 100)
+    except ValueError:
+        batch_size = 100
+    if batch_size <= 0:
+        batch_size = 100
 
     try:
         result = subprocess.run(

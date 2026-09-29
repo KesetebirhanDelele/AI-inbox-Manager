@@ -118,6 +118,8 @@ class TestEngineeringKPIs:
         assert data["run_count_7d"] == 0
         assert data["failure_rate_7d"] == 0.0
         assert data["ai_cost_today_usd"] == 0.0
+        # The "days until storage is full" estimate was removed (2026-09-29).
+        assert "db_storage_days_remaining" not in data
 
     def test_kpis_with_runs(self, client, db, auth_cookies):
         make_process_run(db, status="success", gpt_cost=0.05)
@@ -130,6 +132,21 @@ class TestEngineeringKPIs:
         assert data["failed_run_count_7d"] == 1
         assert data["failure_rate_7d"] == 50.0
         assert data["ai_cost_today_usd"] == round(0.07, 4)
+
+
+class TestManualRunDisabledInProduction:
+    """In production only the server's cron runs the pipeline; Run Now is off."""
+
+    def test_production_returns_unavailable_with_accurate_message(self, monkeypatch):
+        from integration.process_runner import run_email_processing
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        result = run_email_processing(db=None, triggered_by="tester")  # db unused: returns first
+        assert result["status"] == "unavailable"
+        assert result["triggered_by"] == "tester"
+        msg = result["message"]
+        assert "every 2 hours" in msg
+        # The old message wrongly said it runs on a laptop via Windows Task Scheduler.
+        assert "Windows" not in msg and "local machine" not in msg
 
 
 class TestDbStorageCap:

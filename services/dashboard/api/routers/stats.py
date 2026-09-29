@@ -88,13 +88,13 @@ class EngineeringKPIs(BaseModel):
     failure_rate_7d: float       # 0.0–100.0 percent
     run_count_7d: int
     failed_run_count_7d: int
-    # Neon free tier is capped at 0.5 GB/project and blocks new writes (does
-    # not delete data or auto-reset) once full — see RUNBOOK.md §4b. These
-    # are None on non-Postgres DBs (e.g. local SQLite dev fallback).
+    # Database size vs a configurable cap (DB_STORAGE_CAP_MB; default 512 = Neon's
+    # free tier, which blocks new writes once full — see RUNBOOK.md §4b/§4c). These
+    # are None on non-Postgres DBs (e.g. local SQLite dev fallback). (A
+    # "days until full" estimate used to live here; removed 2026-09-29.)
     db_storage_used_bytes: Optional[int] = None
     db_storage_cap_bytes: Optional[int] = None
     db_storage_pct: Optional[float] = None
-    db_storage_days_remaining: Optional[float] = None
 
 
 @router.get("/summary", response_model=SummaryStats)
@@ -325,9 +325,9 @@ async def get_engineering_kpis(
     ]
     avg_duration = (sum(durations) / len(durations)) if durations else None
 
-    # Database storage countdown — Postgres only, best-effort (never let a
-    # monitoring query break the KPI endpoint). Cap comes from DB_STORAGE_CAP_MB.
-    storage_used = storage_cap = storage_pct = storage_days_left = None
+    # Database storage — Postgres only, best-effort (never let a monitoring
+    # query break the KPI endpoint). Cap comes from DB_STORAGE_CAP_MB.
+    storage_used = storage_cap = storage_pct = None
     try:
         if db.bind.dialect.name == "postgresql":
             storage_used = db.execute(
@@ -335,17 +335,6 @@ async def get_engineering_kpis(
             ).scalar()
             storage_cap = _db_storage_cap_bytes()
             storage_pct = round(storage_used / storage_cap * 100.0, 2)
-
-            first_run = db.query(func.min(ProcessRun.run_timestamp)).scalar()
-            if first_run:
-                # Floor at 1 day so a database that's only a few hours old
-                # doesn't produce a wildly noisy (and needlessly alarming)
-                # extrapolation -- this self-corrects as real history accrues.
-                elapsed_days = max((now - first_run).total_seconds() / 86400.0, 1.0)
-                bytes_per_day = storage_used / elapsed_days
-                if bytes_per_day > 0:
-                    remaining_bytes = max(storage_cap - storage_used, 0)
-                    storage_days_left = round(remaining_bytes / bytes_per_day, 1)
     except Exception as e:
         logging.getLogger(__name__).warning(f"Could not compute DB storage KPIs: {e}")
 
@@ -358,7 +347,6 @@ async def get_engineering_kpis(
         db_storage_used_bytes=storage_used,
         db_storage_cap_bytes=storage_cap,
         db_storage_pct=storage_pct,
-        db_storage_days_remaining=storage_days_left,
     )
 
 

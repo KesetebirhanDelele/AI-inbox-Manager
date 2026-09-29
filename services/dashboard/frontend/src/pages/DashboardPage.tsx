@@ -55,7 +55,7 @@ const DashboardPage = () => {
         return;
       }
       if (data?.status === 'unavailable') {
-        setRunResult({ status: 'unavailable', message: 'Run Now is local-only. Trigger manually on your machine.' });
+        setRunResult({ status: 'unavailable', message: 'Manual runs are disabled here. The pipeline runs automatically every 2 hours (on the hour, UTC).' });
         setTimeout(() => setRunResult(null), 10000);
         return;
       }

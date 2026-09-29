@@ -17,6 +17,45 @@ Newest first.
 
 ---
 
+## 2026-09-29 (late night) — Addressing the "small gaps" (#6) + no more pushes to master
+
+**Side effect avoided:** pushing `master` can trigger Vercel/Render rebuilds of the
+old fallback stack, so per Kes **nothing is pushed to `master` until Render/
+Vercel/Neon are retired** (open item 5). Work happens on `feat/hetzner-deployment`
+(pushing a branch is fine); deploy with `scripts/deploy_hetzner.sh` from the
+branch. `master` sits at `24443cf` (the one push that already happened).
+
+**Runtime changes (deployed):**
+- **Deploy guard:** new `scripts/deploy_hetzner.sh` — refuses to deploy during
+  `:00–:11` of an even UTC hour or while `tmp/process.lock` is fresh (the cause of
+  the 22:00 UTC incident); `--dry-run`, `--force`, `--build-web`; deploys tracked
+  files only via `git archive`, restarts the API, health-checks, records
+  `.deployed_commit` on the server. 23 tests in `tests/deploy/test_deploy_script.py`
+  (window rule incl. octal-looking "08"/"09", `--help`, bad option, no secrets).
+- **ProcessRun for runs that go wrong:** `process_inbox_auto.py` `finally` now
+  writes a `failed` row for a crash at ANY point (e.g. Gmail auth failure before a
+  single email was fetched — previously no trace on the dashboard) and a
+  `partial_failure` row when the fetch left emails behind and nothing else
+  happened. A clean empty run still writes nothing. 4 new tests in
+  `test_fetch_alerting.py`.
+- **`db_storage_days_remaining` removed** from the KPI API, its query and the
+  frontend type (test asserts it's gone).
+- **Wrong "Run Now" message fixed:** in production it returns `unavailable` by
+  design (only the server cron runs the pipeline — prevents a second runner
+  double-processing the mailbox), but the message claimed it runs on a laptop via
+  Windows Task Scheduler. Now: "Manual runs are disabled in production. The
+  pipeline runs automatically every 2 hours, on the hour (UTC)…" (API + dashboard
+  toast; test added). The local Run Now path now reads `MAX_EMAILS_PER_RUN`
+  instead of the never-written `email_batch_size` setting.
+- **Correction to the stakeholder note below:** "Run Now" cannot be triggered from
+  the production dashboard at all, so an un-enforced role can't start runs; it can
+  still approve/reject notifications and edit the whitelist.
+- Comments in `process_inbox_auto.py` no longer mention Windows Task Scheduler.
+- Laptop check: the old Windows task `ColaberryEmailProcessing` does not exist on
+  this machine, so nothing can double-process the mailbox from here.
+
+---
+
 ## 2026-09-29 (night) — STATUS SNAPSHOT: Hetzner is live; decisions and open items
 
 **Where things stand.** Production runs on the Hetzner server
