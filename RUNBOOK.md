@@ -278,12 +278,16 @@ can run side by side without a port collision. Open http://localhost:5174.
 
 ---
 
-## 4c. Hetzner deployment — IN PROGRESS (not live)
+## 4c. Hetzner deployment — CUT OVER 2026-09-29 (pending first scheduled-run check)
 
-> **Status (2026-09-29): server provisioned, repo files added, NOT yet deployed
-> or cut over.** Everything in §1–§4 above is still the live system. Do not treat
-> this section as current infrastructure until the cutover is done and this
-> banner is removed.
+> **Status (2026-09-29 18:46 UTC): the Hetzner server is now the live scheduler
+> and database.** All four GitHub workflows (`process_inbox`, `keepalive`, `backup_neon_db`,
+> `deploy_backend`) are **disabled** (re-enable with `gh workflow enable <name>`). A manual run on the server succeeded (52 emails, 38
+> moved, `ProcessRun` #133 written). **Not yet confirmed:** the first
+> *scheduled* run at the top of an even UTC hour, and this runbook's §0–§4, §8, §10
+> and §12 still describe the old GitHub/Render/Neon setup — they will be
+> rewritten once a scheduled run is confirmed. Render, Vercel and Neon are still
+> up, unchanged, as a fallback (Neon is frozen at 2026-09-29 18:44 UTC).
 
 Target: one Hetzner Cloud server (CPX22, Helsinki, `2.29.47.89`, public hostname
 `2-29-47-89.nip.io`, cloud firewall = inbound 22/80/443 only) running

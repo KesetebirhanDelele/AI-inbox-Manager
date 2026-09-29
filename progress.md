@@ -52,7 +52,22 @@ Render references; cron job runs as uid 1000; API image runs non-root.
 uses `postgres:18-alpine` (volume mounted at `/var/lib/postgresql`, the PG 18 image
 layout) to allow a clean `pg_dump` → restore; a 16 container can't take an 18 dump.
 
-**Deferred / not done yet:** actual server deploy, Neon → Postgres data
+**Cutover done 2026-09-29 (server side, no repo code change):** server prepped
+(Docker 29, 2 GB swap), secrets generated on the server, Neon → Postgres 18
+restored twice (final copy after disabling `process_inbox.yml` at ~18:40 UTC;
+Kes then disabled the other three workflows too — keepalive, backup_neon_db,
+deploy_backend — so all 4 are off;
+all 12 tables' row counts identical: 4,318 emails, 132 runs), public HTTPS
+verified (Let's Encrypt, login 5/5 checks), Hetzner `cron` started, manual run OK
+(52 processed / 38 moved / ProcessRun #133), daily backup cron installed
+(03:30 UTC, first dump 20 MB). Scripts made executable in git
+(`git update-index --chmod=+x`) after a re-sync dropped the exec bit.
+**Still to do:** confirm the first scheduled run (20:00 UTC), rewrite RUNBOOK
+§0–§4/§8/§10/§12 as authoritative for Hetzner, relabel the "Neon Storage Left"
+card, add SSH hardening + fail2ban, decide when to retire Render/Vercel/Neon,
+and carry over the stakeholder login hash.
+
+**Original deferred list (pre-cutover):** actual server deploy, Neon → Postgres data
 migration, cutover (disable GitHub Actions cron), backup cron install, SSH
 hardening, and the RUNBOOK.md rewrite (RUNBOOK §4c added as "in progress"; make
 it authoritative only after cutover). Stakeholder login hash still lives only in
