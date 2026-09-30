@@ -112,7 +112,13 @@ lands this entry).
    (`STAKEHOLDER_PASSWORD_HASH` only in Render, unverified). Fix = admin-only on
    all POST/PUT/DELETE endpoints + UI, with tests; then create a stakeholder
    password on the server. **Do not hand out a stakeholder login before that.**
-2. **Verify the new fetch code live** — the 00:00 UTC run (2026-09-30) is the first
+2. **Verify the new fetch code live** — ✅ *normal path verified 2026-09-30:* run
+   #137 started 00:00:02 UTC (on time), 39 emails / 23 moved / 130 s, `success`,
+   0 fetch errors, 0 reconnects, 0 alerts, no other errors — the first run on the
+   deployed `5b400e1` code with the 150 cap. ⚠️ The **reconnect path itself has
+   still not been exercised against real Gmail** (it only triggers if Gmail drops
+   the connection); it is covered by fake-based tests. Original note: the 00:00
+   UTC run (2026-09-30) is the first
    with the reconnect/`partial_failure` code and the 150 cap; check
    `grep -c "fetch_emails - ERROR" logs/cron.log`, run status, and that no
    "Email fetch incomplete" alert fired. The reconnect path has only been tested
