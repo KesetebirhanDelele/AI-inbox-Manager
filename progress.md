@@ -19,7 +19,52 @@ Newest first.
 
 ## 2026-10-01 — Interview sub-classifier wired in; spam pass quarantines instead of deleting
 
-**Status: built and tested locally, NOT yet deployed.** Branch `fix/subclassify-quarantine`.
+**Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
+The detail below is in the order the work happened; this block is the summary.
+
+### End-of-day summary (2026-10-01)
+
+| Item | Result | Evidence |
+|---|---|---|
+| Sub-classifier called in the live path | Fixed, proven once on live mail | run #156: `Re: JD` → Interview Request 0.9; backfill re-checked all 27 existing events (all really first-round) |
+| "Other" no longer permanently deleted | Fixed, proven | runs #156–#158: `quarantined=`, 0 "permanently deleted" lines |
+| Approvals queue (< 0.70) | Fixed, proven | run #158 queued 7 rows (approvals 0 → 7) |
+| Header-based student matching | Cause fixed (headers never captured), **not yet proven** | 0 students with an assigned Gmail; no interview mail arrived after the fix |
+| Student identity rule, event gate (no events for Job Invite/Alert) | Built, **tests only** | no interview events were created in runs #157–#158 |
+| Drafts follow the real sub-type | Built, **tests only** | needs a non-"Interview Request" email |
+| Notification send path | **Proven in production**: test email to Kes's own address delivered | BCC and the dashboard Approve button were *not* exercised (BCC turned off for the test) |
+| Daily health check | Deployed; first scheduled run 07:30 UTC 2026-10-02; Monday all-clear starts 2026-10-05 | `/etc/cron.d/inboxgenius-health` |
+
+**Facts established along the way (not obvious from the code):**
+- `origin` (`KesetebirhanDelele/AI-inbox-Manager`) is a **standalone private repo, not a GitHub
+  fork** (`fork: false`, created 2026-09-17), seeded with the previous developer's history
+  (76 commits by `Ojobo1800`, 39 by Kes). It is not linked to Ali's org repos
+  (`Colaberry_InboxGenius`). Ali's "push what you deployed" request: his exact words did not
+  name a repo; Kes believes he meant Kes's own GitHub account (which he monitors), hence the
+  `master`-is-deployed workflow below. Still unconfirmed with Ali.
+- Drafts live **only in the dashboard** (`notification_drafts`); nothing creates a Gmail draft.
+  Dashboard Approve sends by SMTP via `send_notification.send_email`. Whether Rob uses
+  Approve, or sends from his own Gmail/WhatsApp, is an open question to Ali.
+- `process_runs.spam_deleted` counts mail *moved to Spam Review*, not deleted; dashboard
+  labels now read "Quarantined" (column name unchanged, renaming needs a migration).
+- The model returns confidence 0.0 for ordinary junk "Other" (740 of 810 live rows), so
+  "Other" at exactly 0.0 is excluded from the approvals queue.
+- The 7 rows run #158 queued were all noise at 0.65 (4 bare LinkedIn job links forwarded by
+  students, 3 identical Skool reminders) → sender rules added (see "Queue noise" below). Those
+  7 rows are still pending for Rob to clear; they were not touched.
+- Use-case / user-story review page published as a private Claude artifact
+  (https://claude.ai/artifact/FRzyZVP1uBnsvMPEViEZiw), 11 use cases with per-story status.
+- Reply to Ali was drafted by Claude and sent by Kes himself.
+
+**Open items (all waiting on a decision, none blocking):**
+1. Ali: does Rob send via the dashboard Approve button, or from Gmail/WhatsApp? (If Gmail:
+   build "save draft into the interview inbox's Gmail Drafts folder".)
+2. Ali: which repo should the code live in for review (Kes's account vs Colaberry org)?
+3. Kes/Ali: delete the 20 old non-interview rows from `interview_events`? (Not deleted.)
+4. Rob to clear or reject the 7 pending approvals; one real Approve click is still untested.
+5. Quarantine has no clean-up schedule and no "how often was Other wrong" measure yet.
+6. Header names were never verified against real forwarded mail (the probe was blocked).
+
 
 **Why:** Ali's review. Production DB (checked 2026-10-01, read-only) showed 50
 interview events: 30 `interview_request`, 20 `other`, zero phone/client/technical/
@@ -144,6 +189,11 @@ for Rob (waiting on Ali's answer on how Rob notifies students).
 ---
 
 ## 2026-09-29 (late night) — Addressing the "small gaps" (#6) + no more pushes to master
+
+> **Superseded 2026-10-01:** `master` is now the working line and what is deployed (see the
+> 2026-10-01 entry and RUNBOOK §4c). Checked first: all four GitHub workflows are disabled,
+> so a push cannot start processing; the only side effect is Vercel rebuilding the frozen
+> fallback frontend.
 
 **Side effect avoided:** pushing `master` can trigger Vercel/Render rebuilds of the
 old fallback stack, so per Kes **nothing is pushed to `master` until Render/
@@ -494,6 +544,12 @@ change going forward (this file, created this session).
 ---
 
 ## 2026-09-28 — Dependency version caps (in progress, not yet merged)
+
+> **Update 2026-10-01: done.** Re-applied to `master` by cherry-pick (conflict on the deleted
+> root `requirements.phase1.txt` resolved by keeping it deleted). **The `openai` cap was
+> corrected to `<4.0.0`**: the production cron container actually runs openai **3.21.0**
+> (google-api-python-client 2.200.0), so `<2.0.0` would have silently downgraded it at the
+> next image rebuild. Branch archived as tag `archive/chore-cap-major-version-pins`.
 
 Branch `chore/cap-major-version-pins`, pushed to fork, reviewed and approved
 by Ali via email. **PR not yet opened** — pending explicit go-ahead.
