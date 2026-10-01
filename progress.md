@@ -77,6 +77,14 @@ auto-sent, but decide which signal wins.
   with the real sub-classifier. Dry-run by default; old value kept in
   `raw_extraction.previous_sub_type`.
 
+**Fourth change, same day (health check):** new `execution/health_check.py` (+ 15
+tests, `directives/pipeline-health-check.md`, `execution/crontab.health`). Daily,
+read-only; emails only when an invariant breaks (see the directive). Installed on the
+server as a host cron file, so no image rebuild. Full suite: 489 passed, 0 failed (the
+18 earlier `test_log_interview.py` failures were an import-path problem that goes away
+when the new test files put the dashboard `models` module on the path first; still
+order-dependent when that file runs alone).
+
 **Third change, same day (student identity, event noise, counter label):**
 - **Identity rule (headers win, conflicts flagged):** new `_identify_student`. A
   header Gmail already recorded as a student's assigned Gmail picks that student

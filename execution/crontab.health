@@ -1,0 +1,6 @@
+# Host crontab for the daily health check (Hetzner). Install on the SERVER, not in the
+# cron container, so adding it needs no image rebuild:
+#   scp execution/crontab.health root@2.29.47.89:/etc/cron.d/inboxgenius-health
+# 07:30 UTC is between the 06:00 and 08:00 pipeline runs, so it never overlaps one.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 7 * * * root docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/health_check.py >> /opt/ai-inbox-manager/logs/health.log 2>&1

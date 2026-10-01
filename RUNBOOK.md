@@ -370,6 +370,16 @@ fallback stack. There are no PRs — this is a solo project — so `master` stay
 `gh workflow enable process_inbox.yml`. Neon only has data up to 2026-09-29
 18:44 UTC, so the Render/Vercel dashboard would be stale until it catches up.
 
+**Daily health check (added 2026-10-01).** `execution/health_check.py` checks the
+invariants that would have caught the earlier silent failures (permanent deletes,
+review-queue gap, stale/partial runs, failed sends, sub-classifier fallback rate,
+student-match rate) and emails `ALERT_EMAIL_TO` only when something is wrong. It runs
+at 07:30 UTC from the host file `/etc/cron.d/inboxgenius-health` (source:
+`execution/crontab.health`; install with `scp`, no image rebuild), output in
+`logs/health.log`. Run it by hand:
+`docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/health_check.py`.
+Directive: [`directives/pipeline-health-check.md`](directives/pipeline-health-check.md).
+
 **Hetzner failure playbook**
 
 | Symptom | First checks |
