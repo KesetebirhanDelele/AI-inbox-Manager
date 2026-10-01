@@ -111,3 +111,24 @@ def test_collect_metrics_against_a_real_database(monkeypatch):
     assert m["events"] == 3 and m["events_fallback"] == 1 and m["events_no_student"] == 2
     assert m["runs_partial_failure"] == 0
     assert 1.4 < m["last_run_age_hours"] < 1.6
+
+
+def test_classifications_before_the_queue_existed_are_not_counted(monkeypatch):
+    api_dir = _EXECUTION_DIR.parents[0] / "services" / "dashboard" / "api"
+    monkeypatch.syspath_prepend(str(api_dir))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import models
+
+    engine = create_engine("sqlite://")
+    models.Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    before = hc.QUEUE_ACTIVE_SINCE - timedelta(hours=2)
+    e = models.Email(email_id="1", subject="s", from_address="a@b.com", received_date=before)
+    db.add(e); db.flush()
+    db.add(models.Classification(email_id=e.id, category="Job Alert", confidence=0.5,
+                                 classification_timestamp=before))
+    db.commit()
+    now = hc.QUEUE_ACTIVE_SINCE + timedelta(hours=1)
+    assert hc.collect_metrics(db, "", now)["approvals_missing"] == 0

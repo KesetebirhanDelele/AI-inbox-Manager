@@ -41,7 +41,11 @@ CRON_LOG = _ROOT / "logs" / "cron.log"
 # from before that are history, not a regression.
 NO_DELETE_SINCE = datetime(2026, 10, 1, 14, 0, 0)
 
-MAX_RUN_AGE_HOURS = 3.0          # runs are every 2 hours
+# The approvals queue went live at the 2026-10-01 13:55 UTC deploy; classifications
+# made before it were never going to be queued.
+QUEUE_ACTIVE_SINCE = datetime(2026, 10, 1, 13, 55, 0)
+
+MAX_RUN_AGE_HOURS = 3.0         # runs are every 2 hours
 MIN_EVENTS_FOR_RATES = 3         # a rate over 1-2 events is noise
 MAX_FALLBACK_RATE = 0.30
 MAX_NO_STUDENT_RATE = 0.50
@@ -129,7 +133,8 @@ def collect_metrics(db, log_text: str, now: datetime) -> Dict[str, Any]:
         ProcessRun.run_timestamp >= since, ProcessRun.status == "partial_failure").count()
 
     queued_email_ids = {row[0] for row in db.query(Approval.email_id).all()}
-    recent = db.query(Classification).filter(Classification.classification_timestamp >= since).all()
+    recent = db.query(Classification).filter(
+        Classification.classification_timestamp >= max(since, QUEUE_ACTIVE_SINCE)).all()
     missing = sum(
         1 for c in recent
         if needs_human_review(c.category or "", float(c.confidence or 0.0))
