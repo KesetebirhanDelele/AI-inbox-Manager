@@ -323,7 +323,7 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
                 .first()
             )
             if latest is None:
-                db.add(Classification(
+                latest = Classification(
                     email_id=existing.id,
                     category=category,
                     confidence=confidence,
@@ -332,7 +332,8 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
                     classification_timestamp=datetime.utcnow(),
                     classifier_version="gpt-4o",
                     raw_response=classification,
-                ))
+                )
+                db.add(latest)
             else:
                 latest.category = category
                 latest.confidence = confidence
@@ -341,6 +342,8 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
                 latest.classification_timestamp = datetime.utcnow()
                 latest.raw_response = classification
 
+            db.flush()
+            _queue_for_review(db, existing.id, latest.id, category, confidence)
             db.commit()
             logger_.info(f"DB import: updated email id={existing.id} [{category}] → {folder}")
             return existing.id
@@ -362,7 +365,7 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
         db.flush()  # assign PK without committing
         email_db_id = new_email.id
 
-        db.add(Classification(
+        new_cls = Classification(
             email_id=email_db_id,
             category=category,
             confidence=confidence,
@@ -371,7 +374,10 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
             classification_timestamp=datetime.utcnow(),
             classifier_version="gpt-4o",
             raw_response=classification,
-        ))
+        )
+        db.add(new_cls)
+        db.flush()
+        _queue_for_review(db, email_db_id, new_cls.id, category, confidence)
         db.commit()
         logger_.info(f"DB import: inserted email id={email_db_id} [{category}] → {folder}")
         return email_db_id
@@ -383,6 +389,44 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
         except Exception:
             pass
         return None
+
+
+def needs_human_review(category: str, confidence: float) -> bool:
+    """
+    True when a classification should land in the dashboard approvals queue.
+
+    Anything under ROUTING_CONFIDENCE_THRESHOLD qualifies, except "Other" at
+    exactly 0.0. For "Other" the model reports 0.0 as its normal answer for plain
+    junk (740 of 810 live rows in the week to 2026-10-01), so counting those
+    would bury the queue in about 800 items a week. "Other" with a real
+    in-between score (0.0 < c < 0.70) is genuine uncertainty and is queued.
+    """
+    if confidence >= ROUTING_CONFIDENCE_THRESHOLD:
+        return False
+    if category == "Other" and confidence <= 0.0:
+        return False
+    return True
+
+
+def _queue_for_review(db, email_db_id: int, classification_id: int,
+                      category: str, confidence: float) -> bool:
+    """Add a pending Approval row once per email. Caller commits."""
+    if not needs_human_review(category, confidence):
+        return False
+    from models import Approval
+    already = db.query(Approval).filter(Approval.email_id == email_db_id).first()
+    if already is not None:
+        return False
+    db.add(Approval(
+        email_id=email_db_id,
+        classification_id=classification_id,
+        status="pending",
+        notes=f"Auto-queued: {category} at confidence {confidence:.2f}",
+    ))
+    logging.getLogger(__name__).info(
+        f"Queued for human review: email id={email_db_id} [{category} {confidence:.2f}]"
+    )
+    return True
 
 
 # Used only when the interview sub-classifier cannot give an answer. These are

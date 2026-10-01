@@ -61,8 +61,25 @@ deleted/day in the cron log).
 - 18 tests in `test_log_interview.py` fail on a clean tree too
   (`No module named 'models'`) — pre-existing, unrelated.
 
-**Deferred:** approvals queue for confidence < 0.70 (P2, touches the review
-workflow); backfill of the 50 existing events; non-interview noise in events.
+**Follow-up, same day (deployed 13:50 UTC, run #156 verified):** sub-classifier
+called (`Re: JD` → Interview Request 0.9), header resolution worked, spam pass
+quarantined 4 and deleted 0. One open question: that email's header Gmail
+(`sehrishkhan…`) was written onto the student the body-name lookup picked
+("Alisha") — the two signals disagree; drafts are human-reviewed, nothing is
+auto-sent, but decide which signal wins.
+
+**Added after deploy:**
+- Approvals queue: `needs_human_review` / `_queue_for_review` in
+  `process_inbox_auto.py` write one pending `Approval` row per email when
+  confidence < 0.70, except "Other" at exactly 0.0 (the model's normal answer for
+  junk; including it would queue ~800/week). 8 more tests.
+- `execution/backfill_sub_types.py` (+ tests): re-labels existing interview events
+  with the real sub-classifier. Dry-run by default; old value kept in
+  `raw_extraction.previous_sub_type`.
+
+**Deferred:** non-interview noise in events (Job Invite/Job Alert via the
+known-company path); which signal wins for student identity (above); pushing to the
+Colaberry GitHub org (needs Kes/Ali decision on the destination repo).
 
 ---
 

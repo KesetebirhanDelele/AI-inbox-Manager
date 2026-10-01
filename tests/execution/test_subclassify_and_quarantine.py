@@ -180,3 +180,44 @@ def test_spam_pass_leaves_mail_alone_when_reclassification_fails(monkeypatch):
     out, moves, deletes = _spam_pass(monkeypatch, [_email(email_id="1")], boom)
     assert deletes == [] and moves == []
     assert out["quarantined"] == 0 and out["rescued"] == 0
+
+
+# ── 5. approvals queue ───────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("category, confidence, queued", [
+    ("Job Alert", 0.69, True),            # under the threshold
+    ("Job Alert", 0.70, False),           # at the threshold is fine
+    ("Interview Request", 0.40, True),
+    ("Other", 0.65, True),                # genuine uncertainty on "Other"
+    ("Other", 0.0, False),                # model's normal answer for plain junk
+    ("Other", 0.95, False),
+])
+def test_needs_human_review(category, confidence, queued):
+    assert pia.needs_human_review(category, confidence) is queued
+
+
+def test_queue_for_review_writes_one_pending_row(monkeypatch):
+    api_dir = _EXECUTION_DIR.parents[0] / "services" / "dashboard" / "api"
+    monkeypatch.syspath_prepend(str(api_dir))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import models
+
+    engine = create_engine("sqlite://")
+    models.Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    email = models.Email(email_id="1", subject="s", from_address="a@b.com",
+                         received_date=__import__("datetime").datetime.utcnow())
+    db.add(email); db.flush()
+    cls = models.Classification(email_id=email.id, category="Other", confidence=0.6)
+    db.add(cls); db.flush()
+
+    assert pia._queue_for_review(db, email.id, cls.id, "Other", 0.6) is True
+    db.commit()
+    # a second pass over the same email must not add a duplicate
+    assert pia._queue_for_review(db, email.id, cls.id, "Other", 0.6) is False
+    # confident results are never queued
+    assert pia._queue_for_review(db, email.id, cls.id, "Rejection", 0.95) is False
+    rows = db.query(models.Approval).all()
+    assert len(rows) == 1 and rows[0].status == "pending"
