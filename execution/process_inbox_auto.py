@@ -385,6 +385,105 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
         return None
 
 
+# Used only when the interview sub-classifier cannot give an answer. These are
+# the primary category names mapped to the older snake_case labels.
+_CATEGORY_TO_SUB_TYPE = {
+    "Interview Request":         "interview_request",
+    "Interview Schedule":        "interview_schedule",
+    "Interview Reschedule":      "reschedule",
+    "Interview Confirmation":    "confirmed",
+    "Interview Cancelled":       "cancelled",
+    "Phone Screen":              "phone_screen",
+    "Final Interview Scheduled": "final_round",
+    "Assessment":                "assessment",
+}
+_FORMAT_MAP = {
+    "phone":     "phone",
+    "video":     "video",
+    "in-person": "in_person",
+    "in_person": "in_person",
+    "technical": "technical",
+    "panel":     "panel",
+}
+
+
+def _fallback_sub_classification(classification: Dict[str, Any]) -> Dict[str, Any]:
+    """Build an InterviewEvent-ready dict from the primary classification alone."""
+    extracted = classification.get("extracted_data") or {}
+    raw_fmt = (extracted.get("interview_type") or "").lower().strip()
+    location = extracted.get("interview_location") or ""
+    meeting_link = location if any(
+        k in location.lower() for k in ["http", "zoom", "meet", "teams"]
+    ) else None
+    return {
+        "interview_sub_type":      _CATEGORY_TO_SUB_TYPE.get(classification.get("category", ""), "other"),
+        "company_name":            extracted.get("company_name"),
+        "position_title":          extracted.get("position_title"),
+        "contact_name":            extracted.get("contact_name"),
+        "contact_email":           extracted.get("contact_email"),
+        "contact_phone":           None,
+        "interview_date":          extracted.get("interview_date"),
+        "interview_time":          extracted.get("interview_time"),
+        "interview_timezone":      extracted.get("interview_timezone"),
+        "interview_format":        _FORMAT_MAP.get(raw_fmt, raw_fmt or None),
+        "meeting_link_or_dial_in": meeting_link,
+        "num_interviewers":        None,
+        "is_job_machine":          False,
+        "is_next_round":           False,
+        "confidence":              float(classification.get("confidence", 0.0)),
+        "sub_type_source":         "category_fallback",
+    }
+
+
+def _build_sub_classification(email_data: Dict[str, Any], classification: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Decide the interview sub-type for an InterviewEvent.
+
+    Interview-related emails go through subclassify_interview (phone screen,
+    client screen, technical, cancelled, rescheduled, job machine). If that call
+    fails or returns an unknown type, the event is still created from the
+    primary category so an interview is never dropped.
+    """
+    fallback = _fallback_sub_classification(classification)
+    category = classification.get("category", "")
+    log = logging.getLogger(__name__)
+
+    try:
+        from subclassify_interview import (
+            subclassify_interview, is_interview_related, INTERVIEW_SUB_TYPES,
+        )
+        if not is_interview_related(category):
+            return fallback
+
+        result = subclassify_interview(email_data)
+        sub_type = (result or {}).get("interview_sub_type")
+        if sub_type not in INTERVIEW_SUB_TYPES:
+            log.warning(f"Sub-classifier returned unusable type {sub_type!r}; using category fallback")
+            return fallback
+
+        merged = dict(result)
+        for key, value in fallback.items():
+            if merged.get(key) is None:
+                merged[key] = value
+        merged["sub_type_source"] = "subclassifier"
+        return merged
+    except Exception as e:
+        log.warning(f"Sub-classification failed ({e}); using category fallback")
+        return fallback
+
+
+def _resolve_assigned_gmail(email_data: Dict[str, Any]) -> Optional[str]:
+    """The student's assigned Gmail, only when read from forwarding headers."""
+    try:
+        from resolve_student import resolve_student
+        resolved = resolve_student(email_data)
+        if resolved.get("resolution_method") == "email_headers":
+            return resolved.get("student_gmail")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Header student resolution skipped: {e}")
+    return None
+
+
 def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classification: Dict[str, Any]) -> bool:
     """
     Process an interview email through the sub-classification pipeline.
@@ -410,55 +509,9 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
 
         _logger = logging.getLogger(__name__)
 
-        # Map classify_email fields → InterviewEvent-ready dict
-        _CATEGORY_TO_SUB_TYPE = {
-            "Interview Request":         "interview_request",
-            "Interview Schedule":        "interview_schedule",
-            "Interview Reschedule":      "reschedule",
-            "Interview Confirmation":    "confirmed",
-            "Interview Cancelled":       "cancelled",
-            "Phone Screen":              "phone_screen",
-            "Final Interview Scheduled": "final_round",
-            "Assessment":                "assessment",
-        }
-        _FORMAT_MAP = {
-            "phone":     "phone",
-            "video":     "video",
-            "in-person": "in_person",
-            "in_person": "in_person",
-            "technical": "technical",
-            "panel":     "panel",
-        }
-
-        category  = classification.get("category", "")
         extracted = classification.get("extracted_data") or {}
-        sub_type  = _CATEGORY_TO_SUB_TYPE.get(category, "other")
-
-        raw_fmt = (extracted.get("interview_type") or "").lower().strip()
-        fmt     = _FORMAT_MAP.get(raw_fmt, raw_fmt or None)
-
-        location     = extracted.get("interview_location") or ""
-        meeting_link = location if any(
-            k in location.lower() for k in ["http", "zoom", "meet", "teams"]
-        ) else None
-
-        sub_classification = {
-            "interview_sub_type":      sub_type,
-            "company_name":            extracted.get("company_name"),
-            "position_title":          extracted.get("position_title"),
-            "contact_name":            extracted.get("contact_name"),
-            "contact_email":           extracted.get("contact_email"),
-            "contact_phone":           None,
-            "interview_date":          extracted.get("interview_date"),
-            "interview_time":          extracted.get("interview_time"),
-            "interview_timezone":      extracted.get("interview_timezone"),
-            "interview_format":        fmt,
-            "meeting_link_or_dial_in": meeting_link,
-            "num_interviewers":        None,
-            "is_job_machine":          False,
-            "is_next_round":           False,
-            "confidence":              float(classification.get("confidence", 0.0)),
-        }
+        sub_classification = _build_sub_classification(email_data, classification)
+        sub_type = sub_classification["interview_sub_type"]
 
         # ── Resolve student from config/students.py ──────────────────────────
         student_id = None
@@ -475,6 +528,7 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
                     username=username,
                     full_name=student_config["name"],
                     personal_email=student_config.get("personal_email"),
+                    assigned_gmail=_resolve_assigned_gmail(email_data),
                     phone_number=student_config.get("phone"),
                 )
                 student_id = student_db["id"]
@@ -504,7 +558,9 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
                 from notify_student import _build_student_info_for_draft, _build_classification_for_draft
 
                 student_info_for_draft = _build_student_info_for_draft(student_config)
-                draft_cls = _build_classification_for_draft(classification, email_data)
+                draft_cls = _build_classification_for_draft(
+                    classification, email_data, sub_classification
+                )
                 assistant_name = student_config.get("assigned_to")
 
                 draft = draft_notification(
@@ -602,6 +658,9 @@ KNOWN_INTERVIEW_COMPANIES = {
 # Folder that holds "Other" emails for a second-pass review before deletion.
 # Emails that survive re-classification as spam are then permanently deleted.
 SPAM_REVIEW_FOLDER = "Spam Review"
+# Mail the second pass still judges "Other" is parked here, never deleted, until
+# we have measured how often "Other" is wrong (see progress.md, 2026-10-01).
+QUARANTINE_FOLDER = "Quarantine"
 
 # Folder for low-confidence or unmapped categories — needs human attention.
 NEEDS_REVIEW_FOLDER = "Needs Review"
@@ -651,16 +710,17 @@ def _run_spam_review_pass(
     Second-pass review of emails sitting in SPAM_REVIEW_FOLDER.
 
     Each email is re-classified:
-      - Still 'Other' or still below confidence threshold → permanently deleted
+      - Still 'Other' or still below confidence threshold → moved to the
+        Quarantine folder (kept, recoverable; nothing is deleted)
       - Rescued (non-spam on second look) → moved to the correct category folder
-
-    This catches first-pass misclassifications before anything is destroyed.
+      - Re-classification failed → left in Spam Review for the next run
 
     Returns:
-        Dict with keys: reviewed, deleted, rescued
+        Dict with keys: reviewed, quarantined, rescued, deleted. 'deleted' is
+        always 0 and only kept so older readers of the summary do not break.
     """
     _logger = logging.getLogger(__name__)
-    results: Dict[str, int] = {"reviewed": 0, "deleted": 0, "rescued": 0}
+    results: Dict[str, int] = {"reviewed": 0, "quarantined": 0, "rescued": 0, "deleted": 0}
 
     try:
         review_emails = fetch_emails(
@@ -705,8 +765,7 @@ def _run_spam_review_pass(
             confidence = float(classification.get("confidence", 0.0))
             edge_case  = classification.get("edge_case", {})
         except Exception as exc:
-            _logger.error(f"  Re-classification failed for '{subject}': {exc} — treating as spam")
-            confirmed_spam_ids.append(email_id)
+            _logger.error(f"  Re-classification failed for '{subject}': {exc} — leaving in {SPAM_REVIEW_FOLDER}")
             continue
 
         is_spam = (
@@ -717,7 +776,7 @@ def _run_spam_review_pass(
 
         if is_spam:
             confirmed_spam_ids.append(email_id)
-            _logger.info(f"  [CONFIRMED SPAM → DELETE] {category} ({confidence:.0%}) — {subject}")
+            _logger.info(f"  [STILL UNCLEAR → {QUARANTINE_FOLDER}] {category} ({confidence:.0%}) — {subject}")
         else:
             dest = CATEGORY_TO_FOLDER.get(category, NEEDS_REVIEW_FOLDER)
             rescued_moves[email_id] = dest
@@ -725,19 +784,19 @@ def _run_spam_review_pass(
 
     if confirmed_spam_ids:
         try:
-            deleted = delete_emails(
+            quarantined = move_emails(
                 server=server,
                 port=port,
                 email_address=email_address,
                 password=password,
-                email_ids=confirmed_spam_ids,
-                folder=SPAM_REVIEW_FOLDER,
+                email_moves={eid: QUARANTINE_FOLDER for eid in confirmed_spam_ids},
+                source_folder=SPAM_REVIEW_FOLDER,
                 id_to_message_id=review_id_to_mid,
             )
-            results["deleted"] = deleted
-            _logger.info(f"Spam review: permanently deleted {deleted} confirmed spam email(s)")
+            results["quarantined"] = quarantined
+            _logger.info(f"Spam review: moved {quarantined} unclear email(s) to {QUARANTINE_FOLDER}")
         except Exception as exc:
-            _logger.error(f"Spam review deletion failed: {exc}")
+            _logger.error(f"Spam review quarantine move failed: {exc}")
 
     if rescued_moves:
         try:
@@ -755,7 +814,7 @@ def _run_spam_review_pass(
         except Exception as exc:
             _logger.error(f"Spam review move failed: {exc}")
 
-    _logger.info(f"=== SPAM REVIEW COMPLETE — reviewed={results['reviewed']} deleted={results['deleted']} rescued={results['rescued']} ===")
+    _logger.info(f"=== SPAM REVIEW COMPLETE — reviewed={results['reviewed']} quarantined={results['quarantined']} rescued={results['rescued']} ===")
     _logger.info("")
     return results
 
@@ -1134,8 +1193,8 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
 
                 elif category == "Other":
                     # Potential spam — quarantine in Spam Review for a second look.
-                    # The next run's _run_spam_review_pass() will either delete it
-                    # permanently (if still classified as Other) or rescue it to the
+                    # The next run's _run_spam_review_pass() will either move it to
+                    # Quarantine (if still classified as Other) or rescue it to the
                     # correct folder (if it turns out to be something else).
                     stats["spam_deleted"] += 1  # counter name kept for backward compat
                     email_moves[email_data.get("email_id")] = SPAM_REVIEW_FOLDER
@@ -1259,7 +1318,7 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
         logger.info(
             f"Spam Review pass: "
             f"reviewed={sr.get('reviewed', 0)} "
-            f"deleted={sr.get('deleted', 0)} "
+            f"quarantined={sr.get('quarantined', 0)} "
             f"rescued={sr.get('rescued', 0)}"
         )
 

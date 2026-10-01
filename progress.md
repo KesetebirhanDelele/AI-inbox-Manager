@@ -17,6 +17,55 @@ Newest first.
 
 ---
 
+## 2026-10-01 — Interview sub-classifier wired in; spam pass quarantines instead of deleting
+
+**Status: built and tested locally, NOT yet deployed.** Branch `fix/subclassify-quarantine`.
+
+**Why:** Ali's review. Production DB (checked 2026-10-01, read-only) showed 50
+interview events: 30 `interview_request`, 20 `other`, zero phone/client/technical/
+cancelled/rescheduled/job-machine; `approvals` table empty; 5/5 students with no
+`assigned_gmail`, 44/50 events with no student; every draft used
+`interview_request_first`. Cause: `subclassify_interview` had no caller in the live
+path (only the unused orchestrator `process_interviews.py` imports it), and
+`parse_email_message` never captured headers, so `resolve_student` had nothing to
+read. Separately, the spam second pass `UID EXPUNGE`d "Other" mail (≈45–105
+deleted/day in the cron log).
+
+**Changes:**
+- `execution/process_inbox_auto.py`: new `_build_sub_classification` calls
+  `subclassify_interview` for interview-related categories (fallback to the old
+  category mapping on any failure; result tagged `sub_type_source` in
+  `raw_extraction`). New `_resolve_assigned_gmail` stores the header-derived
+  assigned Gmail on the student. `_run_spam_review_pass` now moves confirmed
+  "Other" to a new `Quarantine` label (never deletes); a failed re-classification
+  leaves the mail in `Spam Review`.
+- `execution/fetch_emails.py`: `parse_email_message` now returns `headers`
+  (recipient-related headers only, all values) and `to_addresses`.
+- `execution/resolve_student.py`: also reads `X-Forwarded-For`, `X-Gm-Original-To`.
+- `execution/notify_student.py`: `_build_classification_for_draft` takes the
+  sub-classification so the template follows the real sub-type.
+- `tests/execution/test_subclassify_and_quarantine.py`: 19 new tests.
+- `RUNBOOK.md` §3, §9: corrected (it claimed a sub-classify step that never ran).
+
+**Findings, not changed:**
+- The dashboard counter `process_runs.spam_deleted` counts mail *moved to Spam
+  Review*, not deleted; it overstates deletions and is now just a quarantine count.
+- 134 "Other" rows at confidence 0.0: the model itself returns 0.0 for Other
+  (`requires_manual_review` true in 740/810 live rows), so confidence is not a
+  usable signal for Other. 21 are migration backfill rows.
+- 20 events are non-interviews (Job Invite 13, Job Alert 5, ...) created via the
+  known-company safety path; "Interview Confirmation" and "Offer" are not in
+  `INTERVIEW_RELATED_CATEGORIES`, so they use the category fallback.
+- Real forwarded-header names were NOT verified against live mail (probe denied);
+  confirm `assigned_gmail` fills in after the first deployed runs.
+- 18 tests in `test_log_interview.py` fail on a clean tree too
+  (`No module named 'models'`) — pre-existing, unrelated.
+
+**Deferred:** approvals queue for confidence < 0.70 (P2, touches the review
+workflow); backfill of the 50 existing events; non-interview noise in events.
+
+---
+
 ## 2026-09-29 (late night) — Addressing the "small gaps" (#6) + no more pushes to master
 
 **Side effect avoided:** pushing `master` can trigger Vercel/Render rebuilds of the

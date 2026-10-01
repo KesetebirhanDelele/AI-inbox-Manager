@@ -28,6 +28,8 @@ RECIPIENT_HEADERS = [
     "X-Original-To",
     "Envelope-To",
     "X-Delivered-To",
+    "X-Forwarded-For",
+    "X-Gm-Original-To",
 ]
 
 # The central inbox that receives all forwarded emails

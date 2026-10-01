@@ -111,13 +111,20 @@ def _build_student_info_for_draft(student: Dict[str, Any]) -> Dict[str, Any]:
 def _build_classification_for_draft(
     classification: Dict[str, Any],
     email_data: Dict[str, Any],
+    sub_classification: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build a classification dict compatible with draft_notification."""
+    """Build a classification dict compatible with draft_notification.
+
+    When the interview sub-classifier ran, its type and flags pick the template.
+    Without it the draft falls back to the first-interview template.
+    """
     extracted = classification.get("extracted_data", {}) or {}
+    sub = sub_classification or {}
     return {
-        "interview_sub_type": "Interview Request",
-        "is_job_machine": False,
-        "is_next_round": False,
+        "interview_sub_type": sub.get("interview_sub_type") or "Interview Request",
+        "job_machine_sub_type": sub.get("job_machine_sub_type"),
+        "is_job_machine": bool(sub.get("is_job_machine", False)),
+        "is_next_round": bool(sub.get("is_next_round", False)),
         "company_name": extracted.get("company_name") or classification.get("company_name") or "",
         "position_title": extracted.get("position_title") or extracted.get("job_title") or "",
         "contact_name": extracted.get("contact_name") or extracted.get("sender_name") or "",

@@ -93,8 +93,10 @@ Entry point: `python execution/process_inbox_auto.py`
    overlapping runs.
 2. **Spam-review 2nd pass** (`_run_spam_review_pass`): fetch everything in the
    `Spam Review` Gmail folder (≤50), re-classify each:
-   - still `Other` / confidence < 0.70 / flagged spam → **permanently deleted**
-     (`delete_emails`, UID-scoped `UID EXPUNGE`)
+   - still `Other` / confidence < 0.70 / flagged spam → moved to the **`Quarantine`**
+     label (kept, recoverable; **nothing is deleted** since 2026-10-01 — before that
+     it was a UID-scoped `UID EXPUNGE`). A failed re-classification leaves the mail
+     in `Spam Review` for the next run.
    - turns out legit → **rescued** to its real category folder
 3. **Fetch INBOX**: `UNSEEN` only, **newest-first**, capped at
    `MAX_EMAILS_PER_RUN` (default **100**). Handles are **IMAP UIDs**.
@@ -112,8 +114,12 @@ Entry point: `python execution/process_inbox_auto.py`
 7. **Apply actions** (sequential) per email:
    - **Genuine interview request** OR **sender/company in `KNOWN_INTERVIEW_COMPANIES`**
      → **kept in INBOX, untouched**. Imported to DB; `process_interview_email()`
-     runs: sub-classify → create `InterviewEvent` → resolve student from
-     `config/students.py` → create a **`NotificationDraft`** (NOT auto-sent).
+     runs: sub-classify (`subclassify_interview`, wired in 2026-10-01; falls back to
+     the primary category if the call fails — before that date NO sub-classifier
+     ran and every event inherited the primary label) → create `InterviewEvent` →
+     resolve student from `config/students.py` (assigned Gmail read from the
+     forwarding headers captured by `fetch_emails`) → create a
+     **`NotificationDraft`** using the template for the sub-type (NOT auto-sent).
    - **`Other`** → quarantine: apply label `Spam Review`, remove from inbox,
      import to DB.
    - **Everything else** → organize: `CATEGORY_TO_FOLDER` map; if confidence <
@@ -492,14 +498,14 @@ no trailing slash).
   match on company / sender / subject forces "keep in INBOX" even if the AI
   misclassifies.
 - **Confidence gate** — < 0.70 routes to `Needs Review`, never the target folder.
-- **Two-pass spam** — `Other` is quarantined in `Spam Review`, only deleted after
+- **Two-pass spam** — `Other` is held in `Spam Review`, then (since 2026-10-01) moved to `Quarantine` after
   a second AI confirmation on the next run.
 - **Cost guardrails** — pre-run estimate abort + post-run actual-cost skip of
   Gmail mutations. Env: `MAX_COST_PER_RUN_USD` (default 5.0).
 - **Batch ceiling** — `MAX_EMAILS_PER_RUN` (default 100).
-- **Label-only organize path** — cannot permanently delete mail; the only hard
-  delete is the confirmed-spam purge, and it is UID-scoped (`UID EXPUNGE`), never
-  a blind `expunge()`.
+- **Label-only organize path** — cannot permanently delete mail. Since 2026-10-01
+  the spam pass quarantines instead of purging, so the pipeline no longer deletes
+  mail anywhere (`delete_emails` is still used by the dashboard's manual delete).
 - **UID + Message-ID addressing** — moves/deletes can't hit the wrong message
   when sequence numbers shift (see changelog 2026-09-08).
 - **Failure alerts** — `send_failure_alert()` → `ALERT_EMAIL_TO` on fatal errors

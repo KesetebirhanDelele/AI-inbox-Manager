@@ -613,6 +613,42 @@ def extract_email_body(msg: Message) -> str:
         return ""
 
 
+# Headers that can reveal which student's Gmail forwarded a message to the
+# central inbox. Only these are kept; the full header block is never stored.
+_RECIPIENT_HEADER_NAMES = (
+    "Delivered-To", "X-Forwarded-To", "X-Original-To", "Envelope-To",
+    "X-Delivered-To", "X-Forwarded-For", "X-Gm-Original-To",
+)
+
+
+def extract_recipient_headers(msg) -> Tuple[Dict[str, str], List[str]]:
+    """
+    Pull the recipient-related headers and To/Cc addresses from a parsed message.
+
+    A forwarded message can carry several values for one header (for example one
+    Delivered-To per hop), so every value is kept, joined by spaces, and
+    resolve_student picks the first non-central address.
+
+    Returns:
+        (headers, to_addresses). Both are empty when nothing is present.
+    """
+    from email.utils import getaddresses
+
+    headers: Dict[str, str] = {}
+    for name in _RECIPIENT_HEADER_NAMES:
+        values = msg.get_all(name) or []
+        joined = " ".join(str(v) for v in values).strip()
+        if joined:
+            headers[name] = joined
+
+    to_addresses = [
+        addr.strip()
+        for _, addr in getaddresses((msg.get_all("To") or []) + (msg.get_all("Cc") or []))
+        if addr and addr.strip()
+    ]
+    return headers, to_addresses
+
+
 def parse_email_message(raw_email: bytes, email_id: str) -> Dict[str, Any]:
     """
     Parse raw email into structured format.
@@ -661,8 +697,11 @@ def parse_email_message(raw_email: bytes, email_id: str) -> Dict[str, Any]:
 
         # Extract body
         body_content = extract_email_body(msg)
+        recipient_headers, to_addresses = extract_recipient_headers(msg)
 
         return {
+            "headers": recipient_headers,
+            "to_addresses": to_addresses,
             "subject": subject,
             "sender_email": sender_email,
             "sender_name": sender_name,
