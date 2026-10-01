@@ -5,7 +5,7 @@
 > file first**, then run the checks in [§14 "Verify this doc is still current"](#14-verify-this-doc-is-still-current)
 > before trusting any older notes, chat history, or memory.
 >
-> **Last verified: 2026-09-29 20:15 UTC** — production moved to a **Hetzner
+> **Last verified: 2026-10-01 15:50 UTC** (git workflow, deploy state, health check) — production moved to a **Hetzner
 > server** (§4c). The first scheduled run there fired at 20:00:01 UTC (1 s late,
 > vs 9–34 min late on GitHub Actions). §1–§4, §8, §10 and §12 below still
 > describe the previous GitHub Actions / Render / Vercel / Neon setup, which is
@@ -370,6 +370,22 @@ processing or call the Render hook), and the only remaining side effect is Verce
 Git link rebuilding the **frozen fallback frontend** from `master`. That is harmless and
 accepted. Never run the GitHub Actions cron and the Hetzner `cron` at the same time.
 
+**Git workflow (revised 2026-10-01, replaces "commit to `feat/hetzner-deployment`").**
+1. `git checkout master && git pull`, then `git checkout -b <short-lived-branch>` (ask Kes first).
+2. Make the change, run `python -m pytest tests -q`, update `progress.md` (and this file if
+   infra changed).
+3. Merge into `master` (fast-forward where possible, never force-push) and
+   `git push origin master`. Then delete the branch locally and on `origin`.
+4. From `master`: `scripts/deploy_hetzner.sh --dry-run`, then `scripts/deploy_hetzner.sh`
+   (add `--build-web` if `frontend/` changed). Check the health endpoint and the next run.
+5. Confirm `git status` is clean, `master` equals `origin/master`, no stray branches, and
+   `/opt/ai-inbox-manager/.deployed_commit` equals `git rev-parse --short master`.
+
+Why: Kes is the sole developer and Ali reviews Kes's GitHub account, so `master` on
+`origin` must always be what is running. Old branches are kept only as tags
+(`archive/feat-hetzner-deployment`, `archive/chore-cap-major-version-pins`); both are
+fully contained in `master`. List them with `git tag -l "archive/*"`.
+
 **Rollback to the previous system:** `docker compose ... stop cron`, then
 `gh workflow enable process_inbox.yml`. Neon only has data up to 2026-09-29
 18:44 UTC, so the Render/Vercel dashboard would be stale until it catches up.
@@ -684,6 +700,13 @@ Render (see `progress.md` open item 5).
 
 ## 16. Changelog (infra / architecture only)
 
+- **2026-10-01 (this fork)** — **Git workflow changed: `master` is the working line and
+  what is deployed.** Previously work lived on `feat/hetzner-deployment` and `master` was
+  frozen. `feat/hetzner-deployment` and `chore/cap-major-version-pins` were tagged
+  `archive/*` and deleted; `master` is deployed (`.deployed_commit` == `master`). Also this
+  day: interview sub-classifier wired into the live path, spam pass quarantines instead of
+  deleting, approvals queue, daily health check (`/etc/cron.d/inboxgenius-health`) — see
+  `progress.md` for the detail.
 - **2026-09-29 (this fork)** — **Production moved to Hetzner.** Server
   `2.29.47.89` (CPX22); stack in `docker-compose.prod.yml`; data migrated from
   Neon (row counts verified identical); all four GitHub workflows disabled; the

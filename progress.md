@@ -77,6 +77,16 @@ auto-sent, but decide which signal wins.
   with the real sub-classifier. Dry-run by default; old value kept in
   `raw_extraction.previous_sub_type`.
 
+**Branch cleanup + dependency caps, same day:** `feat/hetzner-deployment` and
+`chore/cap-major-version-pins` were archived as annotated tags (`archive/*`) and deleted
+locally and on `origin`; `master` is the only branch. The dependency-cap commit (5a75651)
+was re-applied to `master` through the new workflow (branch → tests → merge). Two changes
+from the original commit: `requirements.phase1.txt` stays deleted (removed earlier as a
+duplicate), and the **openai cap was corrected from `<2.0.0` to `<4.0.0`** because the cron
+container actually runs openai 3.21.0 (google-api-python-client 2.200.0 is fine under
+`<3.0.0`); `<2.0.0` would have silently downgraded production at the next image rebuild.
+RUNBOOK §4c now has the explicit revised git workflow and §16 a changelog entry.
+
 **Workflow change, same day (Kes):** `master` is now the single source of truth: work on a
 short-lived branch, verify, merge into `master`, push `master`, delete the branch, deploy
 from `master`. Reason: Ali reviews Kes's GitHub account. `CLAUDE.md` rule rewritten (it
