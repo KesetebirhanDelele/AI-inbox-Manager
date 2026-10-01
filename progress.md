@@ -77,6 +77,14 @@ auto-sent, but decide which signal wins.
   with the real sub-classifier. Dry-run by default; old value kept in
   `raw_extraction.previous_sub_type`.
 
+**Workflow change, same day (Kes):** `master` is now the single source of truth: work on a
+short-lived branch, verify, merge into `master`, push `master`, delete the branch, deploy
+from `master`. Reason: Ali reviews Kes's GitHub account. `CLAUDE.md` rule rewritten (it
+previously said `feat/hetzner-deployment` was the working line); `RUNBOOK.md` §4c updated
+(the "never push to `master`" rule is lifted; checked that all four workflows are disabled,
+so the only side effect is Vercel rebuilding the frozen fallback frontend). `master` was
+brought up to date by fast-forward from `feat/hetzner-deployment`.
+
 **Process rule, same day:** added "Keep git, the repo and the server identical" to
 `CLAUDE.md` at Kes's request (sole developer): no new branches without asking, any
 stray branch is merged/pushed/deleted locally and on `origin` in the same session, and

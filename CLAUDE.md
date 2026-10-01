@@ -54,34 +54,41 @@ follow-up. Read `progress.md` before starting new work, the same way you read
 
 ---
 
-## ⚠️ Keep git, the repo and the server identical
+## ⚠️ `master` is the single source of truth: verify, merge, keep everything identical
 
-Kes is the **only developer**. There is one line of work (`feat/hetzner-deployment`,
-see [RUNBOOK.md §4c](RUNBOOK.md); `master` stays frozen) and nothing may drift from it.
+Kes is the **only developer**, and Ali monitors Kes's GitHub account
+(`KesetebirhanDelele/AI-inbox-Manager`, `origin`) to review what is deployed. So
+`master` on `origin` must always be what is running in production. This replaces the
+earlier "work on `feat/hetzner-deployment`, `master` stays frozen" arrangement
+(owner decision 2026-10-01; see [RUNBOOK.md §4c](RUNBOOK.md)).
 
-- **Do not create a new branch without asking Kes first.** If a branch is created
-  anyway (even a throwaway), it is Claude's job to clean it up in the same session:
-  merge it into the working branch, push, then delete it locally **and** on `origin`.
-  Never leave a stray branch behind. Say in the final message that it was created
-  and removed.
-- **Before finishing any task that touched code, confirm all three match:**
-  1. working tree clean (no uncommitted files),
-  2. local branch == `origin/<branch>` (nothing unpushed or unpulled),
-  3. if the change was deployed, `/opt/ai-inbox-manager/.deployed_commit` == local `HEAD`.
+**Workflow for every change:**
+1. Work on a short-lived branch cut from `master` (ask Kes first unless Kes already told
+   you to work on one). Never leave work on `master` half-done.
+2. Verify on the branch: tests pass, and for anything deployed, check it on the server.
+3. When verified, **merge into `master` and push `master`** (fast-forward where
+   possible; never force-push). Then delete the branch locally **and** on `origin`.
+4. Deploy from `master` (`scripts/deploy_hetzner.sh`), so the server runs a `master` commit.
 
-  ```bash
-  git status --short                                              # expect empty
-  git fetch -q && git rev-list --left-right --count HEAD...origin/$(git branch --show-current)   # expect 0 0
-  ssh -i ~/.ssh/hetzner_ai_inbox root@2.29.47.89 'cat /opt/ai-inbox-manager/.deployed_commit'   # expect = git rev-parse --short HEAD
-  ```
-- Report the result of that check to Kes at the end of the task. If any of the three
-  cannot match yet (for example Kes has not approved a commit under the Pre-Ship
-  Debrief rule, or a change is built but intentionally not deployed), say exactly which
-  one differs and why. Never leave the difference unmentioned.
-- Never push to `master` (RUNBOOK §4c) or to the upstream repository
-  (`Ojobo1800/AI-inbox-Manager`); only to Kes's own fork (`origin`).
-- Pre-existing branches Claude did not create this session are not Claude's to delete;
-  list them for Kes instead.
+**Before finishing any task that touched code, confirm all of these match and report them
+to Kes:**
+- working tree clean (no uncommitted files),
+- local `master` == `origin/master` (nothing unpushed or unpulled),
+- no stray branches left behind (list any that exist),
+- if deployed, `/opt/ai-inbox-manager/.deployed_commit` == `master` `HEAD`.
+
+```bash
+git status --short                                                  # expect empty
+git fetch -q --prune && git rev-list --left-right --count master...origin/master   # expect 0 0
+git branch -a                                                       # expect only master (+ the one in-flight branch)
+ssh -i ~/.ssh/hetzner_ai_inbox root@2.29.47.89 'cat /opt/ai-inbox-manager/.deployed_commit'   # expect = git rev-parse --short master
+```
+
+- If one cannot match yet (for example Kes has not approved a commit under the Pre-Ship
+  Debrief rule, or a change is built but intentionally not merged/deployed), say exactly
+  which one differs and why. Never leave a difference unmentioned.
+- Never push to the upstream repository (`Ojobo1800/AI-inbox-Manager`); only to `origin`.
+- Branches Claude did not create are not Claude's to delete; list them for Kes instead.
 
 ---
 

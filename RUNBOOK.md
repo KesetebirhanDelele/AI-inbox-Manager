@@ -345,7 +345,7 @@ nothing is lost). Deploy between `:10` and `:55` past an even UTC hour, and chec
 `grep -c "fetch_emails - ERROR" logs/cron.log` afterwards. If a run was hurt,
 run one manually (command above) once the server is idle.
 
-**Deploying a code change:** commit to `feat/hetzner-deployment` and run
+**Deploying a code change:** merge the verified branch into `master`, push `master`, check out `master` and run
 
 ```bash
 scripts/deploy_hetzner.sh --dry-run         # safety checks only, changes nothing
@@ -361,10 +361,14 @@ records the commit in `/opt/ai-inbox-manager/.deployed_commit`.
 Python changes under `execution/` need no restart — the next scheduled run
 picks them up.
 
-**Do not push to `master` until Render/Vercel/Neon are retired** (owner decision
-2026-09-29): pushes to `master` can trigger Vercel/Render rebuilds of the frozen
-fallback stack. There are no PRs — this is a solo project — so `master` stays at
-`24443cf` for now and the branch is the working line.
+**`master` is the working line (changed 2026-10-01).** Kes is the sole developer and Ali
+reviews Kes's GitHub account, so verified work is merged into `master` and pushed, and
+production is deployed from `master` (see CLAUDE.md). The earlier "never push to
+`master`" rule (2026-09-29) existed because a push could rebuild the frozen fallback
+stack. Checked 2026-10-01: all four GitHub workflows are disabled (so nothing can start
+processing or call the Render hook), and the only remaining side effect is Vercel's own
+Git link rebuilding the **frozen fallback frontend** from `master`. That is harmless and
+accepted. Never run the GitHub Actions cron and the Hetzner `cron` at the same time.
 
 **Rollback to the previous system:** `docker compose ... stop cron`, then
 `gh workflow enable process_inbox.yml`. Neon only has data up to 2026-09-29
