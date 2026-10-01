@@ -40,7 +40,7 @@ const WeeklySummary = () => {
     { label: 'Emails Processed', value: data.total_emails_processed, color: 'text-blue-600' },
     { label: 'Interview Requests', value: data.interview_requests_found, color: 'text-green-600' },
     { label: 'Emails Organized', value: data.emails_organized, color: 'text-indigo-600' },
-    { label: 'Spam Deleted', value: data.spam_deleted, color: 'text-red-500' },
+    { label: 'Quarantined', value: data.spam_deleted, color: 'text-red-500' },
     { label: 'Processing Runs', value: data.processing_runs, color: 'text-gray-600' },
     { label: 'Successful Runs', value: data.successful_runs, color: 'text-emerald-600' },
     { label: 'Students Notified', value: data.students_notified, color: 'text-purple-600' },

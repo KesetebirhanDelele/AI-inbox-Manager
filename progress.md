@@ -77,9 +77,26 @@ auto-sent, but decide which signal wins.
   with the real sub-classifier. Dry-run by default; old value kept in
   `raw_extraction.previous_sub_type`.
 
-**Deferred:** non-interview noise in events (Job Invite/Job Alert via the
-known-company path); which signal wins for student identity (above); pushing to the
-Colaberry GitHub org (needs Kes/Ali decision on the destination repo).
+**Third change, same day (student identity, event noise, counter label):**
+- **Identity rule (headers win, conflicts flagged):** new `_identify_student`. A
+  header Gmail already recorded as a student's assigned Gmail picks that student
+  even if the body names someone else. Otherwise the name lookup is used and the
+  header Gmail is saved only if the student's name appears in it and it does not
+  overwrite a different Gmail; a mismatch is logged ("Student identity
+  unconfirmed") and nothing is saved. Production data fix: the Gmail wrongly saved
+  on the "Alisha" record by the first deploy was cleared.
+- **Event noise:** `creates_interview_event` — a Job Invite/Job Alert/Application
+  Notification from a known interview company is still kept in the inbox but no
+  longer creates an `InterviewEvent`. Existing noise rows (20) were NOT deleted.
+  "Offer" no longer creates an event either.
+- **Counter label:** `process_runs.spam_deleted` actually counts mail moved to
+  Spam Review. The column keeps its name (renaming needs a migration); dashboard
+  labels now say "Quarantined".
+- 17 more tests (43 in `test_subclassify_and_quarantine.py`).
+
+**Deferred:** the 20 existing noise events (decide: delete or keep); pushing to the
+Colaberry GitHub org (needs Kes/Ali decision on the destination repo); Gmail drafts
+for Rob (waiting on Ali's answer on how Rob notifies students).
 
 ---
 

@@ -26,6 +26,7 @@ Configuration:
 import json
 import logging
 import os
+import re
 import sys
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
@@ -528,6 +529,74 @@ def _resolve_assigned_gmail(email_data: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def creates_interview_event(classification: Dict[str, Any]) -> bool:
+    """
+    True when the email is about an interview and should get an InterviewEvent.
+
+    Mail from a known interview company is always kept in the inbox as a safety
+    net, but a Job Alert or Job Invite from such a company is not an interview,
+    so it must not create an event (20 of 50 events were this noise on 2026-10-01).
+    """
+    if is_genuine_interview_request(classification):
+        return True
+    return classification.get("category", "") in _CATEGORY_TO_SUB_TYPE
+
+
+def _name_matches_gmail(full_name: str, gmail: str) -> bool:
+    """Loose check: some word (3+ letters) of the name appears in the Gmail's local part."""
+    local = (gmail or "").split("@")[0].lower()
+    words = [w for w in re.split(r"[^a-z]+", (full_name or "").lower()) if len(w) >= 3]
+    return any(w in local for w in words)
+
+
+def _identify_student(db, email_data: Dict[str, Any], classification: Dict[str, Any]):
+    """
+    Work out which student an interview email is for.
+
+    Forwarding headers win: if the header Gmail is already recorded as a
+    student's assigned Gmail, that student is used even when the body names
+    someone else. Otherwise the student comes from the name lookup, and the
+    header Gmail is only saved onto that student when it plausibly belongs to
+    them (name appears in the Gmail) and does not overwrite a different Gmail.
+    A disagreement is logged and nothing is guessed.
+
+    Returns:
+        (student_config or None, assigned_gmail_to_store or None)
+    """
+    log = logging.getLogger(__name__)
+    from models import Student
+    from notify_student import _get_student_info
+
+    header_gmail = _resolve_assigned_gmail(email_data)
+
+    if header_gmail:
+        owner = db.query(Student).filter(Student.assigned_gmail == header_gmail).first()
+        if owner:
+            from fetch_students_sheet import find_student_by_name
+            config = find_student_by_name(owner.full_name or "")
+            if config:
+                return config, header_gmail
+            log.warning(f"Header Gmail belongs to student id={owner.id} but they are not in config; using name lookup")
+
+    config = _get_student_info(classification, email_data)
+    if not config or not header_gmail:
+        return config, None
+
+    if not _name_matches_gmail(config["name"], header_gmail):
+        log.warning(
+            f"Student identity unconfirmed: body names '{config['name']}' but the forwarding "
+            f"header Gmail does not match; assigned Gmail not saved"
+        )
+        return config, None
+
+    username = config["name"].lower().replace(" ", ".")
+    existing = db.query(Student).filter(Student.username == username).first()
+    if existing and existing.assigned_gmail and existing.assigned_gmail != header_gmail:
+        log.warning(f"Student '{config['name']}' already has a different assigned Gmail; not overwriting")
+        return config, None
+    return config, header_gmail
+
+
 def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classification: Dict[str, Any]) -> bool:
     """
     Process an interview email through the sub-classification pipeline.
@@ -563,7 +632,7 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
         try:
             from notify_student import _get_student_info, _build_student_info_for_draft, _build_classification_for_draft
 
-            student_config = _get_student_info(classification, email_data)
+            student_config, assigned_gmail = _identify_student(db, email_data, classification)
             if student_config:
                 # Derive a stable username: "First Last" → "first.last"
                 username = student_config["name"].lower().replace(" ", ".")
@@ -572,7 +641,7 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
                     username=username,
                     full_name=student_config["name"],
                     personal_email=student_config.get("personal_email"),
-                    assigned_gmail=_resolve_assigned_gmail(email_data),
+                    assigned_gmail=assigned_gmail,
                     phone_number=student_config.get("phone"),
                 )
                 student_id = student_db["id"]
@@ -1223,7 +1292,9 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
                             logger.info(f"[{idx}/{len(emails)}] [ALREADY PROCESSED] - {email_subject}")
 
                         if email_db_id:
-                            if is_new_email and process_interview_email(email_data, email_db_id, classification):
+                            if is_new_email and not creates_interview_event(classification):
+                                logger.info(f"              [NO INTERVIEW EVENT: category '{category}' is not an interview]")
+                            elif is_new_email and process_interview_email(email_data, email_db_id, classification):
                                 logger.info(f"              [INTERVIEW EVENT CREATED]")
                             elif not is_new_email:
                                 pass  # Already processed, skip

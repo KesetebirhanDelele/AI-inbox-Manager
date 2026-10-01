@@ -221,3 +221,96 @@ def test_queue_for_review_writes_one_pending_row(monkeypatch):
     assert pia._queue_for_review(db, email.id, cls.id, "Rejection", 0.95) is False
     rows = db.query(models.Approval).all()
     assert len(rows) == 1 and rows[0].status == "pending"
+
+
+# ── 6. only interviews create interview events ───────────────────────────────
+
+@pytest.mark.parametrize("category, confidence, creates", [
+    ("Interview Request", 0.9, True),
+    ("Phone Screen", 0.9, True),
+    ("Interview Cancelled", 0.5, True),
+    ("Interview Confirmation", 0.9, True),
+    ("Job Invite", 0.95, False),          # known-company mail that is not an interview
+    ("Job Alert", 0.95, False),
+    ("Application Notification", 0.9, False),
+    ("Other", 0.0, False),
+])
+def test_creates_interview_event(category, confidence, creates):
+    assert pia.creates_interview_event(_cls(category=category, confidence=confidence)) is creates
+
+
+# ── 7. student identity: headers win, disagreements are flagged ──────────────
+
+@pytest.mark.parametrize("name, gmail, ok", [
+    ("Alisha", "sehrishkhan.hjim@gmail.com", False),
+    ("Sehrish Khan", "sehrishkhan.hjim@gmail.com", True),
+    ("Emmanuel Okoro", "e.okoro.work@gmail.com", True),
+    ("Jo Li", "someone@gmail.com", False),          # words under 3 letters ignored
+])
+def test_name_matches_gmail(name, gmail, ok):
+    assert pia._name_matches_gmail(name, gmail) is ok
+
+
+@pytest.fixture
+def identity_db(monkeypatch):
+    api_dir = _EXECUTION_DIR.parents[0] / "services" / "dashboard" / "api"
+    monkeypatch.syspath_prepend(str(api_dir))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import models
+    engine = create_engine("sqlite://")
+    models.Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)(), models
+
+
+def _fwd(gmail):
+    return _email(headers={"Delivered-To": f"c_interviews@colaberry.com {gmail}"})
+
+
+def _patch_lookup(monkeypatch, by_name=None, by_config=None):
+    monkeypatch.setattr(notify_student, "_get_student_info", lambda c, e: by_name)
+    import fetch_students_sheet
+    monkeypatch.setattr(fetch_students_sheet, "find_student_by_name", lambda n: by_config)
+
+
+def test_identity_conflict_does_not_save_the_gmail(monkeypatch, identity_db):
+    db, _ = identity_db
+    _patch_lookup(monkeypatch, by_name={"name": "Alisha", "personal_email": "a@x.com"})
+    cfg, gmail = pia._identify_student(db, _fwd("sehrishkhan.hjim@gmail.com"), _cls())
+    assert cfg["name"] == "Alisha" and gmail is None
+
+
+def test_identity_saves_gmail_when_name_plausibly_matches(monkeypatch, identity_db):
+    db, _ = identity_db
+    _patch_lookup(monkeypatch, by_name={"name": "Sehrish Khan", "personal_email": "s@x.com"})
+    cfg, gmail = pia._identify_student(db, _fwd("sehrishkhan.hjim@gmail.com"), _cls())
+    assert gmail == "sehrishkhan.hjim@gmail.com"
+
+
+def test_header_owner_wins_over_body_name(monkeypatch, identity_db):
+    db, models = identity_db
+    db.add(models.Student(username="sehrish.khan", full_name="Sehrish Khan",
+                          assigned_gmail="sehrishkhan.hjim@gmail.com", is_active=True))
+    db.commit()
+    owner_cfg = {"name": "Sehrish Khan", "personal_email": "s@x.com"}
+    _patch_lookup(monkeypatch, by_name={"name": "Alisha"}, by_config=owner_cfg)
+    cfg, gmail = pia._identify_student(db, _fwd("sehrishkhan.hjim@gmail.com"), _cls())
+    assert cfg is owner_cfg and gmail == "sehrishkhan.hjim@gmail.com"
+
+
+def test_existing_different_gmail_is_not_overwritten(monkeypatch, identity_db):
+    db, models = identity_db
+    db.add(models.Student(username="sehrish.khan", full_name="Sehrish Khan",
+                          assigned_gmail="old.sehrish@gmail.com", is_active=True))
+    db.commit()
+    _patch_lookup(monkeypatch, by_name={"name": "Sehrish Khan"})
+    cfg, gmail = pia._identify_student(db, _fwd("sehrishkhan.hjim@gmail.com"), _cls())
+    assert gmail is None
+
+
+def test_no_headers_falls_back_to_name_without_saving_a_gmail(monkeypatch, identity_db):
+    db, _ = identity_db
+    _patch_lookup(monkeypatch, by_name={"name": "Sehrish Khan"})
+    cfg, gmail = pia._identify_student(db, _email(), _cls())
+    assert cfg["name"] == "Sehrish Khan" and gmail is None
