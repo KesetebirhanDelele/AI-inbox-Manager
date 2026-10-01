@@ -77,6 +77,15 @@ auto-sent, but decide which signal wins.
   with the real sub-classifier. Dry-run by default; old value kept in
   `raw_extraction.previous_sub_type`.
 
+**Queue noise + health heartbeat, same day:** run #158 proved the review queue on real mail
+(7 queued) but all 7 were noise at a flat 0.65: 4 bare LinkedIn job links forwarded by
+students and 3 identical Skool "1 event happening tomorrow" reminders. Added two
+deterministic sender rules in `pre_classify_by_sender` (skool.com → Other; subject that is
+just a `linkedin.com/jobs/` URL → Job Alert) so they never reach the model or the queue.
+The queue threshold is unchanged (0.70; "Other" at exactly 0.0 still excluded). The health
+check now also emails an "all clear" every Monday: a healthy run is silent, so without it a
+dead check looks the same as a healthy one. 10 more tests (499 pass).
+
 **Branch cleanup + dependency caps, same day:** `feat/hetzner-deployment` and
 `chore/cap-major-version-pins` were archived as annotated tags (`archive/*`) and deleted
 locally and on `origin`; `master` is the only branch. The dependency-cap commit (5a75651)

@@ -132,3 +132,16 @@ def test_classifications_before_the_queue_existed_are_not_counted(monkeypatch):
     db.commit()
     now = hc.QUEUE_ACTIVE_SINCE + timedelta(hours=1)
     assert hc.collect_metrics(db, "", now)["approvals_missing"] == 0
+
+
+def test_weekly_all_clear_is_sent_on_monday_even_when_healthy():
+    monday, tuesday = datetime(2026, 10, 5, 7, 30), datetime(2026, 10, 6, 7, 30)
+    assert monday.weekday() == hc.WEEKLY_ALL_CLEAR_WEEKDAY
+    assert hc.should_email([], monday) is True
+    assert hc.should_email([], tuesday) is False          # healthy and not Monday: stay quiet
+
+
+def test_problems_and_explicit_requests_always_email():
+    tuesday = datetime(2026, 10, 6, 7, 30)
+    assert hc.should_email([hc.Finding("CRITICAL", "x", "y")], tuesday) is True
+    assert hc.should_email([], tuesday, always=True) is True

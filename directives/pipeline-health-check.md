@@ -11,7 +11,7 @@ the spam deletion all failed or misbehaved for days unnoticed.
 
 ## Outputs
 - A printed report (HEALTHY or UNHEALTHY with reasons)
-- An email through `alert.py` only when something is wrong (`--always` also emails when healthy)
+- An email through `alert.py` when something is wrong, plus one "all clear" email every Monday (so a silently dead check cannot pass for a healthy one). `--always` also emails when healthy.
 
 ## Checks (last 24 hours)
 | Severity | Check | Fires when |
@@ -34,6 +34,8 @@ the spam deletion all failed or misbehaved for days unnoticed.
 - Rates are ignored below 3 events, so a quiet day does not raise a false alarm.
 - The deletion check ignores log lines before the fix date; move `NO_DELETE_SINCE`
   only if the pipeline is deliberately changed to delete again.
+- A healthy day is silent on purpose; the Monday email is the heartbeat. If no Monday email
+  arrives, the check itself has stopped: look at `logs/health.log` and `/etc/cron.d/inboxgenius-health`.
 - The script never writes to the database or Gmail and never sends to students.
 
 ## Related

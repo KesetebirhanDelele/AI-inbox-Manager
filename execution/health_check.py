@@ -15,7 +15,7 @@ Checks (window: last 24 hours):
   WARNING   student matching         share of events with no student attached
 
 Usage (inside the cron container, as appuser):
-    python execution/health_check.py            # print report, email only if unhealthy
+    python execution/health_check.py            # print report; email if unhealthy, plus a weekly Monday all-clear
     python execution/health_check.py --always   # also email when healthy
 """
 
@@ -44,6 +44,10 @@ NO_DELETE_SINCE = datetime(2026, 10, 1, 14, 0, 0)
 # The approvals queue went live at the 2026-10-01 13:55 UTC deploy; classifications
 # made before it were never going to be queued.
 QUEUE_ACTIVE_SINCE = datetime(2026, 10, 1, 13, 55, 0)
+
+# A healthy check stays silent, so a dead check would look the same as a healthy one.
+# One "all clear" email a week (Monday) proves the check itself is still running.
+WEEKLY_ALL_CLEAR_WEEKDAY = 0     # Monday
 
 MAX_RUN_AGE_HOURS = 3.0         # runs are every 2 hours
 MIN_EVENTS_FOR_RATES = 3         # a rate over 1-2 events is noise
@@ -184,6 +188,11 @@ def format_report(findings: List[Finding], m: Dict[str, Any], now: datetime) -> 
     return f"{head}  ({now:%Y-%m-%d %H:%M} UTC)\n\n{body}\n\nNumbers:\n{numbers}\n"
 
 
+def should_email(findings: List[Finding], now: datetime, always: bool = False) -> bool:
+    """Email on any problem, on request, and once a week even when healthy."""
+    return bool(findings) or always or now.weekday() == WEEKLY_ALL_CLEAR_WEEKDAY
+
+
 def run(always_email: bool = False, now: Optional[datetime] = None) -> List[Finding]:
     from process_inbox_auto import get_db_session
 
@@ -197,7 +206,7 @@ def run(always_email: bool = False, now: Optional[datetime] = None) -> List[Find
     report = format_report(findings, metrics, now)
     print(report)
 
-    if findings or always_email:
+    if should_email(findings, now, always_email):
         from alert import send_failure_alert
         subject = "Health check: problems found" if findings else "Health check: all clear"
         sent = send_failure_alert(subject, report)

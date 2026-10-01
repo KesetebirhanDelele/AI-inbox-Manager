@@ -314,3 +314,18 @@ def test_no_headers_falls_back_to_name_without_saving_a_gmail(monkeypatch, ident
     _patch_lookup(monkeypatch, by_name={"name": "Sehrish Khan"})
     cfg, gmail = pia._identify_student(db, _email(), _cls())
     assert cfg["name"] == "Sehrish Khan" and gmail is None
+
+
+# ── 8. sender rules for the two noisiest queue items ─────────────────────────
+
+@pytest.mark.parametrize("sender, subject, expected", [
+    ("noreply@skool.com", "1 event happening tomorrow", "Other"),
+    ("hello@mail.skool.com", "Your weekly digest", "Other"),
+    ("student@gmail.com", "https://www.linkedin.com/jobs/view/4465614631/", "Job Alert"),
+    ("student@gmail.com", "Fwd: https://www.linkedin.com/jobs/view/1/", None),   # not a bare link
+    ("hr@notskool.com", "Interview next week", None),                           # look-alike domain
+    ("hr@skoolcity.com", "Interview next week", None),
+    ("recruiter@acme.com", "Interview request: Data Analyst", None),             # real mail still goes to the model
+])
+def test_sender_rules(sender, subject, expected):
+    assert pia.pre_classify_by_sender({"sender_email": sender, "subject": subject, "body_content": ""}) == expected

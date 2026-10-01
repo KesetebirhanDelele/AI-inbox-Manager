@@ -1583,6 +1583,17 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     if any(d in from_addr for d in JOB_BOARD_DOMAINS):
         return "Job Alert"
 
+    # ── Community platform reminders (Skool) — never interview-related ───────
+    # 2026-10-01: "1 event happening tomorrow" reminders were landing in the review
+    # queue at 0.65 because the model had no category for them.
+    if re.search(r"@(?:[\w-]+\.)*skool\.com(?![\w-])", from_addr):
+        return "Other"
+
+    # ── Bare LinkedIn job links — a student forwarding a posting, not an interview ─
+    # Subject is just the URL, so there is no interview context for the model to find.
+    if subject.strip().startswith("http") and "linkedin.com/jobs/" in subject:
+        return "Job Alert"
+
     # ── Social media / entertainment notifications — never interview-related ─
     SOCIAL_DOMAINS = [
         "@tiktok.com", "@facebookmail.com", "@instagram.com", "@twitter.com",
