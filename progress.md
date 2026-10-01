@@ -77,6 +77,14 @@ auto-sent, but decide which signal wins.
   with the real sub-classifier. Dry-run by default; old value kept in
   `raw_extraction.previous_sub_type`.
 
+**Process rule, same day:** added "Keep git, the repo and the server identical" to
+`CLAUDE.md` at Kes's request (sole developer): no new branches without asking, any
+stray branch is merged/pushed/deleted locally and on `origin` in the same session, and
+every code task ends by confirming clean tree, local == origin, and
+`.deployed_commit` == `HEAD`. Applied immediately: the throwaway branch
+`fix/subclassify-quarantine` (created without asking; 0 unique commits) was deleted
+locally and on the fork.
+
 **Fourth change, same day (health check):** new `execution/health_check.py` (+ 15
 tests, `directives/pipeline-health-check.md`, `execution/crontab.health`). Daily,
 read-only; emails only when an invariant breaks (see the directive). Installed on the

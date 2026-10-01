@@ -54,6 +54,37 @@ follow-up. Read `progress.md` before starting new work, the same way you read
 
 ---
 
+## ⚠️ Keep git, the repo and the server identical
+
+Kes is the **only developer**. There is one line of work (`feat/hetzner-deployment`,
+see [RUNBOOK.md §4c](RUNBOOK.md); `master` stays frozen) and nothing may drift from it.
+
+- **Do not create a new branch without asking Kes first.** If a branch is created
+  anyway (even a throwaway), it is Claude's job to clean it up in the same session:
+  merge it into the working branch, push, then delete it locally **and** on `origin`.
+  Never leave a stray branch behind. Say in the final message that it was created
+  and removed.
+- **Before finishing any task that touched code, confirm all three match:**
+  1. working tree clean (no uncommitted files),
+  2. local branch == `origin/<branch>` (nothing unpushed or unpulled),
+  3. if the change was deployed, `/opt/ai-inbox-manager/.deployed_commit` == local `HEAD`.
+
+  ```bash
+  git status --short                                              # expect empty
+  git fetch -q && git rev-list --left-right --count HEAD...origin/$(git branch --show-current)   # expect 0 0
+  ssh -i ~/.ssh/hetzner_ai_inbox root@2.29.47.89 'cat /opt/ai-inbox-manager/.deployed_commit'   # expect = git rev-parse --short HEAD
+  ```
+- Report the result of that check to Kes at the end of the task. If any of the three
+  cannot match yet (for example Kes has not approved a commit under the Pre-Ship
+  Debrief rule, or a change is built but intentionally not deployed), say exactly which
+  one differs and why. Never leave the difference unmentioned.
+- Never push to `master` (RUNBOOK §4c) or to the upstream repository
+  (`Ojobo1800/AI-inbox-Manager`); only to Kes's own fork (`origin`).
+- Pre-existing branches Claude did not create this session are not Claude's to delete;
+  list them for Kes instead.
+
+---
+
 ## Core Principle
 
 LLMs are probabilistic.  
