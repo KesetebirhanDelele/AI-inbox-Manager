@@ -22,6 +22,27 @@ Newest first.
 **Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
 The detail below is in the order the work happened; this block is the summary.
 
+### 2026-10-02 update
+
+- **Deleted the 20 non-interview events** (Job Invite 12, Job Alert 6, Application Notification 1,
+  Other 1) and their 3 notification drafts from production, as Ali and Kes approved. One guarded
+  transaction that rolls back unless it removes exactly 20 events and 3 drafts; checklist rows: none.
+  The emails and their classifications are untouched. Backup of the 20 rows (company, role, sender
+  domain, subject, category; no bodies): `tmp/non_interview_events_export_2026-10-02.csv` (git-ignored).
+- **New live proof from overnight runs (#165–#170, all success):** 5 new interview events, all labelled by
+  the sub-classifier (0 fallback), including the **first live Phone Screen** (event 54). The "no event for
+  a Job Invite" gate fired live. The review queue is at 15 pending (7 + 8). One student now has an
+  assigned Gmail (header read worked and the name matched). 3 of the 5 events had a student; the Phone
+  Screen was one of the 2 without, so it got no draft (so sub-type drafts are still unproven live).
+  The daily health check ran at 07:30 UTC: HEALTHY.
+- **Student notification design approved** by Ali (2026-10-02) with one change: day 1 as designed, then
+  one call + text + email daily for up to 3 more days until acknowledged; telling Rob does not end the
+  sequence. Quiet hours 9 PM–8 AM in the student's own time zone (area-code fallback, Central last),
+  calls and texts only. Kes approved the schema change and chose: daily follow-up at 9 AM student-local;
+  "3 days" = days 2–4; held attempts released at 8 AM with a 3-hour same-channel minimum gap.
+  Spec: `directives/student-notification-escalation.md`. **Not built**: Ali requires Kes to confirm
+  with Rob first, plus Twilio details, Cora's usage and student opt-in (checklist in the directive).
+
 ### End-of-day summary (2026-10-01)
 
 | Item | Result | Evidence |
