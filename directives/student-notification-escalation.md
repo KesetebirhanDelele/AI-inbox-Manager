@@ -68,13 +68,26 @@ analysed and never stops a sequence; Rob gets one alert ("a call finished but co
 student's sentences reach the AI. Calls that did not connect (voicemail, no answer, busy, failed) are recorded and not
 read; a transcript GHL has not produced yet is retried for 15 minutes.
 
-**Still UNVERIFIED (confirm in GHL before switching on; do not guess):**
-1. Which `mediaChannel` in GHL's call transcript is the student, and whether Voice AI calls appear as `TYPE_CALL`
-   messages with a status such as completed / voicemail / no-answer (the status words are my guess).
-2. Whether the voice workflow reads a long single-line value correctly (the field type matters; labelled facts are
-   separated by "; ").
-3. Voice AI honouring Call DND and calling hours (we apply quiet hours and the opt-out check ourselves anyway).
-4. The exact `phone` field format GHL returns on a contact (we compare the last 10 digits).
+**Researched in the Cora repo (read-only, 2026-10-02): see `docs/ghl-conversations-and-calls.md`.** What it settled
+and what it changed in our code:
+- A call message keeps its status and length at `meta.call.status` / `meta.call.duration`. "Connected" is now a
+  positive test (completed and at least `NOTIFY_CALL_MIN_SECONDS`, default 10 s; Cora's own rule for staff calls is
+  20 s). Anything else, including an unfamiliar status word, is "did not reach a person".
+- **GHL does not generate native call transcripts on this account** (400 recording-not-found even for completed
+  calls). Cora's working path is recording to Whisper, which gives plain text with NO speaker labels, so it cannot be
+  used to read only the student's words. Therefore a connected call with no usable student-only transcript is never
+  analysed and never stops a sequence, and Rob is now told every time ("a call connected but could not be read").
+- The contact phone is stored E.164, so the exact-match lookup is right; the search is free text, so the filter stays.
+- Outbound Synthflow calls are not TYPE_CALL messages in GHL; see open question A.
+
+**Still UNVERIFIED (confirm in a shadow rehearsal on the real account; do not guess):**
+A. Which engine places our calls (GHL Voice AI or a Synthflow step behind the workflow) and how the finished call
+   shows up: a `TYPE_CALL` message with `meta.call`, an internal-comment note, or only a webhook. Until known, only
+   texts and emails can stop a sequence by themselves; a call can only alert Rob.
+B. Which `mediaChannel` is the student in a native transcript, and whether recordings are stereo (one party per
+   channel), which would allow transcribing the student's side alone.
+C. How the voice agent uses the `interview_notification` value, and whether a long single-line value reads correctly.
+D. Voice AI honouring Call DND and calling hours (Cora has not verified this either).
 
 Earlier research, kept for reference (Cora's own code, not the GHL dashboard):
 

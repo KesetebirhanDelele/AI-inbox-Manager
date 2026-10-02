@@ -175,12 +175,11 @@ class RobAlerts:
             f"{student_name} replied: \"{text[:300]}\"\nThe system read this as '{outcome}', so follow-ups "
             f"were not stopped. Please look at it.")
 
-    def call_needs_review(self, seq, student_name: str) -> bool:
+    def call_needs_review(self, seq, student_name: str, reason: str = "it could not be read") -> bool:
         return self._notify(
-            f"A call to {student_name} finished but could not be read",
-            f"The voice call to {student_name} completed, but the student's words could not be separated from the "
-            f"agent's, so nothing was analysed and follow-ups were not stopped. Please check the call in GHL "
-            f"Conversations and close the sequence if they confirmed.")
+            f"A call to {student_name} connected but could not be read",
+            f"The voice call to {student_name} connected, but {reason}, so nothing was analysed and follow-ups "
+            f"were not stopped. Please check the call in GHL Conversations and close the sequence if they confirmed.")
 
     def opted_out(self, seq, student_name: str) -> bool:
         return self._notify(
@@ -440,6 +439,10 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, 
     M = _m()
     env = os.environ if env is None else env
     student_channel = student_media_channel or (env.get("GHL_CALL_STUDENT_MEDIA_CHANNEL") or "").strip() or None
+    try:
+        call_min_seconds = int(env.get("NOTIFY_CALL_MIN_SECONDS") or gcv.DEFAULT_MIN_CALL_SECONDS)
+    except ValueError:
+        call_min_seconds = gcv.DEFAULT_MIN_CALL_SECONDS
     alerts = alerts or RobAlerts()
     report = PollReport()
 
@@ -485,8 +488,8 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, 
                 continue
 
             # a call
-            if message.status in ("voicemail", "no-answer", "no_answer", "busy", "failed", "canceled", "cancelled"):
-                _record_inbound(db, primary, message, "call_recorded", text="")
+            if not gcv.is_connected_call(message, call_min_seconds):
+                _record_inbound(db, primary, message, "call_recorded", text="")      # did not reach a person
                 continue
             try:
                 sentences = client.message_transcription(message.id)
@@ -498,11 +501,14 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, 
                 if message.received_at and now - message.received_at < CALL_TRANSCRIPT_GRACE:
                     continue                           # check again next poll
                 _record_inbound(db, primary, message, "call_no_transcript", text="")
+                alerts.call_needs_review(primary, _student_name(db, primary),
+                                         f"GHL has no transcript for it ({message.duration}s call)")
                 continue
             words = gcv.student_words(sentences, student_channel)
             if words is None:
                 _record_inbound(db, primary, message, "call_unreadable", text="")
-                alerts.call_needs_review(primary, _student_name(db, primary))
+                alerts.call_needs_review(primary, _student_name(db, primary),
+                                         "the student's words could not be separated from the agent's")
                 continue
             if not words:
                 _record_inbound(db, primary, message, "call_recorded", text="")

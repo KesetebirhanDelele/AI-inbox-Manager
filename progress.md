@@ -93,6 +93,17 @@ The detail below is in the order the work happened; this block is the summary.
   student with two open notices would have recorded the same reply twice and crashed the poll, so open sequences are
   now grouped by GHL contact. 50 more tests (root 677, dashboard 191). Still OFF, no credentials on the server.
 
+- **Read the Cora repo (read-only; nothing there changed) for the open GHL questions and acted on it.**
+  Findings: call status/duration live at `meta.call` (connected = completed + minimum length); GHL native
+  transcripts are OFF on this account and the Whisper fallback has no speaker labels, so a student-only transcript is
+  not available today; outbound Synthflow calls are not TYPE_CALL messages in GHL; contact phone is E.164 and the
+  contact search is free-text; `startAfterDate` is a cursor and `lastMessageType` hides calls behind notes.
+  Changes here: `ghl_conversations.normalize` reads `meta.call` and adds `duration`; `is_connected_call` is a positive
+  test (default 10 s, `NOTIFY_CALL_MIN_SECONDS`); a connected call with no transcript now ALERTS Rob instead of being
+  recorded silently. 13 more tests (root 690). New tracked reference `docs/ghl-conversations-and-calls.md` (verified,
+  unverified, and what the base kit lacks) and a local skill `.claude/skills/ghl-conversations-calls/` (`.claude/` is
+  git-ignored in this repo, hence the tracked doc).
+
 ### End-of-day summary (2026-10-01)
 
 | Item | Result | Evidence |

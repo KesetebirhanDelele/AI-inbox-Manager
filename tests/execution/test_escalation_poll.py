@@ -166,7 +166,7 @@ SENTENCES = [
     {"mediaChannel": 1, "sentenceIndex": 0, "transcript": "Hello, this is Colaberry about your interview."},
     {"mediaChannel": 2, "sentenceIndex": 1, "transcript": "Yes I got it, I will call them tomorrow."},
 ]
-CALL = msg("call1", type_="TYPE_CALL", direction="outbound", status="completed")
+CALL = msg("call1", type_="TYPE_CALL", direction="outbound", meta={"call": {"status": "completed", "duration": 45}})
 
 
 def test_a_call_whose_speakers_cannot_be_told_apart_is_never_analysed_and_rob_is_told_once(db):
@@ -199,10 +199,15 @@ def test_a_call_in_shadow_mode_is_recorded_but_stops_nothing(db):
     assert seq.status == "active" and db.query(db.models.ReplyAnalysis).one().acted is False
 
 
-@pytest.mark.parametrize("status", ["voicemail", "no-answer", "busy", "failed"])
-def test_a_call_that_did_not_connect_is_recorded_without_reading_a_transcript(db, status):
+@pytest.mark.parametrize("call_meta", [
+    {"status": "voicemail", "duration": 40}, {"status": "no-answer", "duration": 0}, {"status": "busy"},
+    {"status": "failed", "duration": 12}, {"status": "completed", "duration": 4},     # too short to be a conversation
+    {"status": "completed"},                                                           # no duration: not proven connected
+    {"status": "some-new-word", "duration": 60},                                       # an unfamiliar status is never "connected"
+])
+def test_a_call_that_did_not_reach_a_person_is_recorded_without_reading_a_transcript(db, call_meta):
     seq = started(db)
-    conv = FakeConv([msg("c", type_="TYPE_CALL", direction="outbound", status=status)], sentences=SENTENCES)
+    conv = FakeConv([msg("c", type_="TYPE_CALL", direction="outbound", meta={"call": call_meta})], sentences=SENTENCES)
     poll(db, conv, channel="2")
     assert seq.status == "active" and conv.transcript_reads == [] and inbound_rows(db) == {("c", "call_recorded")}
 
@@ -212,8 +217,10 @@ def test_a_transcript_that_is_not_ready_is_retried_until_the_grace_period_ends(d
     conv = FakeConv([CALL], sentences=None)
     poll(db, conv, now=datetime(2026, 10, 5, 20, 20))                 # call at 20:10: only 10 minutes old
     assert inbound_rows(db) == set()                                   # try again next poll
-    poll(db, conv, now=datetime(2026, 10, 5, 20, 40))                 # 30 minutes: give up
+    al = alerts()
+    poll(db, conv, now=datetime(2026, 10, 5, 20, 40), al=al)          # 30 minutes: give up, but never silently
     assert inbound_rows(db) == {("call1", "call_no_transcript")} and seq.status == "active"
+    assert any("connected but could not be read" in s for s in al.sent)
 
 
 def test_a_call_where_the_student_said_nothing_is_recorded_not_analysed(db):

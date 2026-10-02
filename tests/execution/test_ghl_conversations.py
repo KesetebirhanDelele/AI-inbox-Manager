@@ -96,7 +96,7 @@ def test_fetch_keeps_inbound_replies_and_calls_and_drops_everything_else():
         raw("old", at="2026-10-05T19:00:00.000Z"),                               # before the sequence began
         raw("echo", type_="TYPE_EMAIL", body="link https://x/ack/TOK"),
         raw("email-in", type_="TYPE_EMAIL", body="Got it, thanks"),
-        raw("call", type_="TYPE_CALL", direction="outbound", body="", status="completed"),
+        raw("call", type_="TYPE_CALL", direction="outbound", body="", meta={"call": {"status": "completed", "duration": 30}}),
         raw("note", type_="TYPE_ACTIVITY_NOTE"),
         raw("seen"),
     ])
@@ -107,3 +107,29 @@ def test_fetch_keeps_inbound_replies_and_calls_and_drops_everything_else():
 def test_fetch_returns_oldest_first():
     client = FakeConv([raw("b", at="2026-10-05T20:20:00.000Z"), raw("a", at="2026-10-05T20:05:00.000Z")])
     assert [m.id for m in gcv.fetch_new_messages(client, "c1", SINCE, set())] == ["a", "b"]
+
+
+def test_a_calls_status_and_duration_come_from_meta_call():
+    m = gcv.normalize({"id": "c1", "messageType": "TYPE_CALL", "direction": "outbound",
+                       "meta": {"call": {"status": "Completed", "duration": 45}}})
+    assert (m.status, m.duration) == ("completed", 45) and gcv.is_connected_call(m)
+
+
+@pytest.mark.parametrize("meta, connected", [
+    ({"call": {"status": "completed", "duration": 45}}, True),
+    ({"call": {"status": "completed", "duration": 10}}, True),
+    ({"call": {"status": "completed", "duration": 9}}, False),
+    ({"call": {"status": "completed"}}, False),
+    ({"call": {"status": "voicemail", "duration": 60}}, False),
+    ({"call": {"status": "busy", "duration": 0}}, False),
+    ({}, False),
+    ({"call": {"status": "completed", "duration": "n/a"}}, False),
+])
+def test_connected_is_a_positive_test_never_a_guess(meta, connected):
+    m = gcv.normalize({"id": "c", "messageType": "TYPE_CALL", "meta": meta})
+    assert gcv.is_connected_call(m) is connected
+
+
+def test_the_minimum_call_length_can_be_changed():
+    m = gcv.normalize({"id": "c", "messageType": "TYPE_CALL", "meta": {"call": {"status": "completed", "duration": 15}}})
+    assert gcv.is_connected_call(m, 20) is False and gcv.is_connected_call(m, 5) is True

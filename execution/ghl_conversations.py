@@ -32,8 +32,9 @@ class ConversationMessage:
     direction: str                 # inbound | outbound
     text: str
     received_at: Optional[datetime]   # naive UTC
-    status: str = ""               # e.g. completed, voicemail, no-answer (calls), delivered (texts)
+    status: str = ""               # calls: meta.call.status ("completed" = connected); texts: delivered, ...
     subject: str = ""
+    duration: Optional[int] = None  # calls only: meta.call.duration in seconds
 
 
 def parse_time(value: Any) -> Optional[datetime]:
@@ -65,11 +66,33 @@ def normalize(raw: Dict[str, Any]) -> Optional[ConversationMessage]:
         return None
     meta = raw.get("meta") or {}
     subject = str(raw.get("subject") or (meta.get("email") or {}).get("subject") or "")
+    status, duration = str(raw.get("status") or "").lower(), None
+    if channel == "call":
+        call = meta.get("call") or {}                       # confirmed on Cora's account: status and duration live here
+        status = str(call.get("status") or status).lower()
+        try:
+            duration = int(call["duration"]) if call.get("duration") is not None else None
+        except (TypeError, ValueError):
+            duration = None
     return ConversationMessage(
         id=str(raw["id"]), channel=channel, direction=str(raw.get("direction") or "").lower(),
         text=str(raw.get("body") or raw.get("message") or "").strip(),
         received_at=parse_time(raw.get("dateAdded") or raw.get("dateUpdated")),
-        status=str(raw.get("status") or "").lower(), subject=subject)
+        status=status, subject=subject, duration=duration)
+
+
+DEFAULT_MIN_CALL_SECONDS = 10
+
+
+def is_connected_call(message: ConversationMessage, min_seconds: int = DEFAULT_MIN_CALL_SECONDS) -> bool:
+    """
+    A call that actually reached a person: status "completed" AND a duration of at least `min_seconds`.
+
+    A positive test on purpose (Cora's own rule is "completed and 20 s or more"): any other status, a missing
+    duration, or a very short call is NOT connected, so an unfamiliar status word can never be mistaken for a
+    real conversation. Our confirmation call can be short ("yes, got it"), so the default is 10 s, not Cora's 20 s.
+    """
+    return message.status == "completed" and bool(message.duration) and message.duration >= min_seconds
 
 
 def is_echo(message: ConversationMessage, markers: Iterable[str]) -> bool:
