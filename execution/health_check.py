@@ -11,6 +11,7 @@ Checks (window: last 24 hours):
   CRITICAL  review-queue gap         classifications that should be queued but have no approval row
   CRITICAL  run health               last run too old, or a run ended in partial_failure
   CRITICAL  notification sends       failed drafts, or drafts stuck in 'approved'
+  CRITICAL  escalation attempts      call/text/email attempts that failed (only once escalation is switched on)
   WARNING   sub-classifier fallback  share of events labelled by the fallback, not the sub-classifier
   WARNING   student matching         share of events with no student attached
 
@@ -109,6 +110,11 @@ def evaluate(m: Dict[str, Any]) -> List[Finding]:
         out.append(Finding("CRITICAL", "notification sends",
                            f"{m['drafts_stuck']} draft(s) approved over {STUCK_APPROVED_MINUTES} minutes ago but never sent."))
 
+    if m.get("attempts_failed", 0) > 0:
+        out.append(Finding("CRITICAL", "escalation attempts",
+                           f"{m['attempts_failed']} student notification attempt(s) failed in the last 24h "
+                           f"(call, text or email). A student may not know about their interview."))
+
     n = m["events"]
     if n >= MIN_EVENTS_FOR_RATES:
         fb = m["events_fallback"] / n
@@ -126,7 +132,8 @@ def evaluate(m: Dict[str, Any]) -> List[Finding]:
 
 def collect_metrics(db, log_text: str, now: datetime) -> Dict[str, Any]:
     """Read the numbers `evaluate` needs from the database and the cron log."""
-    from models import Approval, Classification, InterviewEvent, NotificationDraft, ProcessRun
+    from models import (Approval, Classification, InterviewEvent, NotificationAttempt,
+                        NotificationDraft, ProcessRun)
     from process_inbox_auto import needs_human_review
 
     since = now - timedelta(hours=24)
@@ -157,7 +164,11 @@ def collect_metrics(db, log_text: str, now: datetime) -> Dict[str, Any]:
         NotificationDraft.reviewed_at != None,  # noqa: E711
         NotificationDraft.reviewed_at < stuck_cutoff).count()
 
+    attempts_failed = db.query(NotificationAttempt).filter(
+        NotificationAttempt.status == "failed", NotificationAttempt.created_at >= since).count()
+
     return {
+        "attempts_failed": attempts_failed,
         "permanent_deletes": count_permanent_deletes(log_text, max(since, NO_DELETE_SINCE)),
         "approvals_missing": missing,
         "last_run_age_hours": last_age,

@@ -38,6 +38,7 @@ def test_healthy_metrics_give_no_findings():
     ({"runs_partial_failure": 1}, ("CRITICAL", "run health")),
     ({"drafts_failed": 1}, ("CRITICAL", "notification sends")),
     ({"drafts_stuck": 2}, ("CRITICAL", "notification sends")),
+    ({"attempts_failed": 1}, ("CRITICAL", "escalation attempts")),
     ({"events": 10, "events_fallback": 4}, ("WARNING", "sub-classifier fallback")),
     ({"events": 10, "events_no_student": 6}, ("WARNING", "student matching")),
 ])

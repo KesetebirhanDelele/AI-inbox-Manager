@@ -301,6 +301,88 @@ class NotificationDraft(Base):
     )
 
 
+class NotificationSequence(Base):
+    """
+    One escalation run for an approved NotificationDraft (see
+    directives/student-notification-escalation.md).
+
+    Starts when Rob approves; keeps contacting the student until they acknowledge
+    or Rob closes it. New table on purpose: create_all() cannot add columns to
+    the existing notification_drafts table in production.
+    """
+    __tablename__ = "notification_sequences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    draft_id = Column(Integer, ForeignKey("notification_drafts.id"), nullable=False, unique=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
+
+    # active | acknowledged | closed (by Rob) | exhausted (4 days, no ack) | opted_out
+    status = Column(String(30), default="active", nullable=False, index=True)
+    timezone = Column(String(64), nullable=False)          # student's own zone (Ali: quiet hours use it)
+    timezone_source = Column(String(30))                   # stored | area_code | fallback
+    started_at = Column(DateTime, nullable=False)          # naive UTC, = Rob's approval time
+    started_by = Column(String(100))
+
+    ack_token = Column(String(64), unique=True, index=True)  # email "I got this" link
+    ack_at = Column(DateTime)
+    ack_channel = Column(String(20))                       # call | sms | email | rob | ai
+    ack_kind = Column(String(20))                          # explicit | rob | ai_inferred
+    closed_by = Column(String(100))
+    closed_at = Column(DateTime)
+
+    rob_day1_alert_at = Column(DateTime)                   # "no response after day 1" sent
+    rob_ended_alert_at = Column(DateTime)                  # "sequence ended" sent
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    attempts = relationship("NotificationAttempt", back_populates="sequence", cascade="all, delete-orphan")
+
+
+class NotificationAttempt(Base):
+    """One planned or made contact (call, text or email) within a sequence."""
+    __tablename__ = "notification_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sequence_id = Column(Integer, ForeignKey("notification_sequences.id"), nullable=False, index=True)
+    channel = Column(String(10), nullable=False)           # call | sms | email
+    step = Column(String(20), nullable=False)              # start | d1_2h | d1_4h | day2 | day3 | day4
+    planned_for = Column(DateTime, nullable=False)         # naive UTC, before quiet-hours adjustment
+    scheduled_for = Column(DateTime, nullable=False, index=True)  # naive UTC, after quiet-hours adjustment
+    # pending | sent | failed | skipped | cancelled
+    status = Column(String(20), default="pending", nullable=False, index=True)
+    sent_at = Column(DateTime)
+    detail = Column(Text)                                  # why skipped/failed, or provider note
+    provider_id = Column(String(100))                      # Twilio/GHL/Synthflow id
+    segments = Column(Integer)                             # SMS segments, for the shared daily budget
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    sequence = relationship("NotificationSequence", back_populates="attempts")
+
+    __table_args__ = (
+        Index("idx_attempt_sequence_step_channel", "sequence_id", "step", "channel", unique=True),
+        Index("idx_attempt_due", "status", "scheduled_for"),
+    )
+
+
+class ReplyAnalysis(Base):
+    """
+    The AI's reading of one student reply. In shadow mode (first two weeks) these
+    are recorded but never stop a sequence; human_verdict is how we measure the hit rate.
+    """
+    __tablename__ = "reply_analyses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sequence_id = Column(Integer, ForeignKey("notification_sequences.id"), nullable=False, index=True)
+    channel = Column(String(10), nullable=False)          # sms | email | call
+    message_text = Column(Text, nullable=False)           # the STUDENT's words only, never ours
+    outcome = Column(String(20), nullable=False)          # understood | needs_help | confused | unsure
+    confidence = Column(Float)
+    reason = Column(Text)
+    shadow = Column(Boolean, default=True, nullable=False)
+    acted = Column(Boolean, default=False, nullable=False)   # did this analysis stop the sequence?
+    human_verdict = Column(String(20))                    # right | wrong, set by Rob/Ali later
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class ChecklistCompletion(Base):
     """
     Tracks completion state of process checklist steps per interview event.

@@ -89,7 +89,8 @@ def init_db():
     from models import (
         Email, Classification, Approval, ProcessRun,
         WhitelistCompany, EmailAction, UserSession, SystemConfig,
-        Student, InterviewEvent, NotificationDraft, ChecklistCompletion
+        Student, InterviewEvent, NotificationDraft, ChecklistCompletion,
+        NotificationSequence, NotificationAttempt, ReplyAnalysis,
     )
     Base.metadata.create_all(bind=engine)
     _run_migrations()

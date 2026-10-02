@@ -400,6 +400,15 @@ at 07:30 UTC from the host file `/etc/cron.d/inboxgenius-health` (source:
 `docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/health_check.py`.
 Directive: [`directives/pipeline-health-check.md`](directives/pipeline-health-check.md).
 
+**Student notification escalation (built 2026-10-02, deployed OFF).** Rob's Approve can start a
+call + text + email sequence that keeps going (day 1 at +0/+2h/+4h, then once a day for 3 more days at
+9 AM student-local; quiet hours 9 PM-8 AM student-local for calls/texts) until the student acknowledges or
+Rob closes it. It is **disabled** unless `NOTIFY_ESCALATION_ENABLED` is set and every channel is `dry_run`
+until real adapters exist, so Approve still sends the single email as before. New tables:
+`notification_sequences`, `notification_attempts`, `reply_analyses`. Scheduler pass:
+`execution/notification_tick.py` (no cron installed yet). Settings, the Cora/GHL/Synthflow delivery research
+and the "before switching on" checklist: [`directives/student-notification-escalation.md`](directives/student-notification-escalation.md).
+
 **Hetzner failure playbook**
 
 | Symptom | First checks |

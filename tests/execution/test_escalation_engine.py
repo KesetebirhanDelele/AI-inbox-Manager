@@ -1,0 +1,315 @@
+"""
+Escalation engine against a real (in-memory) database with fake channels.
+No email, text or call is ever sent.
+"""
+import json
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import pytest
+
+_EXECUTION_DIR = Path(__file__).resolve().parents[2] / "execution"
+if str(_EXECUTION_DIR) not in sys.path:
+    sys.path.insert(0, str(_EXECUTION_DIR))
+
+import escalation_engine as eng  # noqa: E402
+import notify_channels as nc  # noqa: E402
+
+T0 = datetime(2026, 10, 5, 20, 0)          # 15:00 CDT, Monday. Student phone 972 -> America/Chicago
+
+
+@pytest.fixture
+def db(monkeypatch):
+    api_dir = _EXECUTION_DIR.parents[0] / "services" / "dashboard" / "api"
+    monkeypatch.syspath_prepend(str(api_dir))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import models
+
+    engine = create_engine("sqlite://")
+    models.Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    session.models = models
+    return session
+
+
+def make_draft(db, phone="(972) 555-0100", email="student@example.com", name="Test Student"):
+    M = db.models
+    student = M.Student(username=name.lower().replace(" ", "."), full_name=name, phone_number=phone, is_active=True)
+    mail = M.Email(email_id="1", subject="s", from_address="hr@acme.com", received_date=T0)
+    db.add_all([student, mail])
+    db.flush()
+    event = M.InterviewEvent(email_id=mail.id, student_id=student.id, sub_type="Interview Request",
+                             company_name="Acme", position_title="Data Analyst", confidence=0.9)
+    db.add(event)
+    db.flush()
+    draft = M.NotificationDraft(interview_event_id=event.id, recipient_email=email, email_subject="Interview",
+                                email_body="Body", email_status="approved")
+    db.add(draft)
+    db.commit()
+    return draft, student
+
+
+class Rec:
+    """A fake channel that records every send."""
+    def __init__(self, name, status=nc.SENT, boom=False):
+        self.name, self.status, self.boom, self.calls = name, status, boom, []
+
+    def send(self, ctx):
+        self.calls.append((ctx.attempt.step, ctx.now))
+        if self.boom:
+            raise RuntimeError("provider exploded")
+        return nc.ChannelResult(self.status, detail=None if self.status == nc.SENT else "failed")
+
+
+def channels(**over):
+    base = {"call": Rec("call"), "sms": Rec("sms"), "email": Rec("email")}
+    base.update(over)
+    return base
+
+
+def alerts():
+    return eng.RobAlerts(to="rob@example.com", send_fn=lambda **k: {"status": "sent"})
+
+
+def steps(ch):
+    return [s for s, _ in ch.calls]
+
+
+# -- starting -----------------------------------------------------------------
+
+def test_start_creates_the_whole_plan_and_is_idempotent(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0, started_by="rob")
+    assert seq.status == "active" and seq.timezone == "America/Chicago" and seq.timezone_source == "area_code"
+    assert len(seq.attempts) == 16 and all(a.status == "pending" for a in seq.attempts)
+    assert len(seq.ack_token) >= 20
+    again = eng.start_sequence(db, draft, student, T0 + timedelta(hours=1))
+    assert again.id == seq.id and len(again.attempts) == 16
+
+
+def test_attempts_the_student_cannot_receive_are_recorded_as_skipped(db):
+    draft, student = make_draft(db, phone=None, email="")
+    seq = eng.start_sequence(db, draft, student, T0)
+    states = {(a.channel): a.status for a in seq.attempts}
+    assert states == {"call": "skipped", "sms": "skipped", "email": "skipped"}
+    assert all(a.detail for a in seq.attempts)
+
+
+# -- the ladder ---------------------------------------------------------------
+
+def test_day_one_ladder_then_rob_is_told_but_the_sequence_keeps_going(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    ch, al = channels(), alerts()
+
+    r = eng.tick(db, T0, ch, al)
+    assert (r.sent, r.failed) == (3, 0) and steps(ch["call"]) == ["start"]
+    eng.tick(db, T0 + timedelta(hours=2), ch, al)
+    assert steps(ch["call"]) == ["start", "d1_2h"] and steps(ch["sms"]) == ["start"]
+    eng.tick(db, T0 + timedelta(hours=4), ch, al)
+    assert steps(ch["sms"]) == ["start", "d1_4h"] and steps(ch["email"]) == ["start", "d1_2h", "d1_4h"]
+
+    assert al.sent == []                                         # not yet
+    r = eng.tick(db, T0 + timedelta(hours=6), ch, al)
+    assert r.rob_no_response == 1 and len(al.sent) == 1 and "has not responded" in al.sent[0]
+    eng.tick(db, T0 + timedelta(hours=7), ch, al)
+    assert len(al.sent) == 1                                     # told once
+    db.refresh(seq)
+    assert seq.status == "active"                                # telling Rob does NOT stop it
+
+
+def test_three_more_days_of_one_call_one_text_one_email_then_it_ends_and_rob_is_told(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    ch, al = channels(), alerts()
+    for t in (T0, T0 + timedelta(hours=2), T0 + timedelta(hours=4), T0 + timedelta(hours=6)):
+        eng.tick(db, t, ch, al)
+    for day in (6, 7, 8):                                        # 9 AM CDT = 14:00 UTC
+        eng.tick(db, datetime(2026, 10, day, 14, 0), ch, al)
+    assert steps(ch["call"]) == ["start", "d1_2h", "day2", "day3", "day4"]
+    assert steps(ch["sms"]) == ["start", "d1_4h", "day2", "day3", "day4"]
+    assert len(ch["email"].calls) == 3 + 3
+    db.refresh(seq)
+    assert seq.status == "active"                                # last attempts just went out
+    r = eng.tick(db, datetime(2026, 10, 8, 17, 0), ch, al)       # three hours after the last one
+    db.refresh(seq)
+    assert r.ended == 1 and seq.status == "exhausted"
+    assert any("never acknowledged" in s for s in al.sent)
+    eng.tick(db, datetime(2026, 10, 9, 14, 0), ch, al)
+    assert len(ch["call"].calls) == 5                            # nothing after the end
+
+
+def test_a_failed_or_crashing_channel_is_recorded_and_does_not_stop_the_others(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    ch = channels(call=Rec("call", boom=True), sms=Rec("sms", status=nc.FAILED))
+    r = eng.tick(db, T0, ch, alerts())
+    assert r.failed == 2 and r.sent == 1
+    by = {a.channel: a for a in seq.attempts if a.step == "start"}
+    assert by["email"].status == "sent" and by["call"].status == "failed" and "crashed" in by["call"].detail
+    eng.tick(db, T0, ch, alerts())
+    assert len(ch["call"].calls) == 1                            # a failed attempt is not silently retried
+
+
+def test_dry_run_is_recorded_as_dry_run_never_as_sent_and_leaves_the_draft_unsent(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    r = eng.tick(db, T0, {k: nc.DryRunChannel(k) for k in ("call", "sms", "email")}, alerts())
+    assert r.dry_run == 3 and r.sent == 0
+    assert {a.status for a in seq.attempts if a.step == "start"} == {"dry_run"}
+    db.refresh(draft)
+    assert draft.email_status == "approved"                      # nothing was really delivered
+
+
+def test_a_real_first_email_marks_the_draft_sent(db):
+    draft, student = make_draft(db)
+    eng.start_sequence(db, draft, student, T0)
+    eng.tick(db, T0, channels(), alerts())
+    db.refresh(draft)
+    assert draft.email_status == "sent" and draft.sent_at == T0
+
+
+# -- quiet hours --------------------------------------------------------------
+
+def test_quiet_hours_hold_calls_and_texts_but_not_email_and_a_held_duplicate_is_skipped(db):
+    late = datetime(2026, 10, 6, 1, 0)                           # 20:00 CDT on the 5th
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, late)
+    ch, al = channels(), alerts()
+    eng.tick(db, late, ch, al)
+    eng.tick(db, late + timedelta(hours=2), ch, al)              # 22:00 CDT: email goes, call is held
+    assert steps(ch["email"]) == ["start", "d1_2h"] and steps(ch["call"]) == ["start"]
+    eng.tick(db, late + timedelta(hours=4), ch, al)              # 00:00 CDT: sms held, email goes
+    assert steps(ch["sms"]) == ["start"] and steps(ch["email"])[-1] == "d1_4h"
+
+    r = eng.tick(db, datetime(2026, 10, 6, 13, 0), ch, al)       # 8 AM CDT: held ones released
+    held = {(a.channel, a.step): a for a in seq.attempts if a.step in ("d1_2h", "d1_4h")}
+    # day 2's 9 AM call and text are due within 3 hours, so the held duplicates are skipped
+    assert held[("call", "d1_2h")].status == "skipped" and held[("sms", "d1_4h")].status == "skipped"
+    assert r.skipped == 2 and len(ch["call"].calls) == 1
+    eng.tick(db, datetime(2026, 10, 6, 14, 0), ch, al)           # 9 AM: day 2 goes out normally
+    assert steps(ch["call"]) == ["start", "day2"] and steps(ch["sms"]) == ["start", "day2"]
+
+
+def test_a_california_student_is_never_called_at_6am(db):
+    draft, student = make_draft(db, phone="(213) 555-0100")
+    seq = eng.start_sequence(db, draft, student, datetime(2026, 10, 5, 13, 0))   # 06:00 PDT
+    assert seq.timezone == "America/Los_Angeles"
+    ch = channels()
+    eng.tick(db, datetime(2026, 10, 5, 13, 0), ch, alerts())
+    assert ch["call"].calls == [] and ch["sms"].calls == [] and len(ch["email"].calls) == 1
+    eng.tick(db, datetime(2026, 10, 5, 15, 0), ch, alerts())                      # 08:00 PDT
+    # the held "start" call and the "+2h" call both fall at 8 AM, so the 3-hour rule sends just one
+    assert steps(ch["call"]) == ["d1_2h"] and ch["call"].calls[0][1] == datetime(2026, 10, 5, 15, 0)
+    held_start = next(a for a in seq.attempts if a.channel == "call" and a.step == "start")
+    assert held_start.status == "skipped" and "3 hours" in held_start.detail
+
+
+# -- stopping -----------------------------------------------------------------
+
+def test_an_acknowledgement_stops_every_later_attempt(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    ch, al = channels(), alerts()
+    eng.tick(db, T0, ch, al)
+    assert eng.acknowledge(db, seq, "sms", "explicit", T0 + timedelta(minutes=5)) is True
+    assert eng.acknowledge(db, seq, "email", "explicit", T0 + timedelta(minutes=6)) is False   # already stopped
+    eng.tick(db, T0 + timedelta(days=5), ch, al)
+    assert len(ch["call"].calls) == 1 and len(ch["sms"].calls) == 1
+    assert seq.status == "acknowledged" and (seq.ack_channel, seq.ack_kind) == ("sms", "explicit")
+    assert all(a.status in ("sent", "cancelled") for a in seq.attempts)
+
+
+def test_rob_closing_it_stops_it_and_is_recorded(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    assert eng.close_sequence(db, seq, "rob", T0) is True
+    assert seq.status == "closed" and seq.closed_by == "rob"
+    ch = channels()
+    eng.tick(db, T0 + timedelta(days=1), ch, alerts())
+    assert all(not c.calls for c in ch.values())
+
+
+def test_the_email_link_acknowledges_once_and_rejects_unknown_tokens(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    assert eng.acknowledge_by_token(db, "nope", T0) == "unknown"
+    assert eng.acknowledge_by_token(db, seq.ack_token, T0) == "acknowledged"
+    assert eng.acknowledge_by_token(db, seq.ack_token, T0) == "already"
+    assert seq.status == "acknowledged" and seq.ack_channel == "email"
+
+
+# -- replies ------------------------------------------------------------------
+
+def reply(db, text, phone="972-555-0100", env=None, outcome="understood", conf=0.97, now=None, al=None):
+    fn = lambda _m: json.dumps({"outcome": outcome, "confidence": conf, "reason": "test"})
+    return eng.handle_inbound_reply(db, phone, text, "sms", now or datetime(2026, 10, 20), al or alerts(),
+                                    completion_fn=fn, env=env if env is not None else {})
+
+
+def test_yes_acknowledges_and_matches_the_phone_in_any_format(db):
+    draft, student = make_draft(db, phone="(972) 555-0100")
+    seq = eng.start_sequence(db, draft, student, T0)
+    out = reply(db, "Yes!", phone="+1 972-555-0100")
+    assert out["action"] == "acknowledged" and out["kind"] == "explicit"
+    assert seq.status == "acknowledged" and seq.ack_channel == "sms"
+
+
+def test_stop_ends_all_contact_and_tells_rob(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    al = alerts()
+    out = reply(db, "STOP", al=al)
+    assert out["action"] == "opted_out" and seq.status == "opted_out"
+    assert any("opted out" in s for s in al.sent)
+    ch = channels()
+    eng.tick(db, T0 + timedelta(days=1), ch, alerts())
+    assert all(not c.calls for c in ch.values())
+
+
+def test_a_reply_from_an_unknown_number_or_with_no_open_notice_is_ignored(db):
+    draft, student = make_draft(db)
+    eng.start_sequence(db, draft, student, T0)
+    assert reply(db, "yes", phone="212-000-0000")["handled"] is False
+    assert reply(db, "yes", phone="")["handled"] is False
+
+
+def test_shadow_mode_records_the_ais_reading_but_never_stops_the_sequence(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    out = reply(db, "saw it, I will call them tomorrow", now=datetime(2026, 10, 10))
+    assert out == {"handled": True, "action": "recorded", "outcome": "understood", "mode": "shadow"}
+    assert seq.status == "active"
+    row = db.query(db.models.ReplyAnalysis).one()
+    assert (row.shadow, row.acted, row.outcome) == (True, False, "understood")
+    assert "saw it" in row.message_text
+
+
+def test_live_mode_stops_only_on_a_confident_understood(db):
+    live = {"REPLY_AI_MODE": "live", "REPLY_AI_SHADOW_UNTIL": "2026-10-16"}
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    weak = reply(db, "seen it maybe", env=live, conf=0.80)
+    assert weak["action"] == "recorded" and seq.status == "active"
+    strong = reply(db, "yes I saw it, will call them", env=live, conf=0.97)
+    assert strong["kind"] == "ai_inferred" and seq.status == "acknowledged" and seq.ack_channel == "ai"
+    acted = db.query(db.models.ReplyAnalysis).filter_by(acted=True).count()
+    assert acted == 1
+
+
+@pytest.mark.parametrize("outcome", ["needs_help", "confused", "unsure"])
+def test_replies_that_are_not_understood_go_to_rob_and_do_not_stop_the_sequence(db, outcome):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    al = alerts()
+    out = reply(db, "who is this?", outcome=outcome, env={"REPLY_AI_MODE": "live", "REPLY_AI_SHADOW_UNTIL": "2026-10-01"}, al=al)
+    assert out["action"] == "recorded" and seq.status == "active"
+    assert any("may need help" in s for s in al.sent)
+
+
+def test_rob_alerts_are_logged_not_lost_when_no_address_is_configured(db):
+    quiet = eng.RobAlerts(to="", send_fn=lambda **k: pytest.fail("must not send without an address"))
+    assert quiet.no_response(None, "Test Student") is False and quiet.sent

@@ -5,7 +5,13 @@ Provides endpoints for viewing, approving, rejecting, and sending
 interview notification drafts.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import hmac
+import os
+import sys
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 from pydantic import BaseModel
@@ -23,6 +29,29 @@ from models import (
 )
 
 router = APIRouter()
+
+
+# ----------------------------------------------------------------------------
+# Student escalation (directives/student-notification-escalation.md)
+# ----------------------------------------------------------------------------
+
+def _escalation_enabled() -> bool:
+    """Off unless NOTIFY_ESCALATION_ENABLED is 1/true/yes, so Approve keeps its old behaviour by default."""
+    return os.getenv("NOTIFY_ESCALATION_ENABLED", "").strip().lower() in ("1", "true", "yes")
+
+
+def _engine():
+    """The escalation engine. Its modules live in execution/, which is not on the API's import path."""
+    exec_dir = str(Path(__file__).resolve().parents[4] / "execution")
+    if exec_dir not in sys.path:
+        sys.path.insert(0, exec_dir)
+    import escalation_engine
+    import notify_channels
+    return escalation_engine, notify_channels
+
+
+def _ack_base_url() -> str:
+    return os.getenv("NOTIFY_ACK_BASE_URL", "https://2-29-47-89.nip.io/api/notifications/ack")
 
 
 # ============================================================================
@@ -331,6 +360,26 @@ async def approve_notification(
     draft.reviewed_at = datetime.utcnow()
     db.commit()
 
+    if _escalation_enabled():
+        # Rob's approval starts the escalation: call + text + email now, then follow-ups until
+        # the student acknowledges (or Rob closes it). Nothing is sent before this click.
+        engine, channels_mod = _engine()
+        event = db.query(InterviewEvent).filter(InterviewEvent.id == draft.interview_event_id).first()
+        student = db.query(Student).filter(Student.id == event.student_id).first() if event and event.student_id else None
+        now = datetime.utcnow()
+        seq = engine.start_sequence(db, draft, student, now, started_by=user.username)
+        report = engine.tick(db, now, channels_mod.channels_from_env(), engine.RobAlerts(), _ack_base_url())
+        db.refresh(draft)
+        return {
+            "id": draft.id,
+            "email_status": draft.email_status,
+            "send_error": draft.send_error,
+            "sequence_id": seq.id,
+            "sequence_status": seq.status,
+            "first_round": {"sent": report.sent, "dry_run": report.dry_run, "failed": report.failed,
+                            "skipped": report.skipped},
+        }
+
     # Send the email
     from execution.send_notification import send_email
 
@@ -519,3 +568,81 @@ async def get_notification_by_email(
 
     draft, event, student = result
     return _build_notification_detail(draft, event, student)
+
+
+# ----------------------------------------------------------------------------
+# Escalation endpoints
+# ----------------------------------------------------------------------------
+
+_ACK_PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Confirmed</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem">
+<h1>{heading}</h1><p>{message}</p></body></html>"""
+
+
+@router.get("/ack/{token}", response_class=HTMLResponse)
+async def acknowledge_by_email_link(token: str, db: Session = Depends(get_db)):
+    """The student's one-tap "I got this" link from the email. Public: the unguessable token is the credential."""
+    engine, _ = _engine()
+    result = engine.acknowledge_by_token(db, token, datetime.utcnow())
+    if result == "unknown":
+        return HTMLResponse(
+            _ACK_PAGE.format(heading="Link not recognised",
+                             message="This confirmation link is not valid. Please reply to the email instead."),
+            status_code=404)
+    return HTMLResponse(_ACK_PAGE.format(
+        heading="Thank you", message="We have recorded that you received your interview notice. Good luck!"))
+
+
+@router.get("/{notification_id}/sequence")
+async def get_sequence(notification_id: int, db: Session = Depends(get_db),
+                       user: UserSession = Depends(get_current_user)):
+    """Escalation status and every attempt for one notification."""
+    from models import NotificationSequence
+    seq = db.query(NotificationSequence).filter(NotificationSequence.draft_id == notification_id).first()
+    if not seq:
+        raise HTTPException(status_code=404, detail="No escalation sequence for this notification")
+    return {
+        "id": seq.id, "status": seq.status, "timezone": seq.timezone, "timezone_source": seq.timezone_source,
+        "started_at": seq.started_at, "ack_at": seq.ack_at, "ack_channel": seq.ack_channel,
+        "ack_kind": seq.ack_kind, "closed_by": seq.closed_by,
+        "attempts": [
+            {"channel": a.channel, "step": a.step, "scheduled_for": a.scheduled_for, "status": a.status,
+             "sent_at": a.sent_at, "detail": a.detail}
+            for a in sorted(seq.attempts, key=lambda a: (a.scheduled_for, a.channel))
+        ],
+    }
+
+
+@router.post("/{notification_id}/sequence/close")
+async def close_sequence(notification_id: int, db: Session = Depends(get_db),
+                         user: UserSession = Depends(get_current_user)):
+    """Rob closes the follow-ups himself (for example the student told him directly)."""
+    from models import NotificationSequence
+    engine, _ = _engine()
+    seq = db.query(NotificationSequence).filter(NotificationSequence.draft_id == notification_id).first()
+    if not seq:
+        raise HTTPException(status_code=404, detail="No escalation sequence for this notification")
+    closed = engine.close_sequence(db, seq, user.username, datetime.utcnow())
+    return {"id": seq.id, "status": seq.status, "closed_now": closed}
+
+
+class InboundReply(BaseModel):
+    phone: str
+    text: str
+    channel: str = "sms"          # sms | call
+
+
+@router.post("/inbound/reply")
+async def inbound_reply(body: InboundReply, db: Session = Depends(get_db),
+                        x_notify_secret: Optional[str] = Header(None)):
+    """
+    A student's reply, forwarded by the SMS/voice provider. Closed unless NOTIFY_INBOUND_SECRET is set
+    and matches the X-Notify-Secret header, because this endpoint can stop follow-ups.
+    """
+    secret = os.getenv("NOTIFY_INBOUND_SECRET", "")
+    if not secret or not x_notify_secret or not hmac.compare_digest(secret, x_notify_secret):
+        raise HTTPException(status_code=401, detail="Not authorised")
+    if body.channel not in ("sms", "call"):
+        raise HTTPException(status_code=422, detail="channel must be sms or call")
+    engine, _ = _engine()
+    return engine.handle_inbound_reply(db, body.phone, body.text, body.channel, datetime.utcnow(), engine.RobAlerts())

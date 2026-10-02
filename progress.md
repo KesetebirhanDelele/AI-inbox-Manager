@@ -43,6 +43,26 @@ The detail below is in the order the work happened; this block is the summary.
   Spec: `directives/student-notification-escalation.md`. **Not built**: Ali requires Kes to confirm
   with Rob first, plus Twilio details, Cora's usage and student opt-in (checklist in the directive).
 
+- **Student notification escalation built (Kes: "build it for now"), deployed OFF.** New:
+  `execution/escalation_schedule.py`, `escalation_engine.py`, `notify_channels.py`, `reply_analysis.py`,
+  `notification_tick.py`, `area_code_timezones.py` (414 US/Canada area codes, generated once from the
+  `phonenumbers` library, so no new runtime dependency); models + migration `003` (3 NEW tables only,
+  because prod's `create_all` cannot add columns to existing tables); `routers/notifications.py` (Approve
+  starts it when `NOTIFY_ESCALATION_ENABLED`; public email "I got this" link; Rob's status/close; secret-
+  protected `/inbound/reply`); health check now also flags failed attempts. 103 new tests (root suite 574,
+  dashboard API suite 191 incl. 12 new).
+  **Safety:** off unless `NOTIFY_ESCALATION_ENABLED`; every channel defaults to `dry_run` (recorded as
+  `dry_run`, never `sent`); the AI reply reader runs in shadow mode until 2026-10-16 and can only stop a
+  sequence when also set to live. Nothing can reach a student yet.
+  **Researched how GHL/Cora delivers each channel** (cora-recap-engine code, not the GHL dashboard): email =
+  GHL fields Ticket #2 + Message → "AI Agent - Send Email"; SMS = Ticket #4 → "AI Agent - Send SMS"; **phone
+  call = no ticket field at all, a Synthflow "Make Call" webhook** (details and four risks in the directive:
+  Cora's SMS ledger does not count our texts; do not reuse Cora's Synthflow agent or its voicemail engine
+  would start chasing students as leads; Synthflow agents do not read keypad presses; writing Ticket #4
+  bypasses Cora's safeguards). GHL and Synthflow adapters are NOT built; selecting them fails loudly.
+  Nothing was enabled or sent. Still gated on: Kes confirming with Rob, Rob's address, Twilio/GHL/Synthflow
+  access, Cora's usage, student opt-in.
+
 ### End-of-day summary (2026-10-01)
 
 | Item | Result | Evidence |
