@@ -84,10 +84,10 @@ def test_start_creates_the_whole_plan_and_is_idempotent(db):
     draft, student = make_draft(db)
     seq = eng.start_sequence(db, draft, student, T0, started_by="rob")
     assert seq.status == "active" and seq.timezone == "America/Chicago" and seq.timezone_source == "area_code"
-    assert len(seq.attempts) == 16 and all(a.status == "pending" for a in seq.attempts)
+    assert len(seq.attempts) == 15 and all(a.status == "pending" for a in seq.attempts)
     assert len(seq.ack_token) >= 20
     again = eng.start_sequence(db, draft, student, T0 + timedelta(hours=1))
-    assert again.id == seq.id and len(again.attempts) == 16
+    assert again.id == seq.id and len(again.attempts) == 15
 
 
 def test_attempts_the_student_cannot_receive_are_recorded_as_skipped(db):
@@ -108,7 +108,8 @@ def test_day_one_ladder_then_rob_is_told_but_the_sequence_keeps_going(db):
     r = eng.tick(db, T0, ch, al)
     assert (r.sent, r.failed) == (3, 0) and steps(ch["call"]) == ["start"]
     eng.tick(db, T0 + timedelta(hours=2), ch, al)
-    assert steps(ch["call"]) == ["start", "d1_2h"] and steps(ch["sms"]) == ["start"]
+    assert steps(ch["call"]) == ["start"] and steps(ch["sms"]) == ["start"]     # +2h is email only: one call per day
+    assert steps(ch["email"]) == ["start", "d1_2h"]
     eng.tick(db, T0 + timedelta(hours=4), ch, al)
     assert steps(ch["sms"]) == ["start", "d1_4h"] and steps(ch["email"]) == ["start", "d1_2h", "d1_4h"]
 
@@ -129,7 +130,7 @@ def test_three_more_days_of_one_call_one_text_one_email_then_it_ends_and_rob_is_
         eng.tick(db, t, ch, al)
     for day in (6, 7, 8):                                        # 9 AM CDT = 14:00 UTC
         eng.tick(db, datetime(2026, 10, day, 14, 0), ch, al)
-    assert steps(ch["call"]) == ["start", "d1_2h", "day2", "day3", "day4"]
+    assert steps(ch["call"]) == ["start", "day2", "day3", "day4"]               # never two calls on one day
     assert steps(ch["sms"]) == ["start", "d1_4h", "day2", "day3", "day4"]
     assert len(ch["email"].calls) == 3 + 3
     db.refresh(seq)
@@ -139,7 +140,7 @@ def test_three_more_days_of_one_call_one_text_one_email_then_it_ends_and_rob_is_
     assert r.ended == 1 and seq.status == "exhausted"
     assert any("never acknowledged" in s for s in al.sent)
     eng.tick(db, datetime(2026, 10, 9, 14, 0), ch, al)
-    assert len(ch["call"].calls) == 5                            # nothing after the end
+    assert len(ch["call"].calls) == 4                            # nothing after the end
 
 
 def test_a_failed_or_crashing_channel_is_recorded_and_does_not_stop_the_others(db):
@@ -174,24 +175,39 @@ def test_a_real_first_email_marks_the_draft_sent(db):
 
 # -- quiet hours --------------------------------------------------------------
 
-def test_quiet_hours_hold_calls_and_texts_but_not_email_and_a_held_duplicate_is_skipped(db):
-    late = datetime(2026, 10, 6, 1, 0)                           # 20:00 CDT on the 5th
+def test_quiet_hours_hold_texts_after_9pm_but_not_email_and_a_held_duplicate_is_skipped(db):
+    late = datetime(2026, 10, 6, 0, 30)                          # 19:30 CDT: calls are still open (they stop at 8 PM)
     draft, student = make_draft(db)
     seq = eng.start_sequence(db, draft, student, late)
     ch, al = channels(), alerts()
     eng.tick(db, late, ch, al)
-    eng.tick(db, late + timedelta(hours=2), ch, al)              # 22:00 CDT: email goes, call is held
-    assert steps(ch["email"]) == ["start", "d1_2h"] and steps(ch["call"]) == ["start"]
-    eng.tick(db, late + timedelta(hours=4), ch, al)              # 00:00 CDT: sms held, email goes
+    assert steps(ch["call"]) == ["start"] and steps(ch["sms"]) == ["start"]
+    eng.tick(db, late + timedelta(hours=2), ch, al)              # 21:30 CDT: only an email is planned
+    assert steps(ch["email"]) == ["start", "d1_2h"]
+    eng.tick(db, late + timedelta(hours=4), ch, al)              # 23:30 CDT: the text is held, the email goes
     assert steps(ch["sms"]) == ["start"] and steps(ch["email"])[-1] == "d1_4h"
 
-    r = eng.tick(db, datetime(2026, 10, 6, 13, 0), ch, al)       # 8 AM CDT: held ones released
-    held = {(a.channel, a.step): a for a in seq.attempts if a.step in ("d1_2h", "d1_4h")}
-    # day 2's 9 AM call and text are due within 3 hours, so the held duplicates are skipped
-    assert held[("call", "d1_2h")].status == "skipped" and held[("sms", "d1_4h")].status == "skipped"
-    assert r.skipped == 2 and len(ch["call"].calls) == 1
+    r = eng.tick(db, datetime(2026, 10, 6, 13, 0), ch, al)       # 8 AM CDT: the held text is released
+    held_sms = next(a for a in seq.attempts if a.channel == "sms" and a.step == "d1_4h")
+    # day 2's 9 AM text is due within 3 hours, so the held duplicate is skipped
+    assert held_sms.status == "skipped" and r.skipped == 1
     eng.tick(db, datetime(2026, 10, 6, 14, 0), ch, al)           # 9 AM: day 2 goes out normally
     assert steps(ch["call"]) == ["start", "day2"] and steps(ch["sms"]) == ["start", "day2"]
+
+
+def test_a_call_due_after_8pm_is_held_because_ghl_only_calls_8am_to_8pm_and_the_next_call_covers_it(db):
+    after_eight = datetime(2026, 10, 6, 1, 30)                   # 20:30 CDT
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, after_eight)
+    ch, al = channels(), alerts()
+    eng.tick(db, after_eight, ch, al)
+    assert ch["call"].calls == [] and steps(ch["sms"]) == ["start"]      # the text is fine until 9 PM, the call is not
+    start_call = next(a for a in seq.attempts if a.channel == "call" and a.step == "start")
+    assert start_call.scheduled_for == datetime(2026, 10, 6, 13, 0)      # 8 AM CDT next morning
+    eng.tick(db, datetime(2026, 10, 6, 13, 0), ch, al)
+    assert start_call.status == "skipped"                                # day 2's 9 AM call is within 3 hours
+    eng.tick(db, datetime(2026, 10, 6, 14, 0), ch, al)
+    assert steps(ch["call"]) == ["day2"]                                 # exactly one call that day
 
 
 def test_a_california_student_is_never_called_at_6am(db):
@@ -202,10 +218,8 @@ def test_a_california_student_is_never_called_at_6am(db):
     eng.tick(db, datetime(2026, 10, 5, 13, 0), ch, alerts())
     assert ch["call"].calls == [] and ch["sms"].calls == [] and len(ch["email"].calls) == 1
     eng.tick(db, datetime(2026, 10, 5, 15, 0), ch, alerts())                      # 08:00 PDT
-    # the held "start" call and the "+2h" call both fall at 8 AM, so the 3-hour rule sends just one
-    assert steps(ch["call"]) == ["d1_2h"] and ch["call"].calls[0][1] == datetime(2026, 10, 5, 15, 0)
-    held_start = next(a for a in seq.attempts if a.channel == "call" and a.step == "start")
-    assert held_start.status == "skipped" and "3 hours" in held_start.detail
+    # the held "start" call is released at 8 AM PDT; the next call is a day away, so it goes
+    assert steps(ch["call"]) == ["start"] and ch["call"].calls[0][1] == datetime(2026, 10, 5, 15, 0)
 
 
 # -- stopping -----------------------------------------------------------------

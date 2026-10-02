@@ -5,7 +5,10 @@ Channels are dry_run (the default), so nothing is ever delivered. See
 directives/student-notification-escalation.md.
 """
 
+from datetime import datetime
 from unittest.mock import patch
+
+import pytest
 
 from conftest import (
     make_email,
@@ -15,6 +18,19 @@ from conftest import (
 )
 
 _SEND_EMAIL = "execution.send_notification.send_email"
+
+
+class _FixedClock(datetime):
+    """1 PM Central on a Tuesday: calls, texts and emails are all inside their allowed windows."""
+    @classmethod
+    def utcnow(cls):
+        return datetime(2026, 10, 6, 18, 0)
+
+
+@pytest.fixture(autouse=True)
+def fixed_clock(monkeypatch):
+    """Quiet hours depend on the time of day, so these tests must not depend on when they are run."""
+    monkeypatch.setattr("routers.notifications.datetime", _FixedClock)
 
 
 def _draft(db, phone="(972) 555-0100"):
@@ -53,7 +69,7 @@ class TestApproveWithEscalation:
         assert data["first_round"] == {"sent": 0, "dry_run": 3, "failed": 0, "skipped": 0}
         assert not send.called                                  # dry run delivers nothing
         seq = _sequence(db, draft)
-        assert len(seq.attempts) == 16 and seq.timezone == "America/Chicago" and seq.started_by
+        assert len(seq.attempts) == 15 and seq.timezone == "America/Chicago" and seq.started_by
 
     def test_approving_twice_does_not_start_a_second_sequence(self, client, db, auth_cookies, monkeypatch):
         monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "1")
@@ -94,7 +110,7 @@ class TestRobControls:
         client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies)
 
         seq = client.get(f"/api/notifications/{draft.id}/sequence", cookies=auth_cookies).json()
-        assert seq["status"] == "active" and len(seq["attempts"]) == 16
+        assert seq["status"] == "active" and len(seq["attempts"]) == 15
         assert {a["status"] for a in seq["attempts"] if a["step"] == "start"} == {"dry_run"}
 
         closed = client.post(f"/api/notifications/{draft.id}/sequence/close", cookies=auth_cookies).json()

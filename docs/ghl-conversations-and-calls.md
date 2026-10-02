@@ -38,27 +38,48 @@ the Colaberry GHL account by that project. Nothing here has been run from this r
    appear as a note a handler writes into the thread, or arrive by a Synthflow webhook. See open question A.
 3. **Connected must be a positive test** (completed and long enough), never "not in a list of bad statuses".
 
+## 2b. Voice AI (verified from GHL's own docs and live on the Colaberry account, 2026-10-02)
+The Colaberry voice agent is GHL's built-in Voice AI. Its calls are best read from Voice AI call logs, not from
+Conversations transcripts.
+
+| Topic | Fact | Source |
+|---|---|---|
+| Call logs | `GET /voice-ai/dashboard/call-logs` (scope `voice-ai-dashboard.readonly`; the contacts token works once it has the scope). Filters: `contactId`, `agentId`, `callType` (LIVE/TRIAL), `startDate`/`endDate` (unix, together), `actionType`, `page`, `pageSize` (max 50), `sortBy` (duration/createdAt), `sort`. Response: `callLogs`, `page`, `pageSize`, `total`. | GHL API docs; live |
+| Log fields | `id`, `contactId`, `agentId`, `fromNumber`, `createdAt`, `duration` (s), `transcript`, `summary`, `executedCallActions`, `extractedData`, `messageId`, `agentTransferOccurred`, `trialCall`, `translation`. **No status or outcome field.** | live |
+| Transcript | Plain text of `bot:` and `human:` prefixed lines (no structured roles). `human:` is the contact. | GHL API docs; live |
+| Call-end webhook | `VoiceAiCallEnd` carries call id, location, agent, contact, duration, summary and transcript. | GHL webhook docs |
+| Outbound action | Workflow action "Voice AI Outbound Call": pick the agent and a From number. How contact data reaches the prompt is **not documented**. | GHL help |
+| Outbound limits | 8 AM to 8 PM in the contact's phone-number zone (others are rescheduled); **one call per number per day, 14 per 14 days**; 10 per minute and 5,000 per day per location; domestic only. | GHL help |
+| Compliance | GHL does **not** validate consent or DND. We must. | GHL help |
+| Same agent in and out | Yes with the right prompt. Same number: not stated in the docs. | GHL help |
+
+Sources: help.gohighlevel.com "Voice AI Outbound Calling" (article 155000006598) and "Voice AI Outbound Calling Compliance
+Checks" (155000006679); marketplace.gohighlevel.com docs "List Call Logs" and "VoiceAiCallEnd".
+
 ## 3. NOT verified for our use (needs a look at the real account)
-A. **Which engine places our calls and how its result appears.** `interview_notification` triggers a voice-agent
-   workflow. Is it GHL's own Voice AI or a Synthflow "Make Call" step? Does the finished call show up as a
-   `TYPE_CALL` message (with `meta.call`), as an internal-comment note, or only via a webhook?
-B. **Which `mediaChannel` is the student** in a native transcript (if the account ever produces one), and whether
-   recordings are stereo (one party per channel), which would allow transcribing the student's side alone.
-C. **How the voice agent uses the field value**, and whether a long single-line value is read correctly.
-D. **Whether Voice AI honours Call DND and calling hours.** (Cora has not verified this either; we apply our own
-   quiet hours and opt-out check regardless.)
-E. The shortest call that can still be a real conversation. We default to 10 s (`NOTIFY_CALL_MIN_SECONDS`),
-   Cora uses 20 s for a different purpose (scoring staff calls).
+A. **How the `interview_notification` value reaches the voice agent's prompt.** Needs a test on a test contact.
+B. **Whether the existing number is an eligible From number** for the outbound action.
+C. **Whether the one-call-per-number-per-day limit also counts other Voice AI calls** to the same student (for example
+   Admissions).
+D. **How voicemail appears** in the call logs, since there is no status field (we treat "no human speech" as no
+   conversation).
+E. **The shortest call that can still be a real conversation.** We default to 10 s (`NOTIFY_CALL_MIN_SECONDS`).
+
+(Answered 2026-10-02: the engine is GHL Voice AI; the student's words are the `human:` lines; calls are read from the
+call-log API; GHL enforces 8 AM to 8 PM and one call per number per day; GHL does not check DND or consent.)
 
 ## 4. What is missing from `.claude/skills/ghl-integration/KIT.md` (for Kes to add)
 1. The conversation search and message-list endpoints, their parameters, and the double-nested messages response.
+   Also the Voice AI call-log endpoint and its fields (section 2b): it is the real source of call transcripts.
 2. That call status and duration are in `meta.call`, and the connected rule (completed plus a minimum length).
 3. The transcript sentence shape (`mediaChannel`, `sentenceIndex`, `transcript`), that it has no speaker labels, and
    that native transcripts may be off on the account so the Whisper-from-recording fallback is the real path.
 4. `startAfterDate` is a cursor, and `lastMessageType` hides a call behind a later note (both traps).
 5. Contact search by phone is free-text and returns near matches: always filter for an exact number.
 6. Re-trigger rule: a field-change trigger needs a CHANGED value, so make every write unique per attempt.
-7. Where results of an externally placed (Synthflow) call appear in GHL, and the InternalComment write.
+7. Where results of an externally placed (Synthflow) call appear in GHL, and the InternalComment write. Section 8 of the
+   kit can now be answered for GHL's own Voice AI: results come from the call-log API or the `VoiceAiCallEnd` webhook,
+   and GHL enforces 8 AM to 8 PM, one call per number per day, and checks neither consent nor DND.
 8. A daily text budget shared with another app is invisible to each app's own ledger.
 9. A polling recipe: handle each message id once, group open items per contact, wait a grace period for transcripts,
    never act on a transcript whose speakers you cannot tell apart.

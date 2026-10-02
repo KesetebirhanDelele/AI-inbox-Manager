@@ -175,12 +175,6 @@ class RobAlerts:
             f"{student_name} replied: \"{text[:300]}\"\nThe system read this as '{outcome}', so follow-ups "
             f"were not stopped. Please look at it.")
 
-    def call_needs_review(self, seq, student_name: str, reason: str = "it could not be read") -> bool:
-        return self._notify(
-            f"A call to {student_name} connected but could not be read",
-            f"The voice call to {student_name} connected, but {reason}, so nothing was analysed and follow-ups "
-            f"were not stopped. Please check the call in GHL Conversations and close the sequence if they confirmed.")
-
     def opted_out(self, seq, student_name: str) -> bool:
         return self._notify(
             f"{student_name} opted out (STOP)",
@@ -388,9 +382,6 @@ def handle_reply_for_sequences(db, sequences, text: str, channel: str, now: date
 
 # ── reading replies from the student's GHL Conversations ─────────────────────
 
-CALL_TRANSCRIPT_GRACE = timedelta(minutes=15)     # GHL may not have a transcript ready straight after a call
-
-
 @dataclass
 class PollReport:
     sequences: int = 0
@@ -425,20 +416,22 @@ def _handled_as(result: Dict[str, Any]) -> str:
 
 
 def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, completion_fn=None,
-                 env: Optional[Dict[str, str]] = None, student_media_channel: Optional[str] = None) -> PollReport:
+                 env: Optional[Dict[str, str]] = None) -> PollReport:
     """
-    Read each active sequence's GHL Conversations for the student's replies and calls, and act on them
-    exactly as a webhook reply would. Each GHL message is handled once (notification_inbound).
+    Read each active sequence's GHL Conversations (texts, emails) and Voice AI call logs for the student's
+    replies, and act on them exactly as a webhook reply would. Each GHL message or call is handled once
+    (notification_inbound).
 
-    Calls: only the student's side of the transcript is ever analysed, and only if the student's media
-    channel is configured (GHL_CALL_STUDENT_MEDIA_CHANNEL). Otherwise Rob is told the call happened.
+    Calls: only the student's side ("human:" lines) of the call-log transcript is analysed, and only when the
+    call lasted long enough and the student actually spoke (NOTIFY_CALL_MIN_SECONDS, default 10).
+    GHL_VOICE_AGENT_ID restricts this to the outbound agent's calls.
     """
     import ghl_client
     import ghl_conversations as gcv
 
     M = _m()
     env = os.environ if env is None else env
-    student_channel = student_media_channel or (env.get("GHL_CALL_STUDENT_MEDIA_CHANNEL") or "").strip() or None
+    agent_id = (env.get("GHL_VOICE_AGENT_ID") or "").strip() or None
     try:
         call_min_seconds = int(env.get("NOTIFY_CALL_MIN_SECONDS") or gcv.DEFAULT_MIN_CALL_SECONDS)
     except ValueError:
@@ -458,16 +451,24 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, 
         group.sort(key=lambda q: q.started_at, reverse=True)           # newest notice first
         report.sequences += len(group)
         ids = [q.id for q in group]
+        since = min(q.started_at for q in group)
         seen = {r.ghl_message_id for r in db.query(M.NotificationInbound.ghl_message_id)
                 .filter(M.NotificationInbound.sequence_id.in_(ids)).all()}
         subjects = [getattr(db.get(M.NotificationDraft, q.draft_id), "email_subject", None) for q in group]
         markers = [q.ack_token for q in group] + subjects
+
         try:
-            messages = gcv.fetch_new_messages(client, contact_id, min(q.started_at for q in group), seen, markers)
+            messages = gcv.fetch_new_messages(client, contact_id, since, seen, markers)
         except ghl_client.GhlError as exc:
             report.errors += 1
             report.details.append(f"contact {contact_id}: could not read conversations: {exc}")
-            continue
+            messages = []
+        try:
+            calls = gcv.fetch_new_calls(client, contact_id, since, seen, agent_id)
+        except ghl_client.GhlError as exc:
+            report.errors += 1
+            report.details.append(f"contact {contact_id}: could not read call logs: {exc}")
+            calls = []
 
         for message in messages:
             active = [q for q in group if q.status == "active"]
@@ -475,46 +476,35 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, 
                 break                                  # an earlier message already stopped everything
             primary = active[0]                        # the newest open notice carries the record
             report.new_messages += 1
+            if not message.text:
+                _record_inbound(db, primary, message, "echo")
+                continue
+            result = handle_reply_for_sequences(db, active, message.text, message.channel, now, alerts,
+                                                completion_fn, env)
+            _record_inbound(db, primary, message, _handled_as(result))
+            if result.get("action") in ("acknowledged", "opted_out"):
+                report.stopped += 1
 
-            if message.channel in ("sms", "email"):
-                if not message.text:
-                    _record_inbound(db, primary, message, "echo")
-                    continue
-                result = handle_reply_for_sequences(db, active, message.text, message.channel, now, alerts,
-                                                    completion_fn, env)
-                _record_inbound(db, primary, message, _handled_as(result))
-                if result.get("action") in ("acknowledged", "opted_out"):
-                    report.stopped += 1
+        for call in calls:
+            active = [q for q in group if q.status == "active"]
+            if not active:
+                break
+            primary = active[0]
+            report.new_messages += 1
+            record = _CallRecord(call)
+            if not gcv.reached_a_person(call, call_min_seconds):
+                _record_inbound(db, primary, record, "call_recorded", text="")      # no conversation to read
                 continue
-
-            # a call
-            if not gcv.is_connected_call(message, call_min_seconds):
-                _record_inbound(db, primary, message, "call_recorded", text="")      # did not reach a person
-                continue
-            try:
-                sentences = client.message_transcription(message.id)
-            except ghl_client.GhlError as exc:
-                report.errors += 1
-                report.details.append(f"contact {contact_id}: could not read call transcript: {exc}")
-                continue
-            if sentences is None:
-                if message.received_at and now - message.received_at < CALL_TRANSCRIPT_GRACE:
-                    continue                           # check again next poll
-                _record_inbound(db, primary, message, "call_no_transcript", text="")
-                alerts.call_needs_review(primary, _student_name(db, primary),
-                                         f"GHL has no transcript for it ({message.duration}s call)")
-                continue
-            words = gcv.student_words(sentences, student_channel)
-            if words is None:
-                _record_inbound(db, primary, message, "call_unreadable", text="")
-                alerts.call_needs_review(primary, _student_name(db, primary),
-                                         "the student's words could not be separated from the agent's")
-                continue
-            if not words:
-                _record_inbound(db, primary, message, "call_recorded", text="")
-                continue
-            result = handle_reply_for_sequences(db, active, words, "call", now, alerts, completion_fn, env)
-            _record_inbound(db, primary, message, _handled_as(result), text=words)
+            result = handle_reply_for_sequences(db, active, call.human_words, "call", now, alerts, completion_fn, env)
+            _record_inbound(db, primary, record, _handled_as(result), text=call.human_words)
             if result.get("action") in ("acknowledged", "opted_out"):
                 report.stopped += 1
     return report
+
+
+class _CallRecord:
+    """Adapts a Voice AI call to the shape _record_inbound writes."""
+    channel, direction, text = "call", "outbound", ""
+
+    def __init__(self, call):
+        self.id, self.received_at = call.record_id, call.created_at

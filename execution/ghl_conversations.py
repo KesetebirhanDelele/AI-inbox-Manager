@@ -1,16 +1,15 @@
 """
-Reading what the student actually did, from the candidate's GHL Conversations.
+Reading what the student actually did.
 
 All communication runs through GHL, so replies are READ from GHL (polled) rather than pushed to us:
-  * a text reply  -> an inbound TYPE_SMS message
-  * an email reply -> an inbound TYPE_EMAIL message (GHL also logs OUR outbound emails and unsubscribe
-    boilerplate as inbound, so those echoes are filtered out)
-  * a call         -> a TYPE_CALL message, with GHL's own transcript as sentence entries
+  * a text reply   -> an inbound TYPE_SMS message in the candidate's Conversations
+  * an email reply -> an inbound TYPE_EMAIL message (GHL also logs OUR outbound emails as inbound, so those
+    echoes are filtered out)
+  * a voice call   -> a Voice AI CALL LOG (GET /voice-ai/dashboard/call-logs). Its transcript is speaker-labelled
+    ("bot:" / "human:" lines), so the student's words can be separated from the agent's. This replaces the
+    Conversations transcript endpoint, which returns nothing on this account.
 
-The AI must judge only the STUDENT's words. GHL's transcript gives sentences per media channel but does
-not say which channel is the student, so the student's channel has to be configured
-(GHL_CALL_STUDENT_MEDIA_CHANNEL). Until it is, a call transcript is never analysed and never stops a
-sequence: Rob is told the call happened instead.
+The AI must judge only the STUDENT's words: for calls, only the "human:" lines are ever analysed.
 
 Pure parsing lives here (easy to test); the polling loop is in escalation_engine.py.
 """
@@ -32,9 +31,8 @@ class ConversationMessage:
     direction: str                 # inbound | outbound
     text: str
     received_at: Optional[datetime]   # naive UTC
-    status: str = ""               # calls: meta.call.status ("completed" = connected); texts: delivered, ...
+    status: str = ""               # texts: delivered, ...
     subject: str = ""
-    duration: Optional[int] = None  # calls only: meta.call.duration in seconds
 
 
 def parse_time(value: Any) -> Optional[datetime]:
@@ -66,33 +64,11 @@ def normalize(raw: Dict[str, Any]) -> Optional[ConversationMessage]:
         return None
     meta = raw.get("meta") or {}
     subject = str(raw.get("subject") or (meta.get("email") or {}).get("subject") or "")
-    status, duration = str(raw.get("status") or "").lower(), None
-    if channel == "call":
-        call = meta.get("call") or {}                       # confirmed on Cora's account: status and duration live here
-        status = str(call.get("status") or status).lower()
-        try:
-            duration = int(call["duration"]) if call.get("duration") is not None else None
-        except (TypeError, ValueError):
-            duration = None
     return ConversationMessage(
         id=str(raw["id"]), channel=channel, direction=str(raw.get("direction") or "").lower(),
         text=str(raw.get("body") or raw.get("message") or "").strip(),
         received_at=parse_time(raw.get("dateAdded") or raw.get("dateUpdated")),
-        status=status, subject=subject, duration=duration)
-
-
-DEFAULT_MIN_CALL_SECONDS = 10
-
-
-def is_connected_call(message: ConversationMessage, min_seconds: int = DEFAULT_MIN_CALL_SECONDS) -> bool:
-    """
-    A call that actually reached a person: status "completed" AND a duration of at least `min_seconds`.
-
-    A positive test on purpose (Cora's own rule is "completed and 20 s or more"): any other status, a missing
-    duration, or a very short call is NOT connected, so an unfamiliar status word can never be mistaken for a
-    real conversation. Our confirmation call can be short ("yes, got it"), so the default is 10 s, not Cora's 20 s.
-    """
-    return message.status == "completed" and bool(message.duration) and message.duration >= min_seconds
+        status=str(raw.get("status") or "").lower(), subject=subject)
 
 
 def is_echo(message: ConversationMessage, markers: Iterable[str]) -> bool:
@@ -106,24 +82,88 @@ def is_echo(message: ConversationMessage, markers: Iterable[str]) -> bool:
     return any(m and m.lower() in haystack for m in markers)
 
 
-def student_words(sentences: Optional[List[Dict[str, Any]]], student_media_channel: Optional[str]) -> Optional[str]:
-    """
-    The student's side of a call transcript, in order, or None if it cannot be isolated.
+DEFAULT_MIN_CALL_SECONDS = 10
+VOICE_ID_PREFIX = "voiceai:"          # keeps call-log ids apart from message ids in notification_inbound
 
-    None (not "") means "we cannot tell who is who": the caller must not analyse or act on it.
+
+@dataclass
+class VoiceCall:
+    id: str
+    created_at: Optional[datetime]     # naive UTC
+    duration: int                      # seconds
+    human_words: str                   # ONLY the student's side of the transcript
+    summary: str = ""
+    actions: Optional[List[str]] = None
+
+    @property
+    def record_id(self) -> str:
+        return VOICE_ID_PREFIX + self.id
+
+
+def human_words(transcript: Any) -> str:
     """
-    if sentences is None or not student_media_channel:
+    The student's side of a Voice AI transcript: the lines labelled "human:" (the agent's are "bot:"), in order.
+    A line with no label continues the previous speaker. Returns "" if the student said nothing.
+    """
+    if not isinstance(transcript, str):
+        return ""
+    words, speaker = [], None
+    for line in transcript.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        lowered = stripped.lower()
+        if lowered.startswith("human:"):
+            speaker, stripped = "human", stripped[6:].strip()
+        elif lowered.startswith("bot:"):
+            speaker, stripped = "bot", stripped[4:].strip()
+        if speaker == "human" and stripped:
+            words.append(stripped)
+    return " ".join(words)
+
+
+def parse_call_log(raw: Dict[str, Any]) -> Optional[VoiceCall]:
+    if not raw.get("id"):
         return None
-    mine = [s for s in sentences if str(s.get("mediaChannel")) == str(student_media_channel)]
-    mine.sort(key=lambda s: (s.get("sentenceIndex") is None, s.get("sentenceIndex"), s.get("startTime") or 0))
-    return " ".join(str(s.get("transcript", "")).strip() for s in mine if s.get("transcript")).strip()
+    try:
+        duration = int(raw.get("duration") or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    actions = [str(a.get("actionType")) for a in (raw.get("executedCallActions") or []) if isinstance(a, dict)]
+    return VoiceCall(id=str(raw["id"]), created_at=parse_time(raw.get("createdAt")), duration=duration,
+                     human_words=human_words(raw.get("transcript")), summary=str(raw.get("summary") or ""),
+                     actions=actions)
+
+
+def reached_a_person(call: VoiceCall, min_seconds: int = DEFAULT_MIN_CALL_SECONDS) -> bool:
+    """
+    A positive test: the call lasted at least `min_seconds` AND the student said something. Anything else
+    (no answer, hung up, voicemail with no human speech) is not a conversation and is never analysed.
+    """
+    return call.duration >= min_seconds and bool(call.human_words)
+
+
+def fetch_new_calls(client: Any, contact_id: str, since: datetime, seen_ids: Set[str],
+                    agent_id: Optional[str] = None) -> List[VoiceCall]:
+    """This contact's Voice AI calls since `since` that we have not processed, oldest first."""
+    found: List[VoiceCall] = []
+    for raw in client.voice_ai_call_logs(contact_id, agent_id=agent_id or None):
+        call = parse_call_log(raw)
+        if call is None or call.record_id in seen_ids or call.created_at is None:
+            continue
+        if call.created_at < since - timedelta(seconds=1):
+            continue
+        found.append(call)
+    found.sort(key=lambda c: c.created_at)
+    return found
 
 
 def fetch_new_messages(client: Any, contact_id: str, since: datetime, seen_ids: Set[str],
                        markers: Iterable[str] = ()) -> List[ConversationMessage]:
     """
-    Messages on this contact since `since` that we have not processed: inbound texts and emails (echoes
-    removed) and call messages. Oldest first. Raises GhlError on a failed read (the caller decides).
+    Messages on this contact since `since` that we have not processed: inbound texts and emails, with echoes
+    of our own emails removed. Calls are NOT read here; they come from Voice AI call logs (fetch_new_calls).
+    Oldest first. Raises GhlError on a failed read (the caller decides).
     """
     markers = list(markers)
     found: List[ConversationMessage] = []
@@ -132,8 +172,8 @@ def fetch_new_messages(client: Any, contact_id: str, since: datetime, seen_ids: 
             m = normalize(raw)
             if m is None or m.id in seen_ids or m.received_at is None or m.received_at < since - timedelta(seconds=1):
                 continue
-            if m.channel in ("sms", "email") and m.direction != "inbound":
-                continue                                    # our own outbound messages
+            if m.channel not in ("sms", "email") or m.direction != "inbound":
+                continue                                    # calls come from call logs; skip our own outbound messages
             if is_echo(m, markers):
                 continue
             found.append(m)

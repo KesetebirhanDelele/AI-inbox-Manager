@@ -1,4 +1,4 @@
-"""Parsing and fetching the student's messages from GHL Conversations. Fake client; no network."""
+"""Parsing and fetching the student's messages and Voice AI calls from GHL. Fake client; no network."""
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -52,34 +52,22 @@ def test_echo_filter_only_applies_to_emails_that_carry_our_markers():
     assert gcv.is_echo(sms, markers) is False                                        # texts are never echoes
 
 
-SENTENCES = [
-    {"mediaChannel": 1, "sentenceIndex": 0, "transcript": "Hello, this is Colaberry about your interview."},
-    {"mediaChannel": 2, "sentenceIndex": 1, "transcript": "Yes, I got it."},
-    {"mediaChannel": 1, "sentenceIndex": 2, "transcript": "Great, can you confirm?"},
-    {"mediaChannel": 2, "sentenceIndex": 3, "transcript": "Confirmed."},
-]
-
-
-def test_student_words_are_only_the_students_channel_in_order():
-    assert gcv.student_words(SENTENCES, "2") == "Yes, I got it. Confirmed."
-    assert gcv.student_words(SENTENCES, 2) == "Yes, I got it. Confirmed."
-
-
-def test_student_words_is_none_when_we_cannot_tell_who_is_who():
-    assert gcv.student_words(SENTENCES, None) is None            # channel not configured: never analyse
-    assert gcv.student_words(None, "2") is None                  # no transcript
-    assert gcv.student_words([], "2") == ""                      # a transcript, but the student said nothing
-
+# -- texts and emails ---------------------------------------------------------------
 
 class FakeConv:
-    def __init__(self, messages):
-        self.messages = messages
+    def __init__(self, messages=None, call_logs=None):
+        self.messages, self.call_logs = messages or [], call_logs or []
+        self.call_log_requests = []
 
     def conversations_for_contact(self, contact_id):
         return [{"id": "conv1"}]
 
     def conversation_messages(self, conversation_id):
         return self.messages
+
+    def voice_ai_call_logs(self, contact_id, agent_id=None, page_size=20):
+        self.call_log_requests.append((contact_id, agent_id))
+        return self.call_logs
 
 
 SINCE = datetime(2026, 10, 5, 20, 0)
@@ -89,19 +77,19 @@ def raw(id, type_="TYPE_SMS", direction="inbound", body="yes", at="2026-10-05T20
     return {"id": id, "messageType": type_, "direction": direction, "body": body, "dateAdded": at, **extra}
 
 
-def test_fetch_keeps_inbound_replies_and_calls_and_drops_everything_else():
+def test_fetch_keeps_only_inbound_texts_and_emails():
     client = FakeConv([
         raw("sms-in"),
         raw("sms-out", direction="outbound"),                                    # our own text
         raw("old", at="2026-10-05T19:00:00.000Z"),                               # before the sequence began
         raw("echo", type_="TYPE_EMAIL", body="link https://x/ack/TOK"),
         raw("email-in", type_="TYPE_EMAIL", body="Got it, thanks"),
-        raw("call", type_="TYPE_CALL", direction="outbound", body="", meta={"call": {"status": "completed", "duration": 30}}),
+        raw("call-msg", type_="TYPE_CALL", direction="inbound", body=""),        # calls come from Voice AI call logs
         raw("note", type_="TYPE_ACTIVITY_NOTE"),
         raw("seen"),
     ])
     got = gcv.fetch_new_messages(client, "c1", SINCE, {"seen"}, markers=["TOK"])
-    assert [m.id for m in got] == ["sms-in", "email-in", "call"]
+    assert [m.id for m in got] == ["sms-in", "email-in"]
 
 
 def test_fetch_returns_oldest_first():
@@ -109,27 +97,69 @@ def test_fetch_returns_oldest_first():
     assert [m.id for m in gcv.fetch_new_messages(client, "c1", SINCE, set())] == ["a", "b"]
 
 
-def test_a_calls_status_and_duration_come_from_meta_call():
-    m = gcv.normalize({"id": "c1", "messageType": "TYPE_CALL", "direction": "outbound",
-                       "meta": {"call": {"status": "Completed", "duration": 45}}})
-    assert (m.status, m.duration) == ("completed", 45) and gcv.is_connected_call(m)
+# -- Voice AI call logs ---------------------------------------------------------------
+
+TRANSCRIPT = (
+    "bot: Hello, this is Colaberry about your interview with Acme.\n"
+    "human: Yes I got it.\n"
+    "bot: Great, can you confirm?\n"
+    "human: Confirmed,\nI will call them tomorrow.\n"            # a second line with no label continues the student
+    "bot: Thank you."
+)
 
 
-@pytest.mark.parametrize("meta, connected", [
-    ({"call": {"status": "completed", "duration": 45}}, True),
-    ({"call": {"status": "completed", "duration": 10}}, True),
-    ({"call": {"status": "completed", "duration": 9}}, False),
-    ({"call": {"status": "completed"}}, False),
-    ({"call": {"status": "voicemail", "duration": 60}}, False),
-    ({"call": {"status": "busy", "duration": 0}}, False),
-    ({}, False),
-    ({"call": {"status": "completed", "duration": "n/a"}}, False),
+def test_human_words_are_only_the_students_lines_in_order():
+    assert gcv.human_words(TRANSCRIPT) == "Yes I got it. Confirmed, I will call them tomorrow."
+
+
+@pytest.mark.parametrize("transcript, expected", [
+    ("bot: Hello\nbot: Anyone there?", ""),                       # the student never spoke
+    ("BOT: hi\nHuman: yes", "yes"),                               # labels are case-insensitive
+    ("human:   spaced   ", "spaced"),
+    ("", ""), (None, ""), (123, ""),
 ])
-def test_connected_is_a_positive_test_never_a_guess(meta, connected):
-    m = gcv.normalize({"id": "c", "messageType": "TYPE_CALL", "meta": meta})
-    assert gcv.is_connected_call(m) is connected
+def test_human_words_edge_cases(transcript, expected):
+    assert gcv.human_words(transcript) == expected
+
+
+def log(id="L1", duration=45, transcript=TRANSCRIPT, at="2026-10-05T20:10:00.000Z", **extra):
+    return {"id": id, "duration": duration, "transcript": transcript, "createdAt": at, "summary": "s",
+            "executedCallActions": [{"actionType": "CALL_TRANSFER"}], **extra}
+
+
+def test_parse_call_log():
+    call = gcv.parse_call_log(log())
+    assert (call.id, call.record_id, call.duration) == ("L1", "voiceai:L1", 45)
+    assert call.created_at == datetime(2026, 10, 5, 20, 10) and call.actions == ["CALL_TRANSFER"]
+    assert "Yes I got it." in call.human_words and "Hello, this is" not in call.human_words
+    assert gcv.parse_call_log({"duration": 5}) is None                                # no id
+    assert gcv.parse_call_log(log(duration="n/a")).duration == 0
+
+
+@pytest.mark.parametrize("duration, transcript, reached", [
+    (45, TRANSCRIPT, True),
+    (10, "human: yes", True),
+    (9, "human: yes", False),                       # too short to be a conversation
+    (45, "bot: Hello? Anyone there?", False),       # nobody spoke: no answer or a dead line
+    (0, "", False),
+])
+def test_reached_a_person_is_a_positive_test(duration, transcript, reached):
+    assert gcv.reached_a_person(gcv.parse_call_log(log(duration=duration, transcript=transcript))) is reached
 
 
 def test_the_minimum_call_length_can_be_changed():
-    m = gcv.normalize({"id": "c", "messageType": "TYPE_CALL", "meta": {"call": {"status": "completed", "duration": 15}}})
-    assert gcv.is_connected_call(m, 20) is False and gcv.is_connected_call(m, 5) is True
+    call = gcv.parse_call_log(log(duration=15, transcript="human: yes"))
+    assert gcv.reached_a_person(call, 20) is False and gcv.reached_a_person(call, 5) is True
+
+
+def test_fetch_new_calls_skips_seen_old_and_unparseable_and_sorts_oldest_first():
+    client = FakeConv(call_logs=[
+        log("late", at="2026-10-05T20:30:00.000Z"),
+        log("seen", at="2026-10-05T20:15:00.000Z"),
+        log("old", at="2026-10-05T19:00:00.000Z"),
+        {"duration": 3},
+        log("early", at="2026-10-05T20:05:00.000Z"),
+    ])
+    got = gcv.fetch_new_calls(client, "c1", SINCE, {"voiceai:seen"}, agent_id="agent-9")
+    assert [c.id for c in got] == ["early", "late"]
+    assert client.call_log_requests == [("c1", "agent-9")]

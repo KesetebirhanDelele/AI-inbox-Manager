@@ -401,8 +401,9 @@ at 07:30 UTC from the host file `/etc/cron.d/inboxgenius-health` (source:
 Directive: [`directives/pipeline-health-check.md`](directives/pipeline-health-check.md).
 
 **Student notification escalation (built 2026-10-02, deployed OFF).** Rob's Approve can start a
-call + text + email sequence that keeps going (day 1 at +0/+2h/+4h, then once a day for 3 more days at
-9 AM student-local; quiet hours 9 PM-8 AM student-local for calls/texts) until the student acknowledges or
+call + text + email sequence that keeps going (day 1: call+text+email at +0, email at +2h, text+email at +4h, because
+GHL allows one call per number per day; then once a day for 3 more days at 9 AM student-local; quiet hours student-local:
+calls 8 PM-8 AM (GHL's own window), texts 9 PM-8 AM) until the student acknowledges or
 Rob closes it. It is **disabled** unless `NOTIFY_ESCALATION_ENABLED` is set, and every channel defaults to `dry_run`.
 The `ghl` channel (writes GHL fields: Ticket #2 + Message email, Ticket #4 SMS, `interview_notification` call)
 is built but shadow-gated (live needs three `GHL_WRITE_*` switches). Approve still sends the single email as before. New tables:

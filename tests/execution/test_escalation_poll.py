@@ -1,6 +1,7 @@
 """
-Polling the student's GHL Conversations for replies and calls: acts like a webhook reply would, handles
-each message once, and never lets an unreadable call stop a sequence. Fake GHL client; no network.
+Polling the student's GHL Conversations and Voice AI call logs for replies and calls: acts like a webhook
+reply would, handles each message or call once, and only ever reads the student's side of a call.
+Fake GHL client; no network.
 """
 import json
 import sys
@@ -33,9 +34,10 @@ class HandedToGhl:
 
 
 class FakeConv:
-    def __init__(self, messages=None, sentences=None, read_error=None):
-        self.messages, self.sentences, self.read_error = messages or [], sentences, read_error
-        self.transcript_reads = []
+    def __init__(self, messages=None, call_logs=None, read_error=None, call_error=None):
+        self.messages, self.call_logs = messages or [], call_logs or []
+        self.read_error, self.call_error = read_error, call_error
+        self.call_log_requests = []
 
     def conversations_for_contact(self, contact_id):
         if self.read_error:
@@ -45,9 +47,11 @@ class FakeConv:
     def conversation_messages(self, conversation_id):
         return self.messages
 
-    def message_transcription(self, message_id):
-        self.transcript_reads.append(message_id)
-        return self.sentences
+    def voice_ai_call_logs(self, contact_id, agent_id=None, page_size=20):
+        self.call_log_requests.append((contact_id, agent_id))
+        if self.call_error:
+            raise self.call_error
+        return self.call_logs
 
 
 def started(db, **kw):
@@ -61,9 +65,8 @@ def msg(id, body="", type_="TYPE_SMS", direction="inbound", at="2026-10-05T20:10
     return {"id": id, "messageType": type_, "direction": direction, "body": body, "dateAdded": at, **extra}
 
 
-def poll(db, conv, now=NOW, env=None, fn=None, al=None, channel=None):
-    return eng.poll_replies(db, now, conv, al or alerts(), completion_fn=fn, env=env if env is not None else {},
-                            student_media_channel=channel)
+def poll(db, conv, now=NOW, env=None, fn=None, al=None):
+    return eng.poll_replies(db, now, conv, al or alerts(), completion_fn=fn, env=env if env is not None else {})
 
 
 def inbound_rows(db):
@@ -157,29 +160,22 @@ def test_a_sequence_with_no_real_send_yet_is_not_polled(db):
 def test_a_failed_read_is_counted_and_never_crashes_or_changes_anything(db):
     seq = started(db)
     report = poll(db, FakeConv(read_error=gc.GhlError("GHL HTTP 500")))
-    assert report.errors == 1 and "could not read" in report.details[0] and seq.status == "active"
+    assert report.errors == 1 and "could not read conversations" in report.details[0] and seq.status == "active"
 
 
-# -- calls ----------------------------------------------------------------------------
+# -- calls (Voice AI call logs) ---------------------------------------------------------
 
-SENTENCES = [
-    {"mediaChannel": 1, "sentenceIndex": 0, "transcript": "Hello, this is Colaberry about your interview."},
-    {"mediaChannel": 2, "sentenceIndex": 1, "transcript": "Yes I got it, I will call them tomorrow."},
-]
-CALL = msg("call1", type_="TYPE_CALL", direction="outbound", meta={"call": {"status": "completed", "duration": 45}})
+CALL_TRANSCRIPT = ("bot: Hello, this is Colaberry about your interview with Acme.\n"
+                   "human: Yes I got it, I will call them tomorrow.\n"
+                   "bot: Thank you, goodbye.")
 
 
-def test_a_call_whose_speakers_cannot_be_told_apart_is_never_analysed_and_rob_is_told_once(db):
-    seq = started(db)
-    al = alerts()
-    conv = FakeConv([CALL], sentences=SENTENCES)
-    poll(db, conv, al=al, fn=lambda _m: pytest.fail("must not analyse an unattributed transcript"))   # channel not configured
-    poll(db, conv, al=al)
-    assert seq.status == "active" and inbound_rows(db) == {("call1", "call_unreadable")}
-    assert sum("could not be read" in s for s in al.sent) == 1
+def call_log(id="L1", duration=45, transcript=CALL_TRANSCRIPT, at="2026-10-05T20:10:00.000Z"):
+    return {"id": id, "duration": duration, "transcript": transcript, "createdAt": at, "summary": "s",
+            "executedCallActions": []}
 
 
-def test_a_call_with_the_student_channel_configured_is_judged_on_the_students_words_only(db):
+def test_only_the_students_lines_of_a_call_reach_the_ai_and_a_confident_understood_stops_it_when_live(db):
     seen = []
 
     def fn(messages):
@@ -187,47 +183,65 @@ def test_a_call_with_the_student_channel_configured_is_judged_on_the_students_wo
         return understood(messages)
 
     seq = started(db)
-    poll(db, FakeConv([CALL], sentences=SENTENCES), env=LIVE_AI, fn=fn, channel="2")
-    assert seq.status == "acknowledged" and seq.ack_channel == "ai"
-    assert "I will call them tomorrow" in seen[0] and "this is Colaberry" not in seen[0]       # the agent's words never reach the AI
-    assert inbound_rows(db) == {("call1", "ai")}
+    poll(db, FakeConv(call_logs=[call_log()]), env=LIVE_AI, fn=fn)
+    assert seq.status == "acknowledged" and seq.ack_channel == "ai" and seq.ack_kind == "ai_inferred"
+    assert "I will call them tomorrow" in seen[0]
+    assert "this is Colaberry" not in seen[0] and "goodbye" not in seen[0]            # the agent's words never reach the AI
+    assert inbound_rows(db) == {("voiceai:L1", "ai")}
 
 
 def test_a_call_in_shadow_mode_is_recorded_but_stops_nothing(db):
     seq = started(db)
-    poll(db, FakeConv([CALL], sentences=SENTENCES), env={}, fn=understood, channel="2")
+    poll(db, FakeConv(call_logs=[call_log()]), env={}, fn=understood)
     assert seq.status == "active" and db.query(db.models.ReplyAnalysis).one().acted is False
 
 
-@pytest.mark.parametrize("call_meta", [
-    {"status": "voicemail", "duration": 40}, {"status": "no-answer", "duration": 0}, {"status": "busy"},
-    {"status": "failed", "duration": 12}, {"status": "completed", "duration": 4},     # too short to be a conversation
-    {"status": "completed"},                                                           # no duration: not proven connected
-    {"status": "some-new-word", "duration": 60},                                       # an unfamiliar status is never "connected"
-])
-def test_a_call_that_did_not_reach_a_person_is_recorded_without_reading_a_transcript(db, call_meta):
+def test_a_call_that_ends_the_conversation_with_a_question_goes_to_rob(db):
     seq = started(db)
-    conv = FakeConv([msg("c", type_="TYPE_CALL", direction="outbound", meta={"call": call_meta})], sentences=SENTENCES)
-    poll(db, conv, channel="2")
-    assert seq.status == "active" and conv.transcript_reads == [] and inbound_rows(db) == {("c", "call_recorded")}
-
-
-def test_a_transcript_that_is_not_ready_is_retried_until_the_grace_period_ends(db):
-    seq = started(db)
-    conv = FakeConv([CALL], sentences=None)
-    poll(db, conv, now=datetime(2026, 10, 5, 20, 20))                 # call at 20:10: only 10 minutes old
-    assert inbound_rows(db) == set()                                   # try again next poll
     al = alerts()
-    poll(db, conv, now=datetime(2026, 10, 5, 20, 40), al=al)          # 30 minutes: give up, but never silently
-    assert inbound_rows(db) == {("call1", "call_no_transcript")} and seq.status == "active"
-    assert any("connected but could not be read" in s for s in al.sent)
+    fn = lambda _m: json.dumps({"outcome": "needs_help", "confidence": 0.9, "reason": "wants to move it"})
+    poll(db, FakeConv(call_logs=[call_log(transcript="bot: Hi\nhuman: I cannot make Tuesday, can it move?")]),
+         env=LIVE_AI, fn=fn, al=al)
+    assert seq.status == "active" and any("may need help" in s for s in al.sent)
 
 
-def test_a_call_where_the_student_said_nothing_is_recorded_not_analysed(db):
+@pytest.mark.parametrize("duration, transcript", [
+    (4, "human: yes"),                                    # too short to be a conversation
+    (45, "bot: Hello? Is anyone there?"),                 # nobody answered
+    (0, ""),
+])
+def test_a_call_that_did_not_reach_a_person_is_recorded_and_never_analysed(db, duration, transcript):
     seq = started(db)
-    only_agent = [SENTENCES[0]]
-    poll(db, FakeConv([CALL], sentences=only_agent), channel="2", fn=lambda _m: pytest.fail("nothing to analyse"))
-    assert inbound_rows(db) == {("call1", "call_recorded")} and seq.status == "active"
+    poll(db, FakeConv(call_logs=[call_log(duration=duration, transcript=transcript)]),
+         fn=lambda _m: pytest.fail("must not analyse a call that reached no one"))
+    assert seq.status == "active" and inbound_rows(db) == {("voiceai:L1", "call_recorded")}
+
+
+def test_a_call_is_handled_once_and_calls_before_the_sequence_are_ignored(db):
+    seq = started(db)
+    conv = FakeConv(call_logs=[call_log("old", at="2026-10-05T19:00:00.000Z"), call_log("new")])
+    first = poll(db, conv, env=LIVE_AI, fn=understood)
+    second = poll(db, conv, env=LIVE_AI, fn=lambda _m: pytest.fail("a call must not be analysed twice"))
+    assert first.new_messages == 1 and second.new_messages == 0
+    assert inbound_rows(db) == {("voiceai:new", "ai")}
+
+
+def test_the_outbound_agent_id_is_passed_to_the_call_log_request(db):
+    started(db)
+    conv = FakeConv()
+    poll(db, conv, env={"GHL_VOICE_AGENT_ID": "agent-outbound"})
+    assert conv.call_log_requests == [("contact-1", "agent-outbound")]
+    conv2 = FakeConv()
+    poll(db, conv2, env={})
+    assert conv2.call_log_requests == [("contact-1", None)]
+
+
+def test_a_failed_call_log_read_is_counted_and_does_not_stop_the_text_and_email_reads(db):
+    seq = started(db)
+    conv = FakeConv(messages=[msg("m1", "YES")], call_error=gc.GhlError("GHL HTTP 500"))
+    report = poll(db, conv)
+    assert report.errors == 1 and "call logs" in report.details[0]
+    assert seq.status == "acknowledged"                                   # the text was still read
 
 
 def test_once_a_message_stops_the_sequence_later_ones_are_not_acted_on(db):

@@ -202,13 +202,32 @@ def test_messages_are_unwrapped_from_ghls_double_nesting_and_the_single_shape():
     assert conv_client(Resp(200, single)).conversation_messages("conv1") == [{"id": "m2"}]
 
 
-def test_a_missing_transcript_is_none_but_other_errors_still_raise():
-    assert conv_client(Resp(400, {"message": "recording not found"})).message_transcription("m1") is None
-    sentences = [{"mediaChannel": 1, "transcript": "hi"}]
-    assert conv_client(Resp(200, sentences)).message_transcription("m1") == sentences
-    assert conv_client(Resp(200, {"transcriptions": sentences})).message_transcription("m1") == sentences
+def test_voice_ai_call_logs_ask_for_this_contacts_live_calls_with_the_contacts_token():
+    logs = {"callLogs": [{"id": "L1"}], "page": 1, "pageSize": 20, "total": 1}
+    c = client(Resp(200, logs), conversations_api_key="conv-tok")
+    assert c.voice_ai_call_logs("c1", agent_id="agent-9") == [{"id": "L1"}]
+    call = c._session.calls[0]
+    assert call["url"].endswith("/voice-ai/dashboard/call-logs")
+    assert call["kw"]["params"] == {"locationId": "loc", "contactId": "c1", "callType": "LIVE", "pageSize": 20,
+                                    "page": 1, "sortBy": "createdAt", "sort": "descend", "agentId": "agent-9"}
+    assert call["headers"]["Authorization"] == "Bearer tok"          # the contacts token has the voice-ai scope
+
+
+def test_voice_ai_call_logs_without_an_agent_filter_and_with_a_capped_page_size():
+    c = client(Resp(200, {"callLogs": []}))
+    assert c.voice_ai_call_logs("c1", page_size=500) == []
+    params = c._session.calls[0]["kw"]["params"]
+    assert "agentId" not in params and params["pageSize"] == 50 and params["callType"] == "LIVE"
+
+
+def test_a_failed_call_log_read_raises():
     with pytest.raises(gc.GhlError):
-        conv_client(Resp(404, {})).message_transcription("m1")
+        client(Resp(403, {"message": "scope"})).voice_ai_call_logs("c1")
+
+
+def test_the_voice_agent_id_comes_from_env():
+    assert gc.GhlConfig.from_env({"GHL_VOICE_AGENT_ID": " agent-1 "}).voice_agent_id == "agent-1"
+    assert gc.GhlConfig.from_env({}).voice_agent_id == ""
 
 
 def test_the_conversations_token_comes_from_env():

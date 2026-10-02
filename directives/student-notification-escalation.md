@@ -62,32 +62,35 @@ field UUID; a successful write means "handed to GHL", not delivered; opt-outs ch
 5. **Every student exists as a GHL contact.** The contact is found by EXACT phone match (a near match is never used,
    two exact matches are refused) so one student's details can never go to another.
 
-**Calls and the AI.** GHL's transcript lists sentences per `mediaChannel` but does not say which channel is the
-student. Set `GHL_CALL_STUDENT_MEDIA_CHANNEL` once confirmed from a real call. Until then a finished call is never
-analysed and never stops a sequence; Rob gets one alert ("a call finished but could not be read"). When set, only the
-student's sentences reach the AI. Calls that did not connect (voicemail, no answer, busy, failed) are recorded and not
-read; a transcript GHL has not produced yet is retried for 15 minutes.
+**Calls: Voice AI call logs (verified live 2026-10-02).** The voice agent is GHL's own Voice AI. Its calls are read from
+`GET /voice-ai/dashboard/call-logs` (scope `voice-ai-dashboard.readonly`, works with the contacts token), filtered by
+contact, `callType=LIVE` (no test calls) and optionally `GHL_VOICE_AGENT_ID` (set it to the outbound agent). Each log has
+the duration, a summary, the actions triggered and a transcript of `bot:` / `human:` lines. Only the `human:` lines (the
+student) ever reach the AI. A call counts as a conversation only if it lasted `NOTIFY_CALL_MIN_SECONDS` (default 10 s)
+AND the student spoke; anything else is recorded and not analysed. Replaces my earlier Conversations-transcript reading
+(which returns nothing on this account). `execution/ghl_conversations.py`: `human_words`, `reached_a_person`,
+`fetch_new_calls`.
 
-**Researched in the Cora repo (read-only, 2026-10-02): see `docs/ghl-conversations-and-calls.md`.** What it settled
-and what it changed in our code:
-- A call message keeps its status and length at `meta.call.status` / `meta.call.duration`. "Connected" is now a
-  positive test (completed and at least `NOTIFY_CALL_MIN_SECONDS`, default 10 s; Cora's own rule for staff calls is
-  20 s). Anything else, including an unfamiliar status word, is "did not reach a person".
-- **GHL does not generate native call transcripts on this account** (400 recording-not-found even for completed
-  calls). Cora's working path is recording to Whisper, which gives plain text with NO speaker labels, so it cannot be
-  used to read only the student's words. Therefore a connected call with no usable student-only transcript is never
-  analysed and never stops a sequence, and Rob is now told every time ("a call connected but could not be read").
-- The contact phone is stored E.164, so the exact-match lookup is right; the search is free text, so the filter stays.
-- Outbound Synthflow calls are not TYPE_CALL messages in GHL; see open question A.
+**GHL Voice AI outbound rules we must respect** (help.gohighlevel.com, "Voice AI Outbound Calling" and "...Compliance
+Checks"): calls are placed 8 AM to 8 PM in the contact's phone-number time zone; **each phone number can be called once
+per day and 14 times in 14 days**; 10 calls a minute and 5,000 a day per location; domestic numbers only; GHL does
+**not** check consent or Do-Not-Disturb (we do, before every send); the From number must be one the action lists as
+eligible. The same agent can serve inbound and outbound with the right prompt, but the docs do not say whether the same
+number can; we recommend a separate outbound agent on the same From number.
 
-**Still UNVERIFIED (confirm in a shadow rehearsal on the real account; do not guess):**
-A. Which engine places our calls (GHL Voice AI or a Synthflow step behind the workflow) and how the finished call
-   shows up: a `TYPE_CALL` message with `meta.call`, an internal-comment note, or only a webhook. Until known, only
-   texts and emails can stop a sequence by themselves; a call can only alert Rob.
-B. Which `mediaChannel` is the student in a native transcript, and whether recordings are stereo (one party per
-   channel), which would allow transcribing the student's side alone.
-C. How the voice agent uses the `interview_notification` value, and whether a long single-line value reads correctly.
-D. Voice AI honouring Call DND and calling hours (Cora has not verified this either).
+**Verified live against the Colaberry account, read-only (2026-10-02):** all four trigger fields exist and are
+large-text (`interview_notification`, `Support Issue Ticket #2`, `Support issue Ticket #4`, `Message:`); the call-log scope
+works (152 live logs); the conversations token works and the contacts token is refused there; contact `phone` is E.164;
+an exact-phone lookup returns the right contact; the `human:` parser never let an agent sentence into the student's words.
+NOT done: no field has been written and no call placed (that needs a test contact; see "Still UNVERIFIED").
+
+**Still UNVERIFIED:**
+A. How the `interview_notification` value reaches the voice agent's prompt (the docs do not say). Needs one real test on
+   a test contact. Expected: the outbound agent's prompt references the contact field.
+B. That the existing number is an "eligible" From number in the Voice AI Outbound Call action.
+C. Whether a call to a contact that already had a call today (any GHL Voice AI call) is blocked, which would also count
+   Admissions' own calls.
+D. How voicemail shows up in the call logs (no status field is documented): we treat "no human speech" as no conversation.
 
 Earlier research, kept for reference (Cora's own code, not the GHL dashboard):
 
@@ -122,17 +125,20 @@ following up until they do. A person (Rob) approves the first send; nothing is a
 | When | Call | Text | Email | Rob |
 |---|---|---|---|---|
 | T0 | yes | yes | yes | |
-| T0 + 2h | yes | | yes | |
+| T0 + 2h | | | yes | |
 | T0 + 4h | | yes | yes | |
 | End of day 1, no acknowledgement | | | | **told** "student has not responded" (about T0 + 6h) |
 | Days 2, 3, 4: once a day at 9:00 AM student-local | 1 | 1 | 1 | |
 | After day 4, no acknowledgement | stops | stops | stops | told "sequence ended, no acknowledgement" |
 
-Telling Rob does **not** stop the sequence. Only an acknowledgement, or Rob closing it, does.
+There is no second call on day 1: GHL Voice AI allows **one call per phone number per day** (and 14 in 14 days; our
+plan makes 4 in total). Telling Rob does **not** stop the sequence. Only an acknowledgement, or Rob closing it, does.
 "Up to three days" = days 2, 3 and 4 after day 1 (Kes, 2026-10-02).
 
 ## Quiet hours (Ali)
-- 9 PM to 8 AM in the **student's own** time zone. Binds calls and texts. Email goes any time.
+- In the **student's own** time zone. Texts: quiet 9 PM to 8 AM (Ali). **Calls: quiet 8 PM to 8 AM**, because GHL Voice AI
+  itself only places calls 8 AM to 8 PM in the contact's zone and silently reschedules the rest, so we match it rather
+  than record a call as sent that GHL will place tomorrow. Email goes any time.
 - Time zone: stored value, else derived from the phone area code (`phonenumbers` library), else
   `America/Chicago` only if both fail.
 - An attempt that falls in quiet hours is **held and released at 8 AM** local (not dropped).
@@ -176,7 +182,8 @@ number must be voice-enabled.
 - [ ] Cora's current daily SMS/call usage on the shared number
 - [ ] Student opt-in for texts and calls confirmed
 - [x] Inbound replies: read by polling GHL Conversations (needs `GHL_CONVERSATIONS_API_KEY`); no forwarding workflow needed
-- [ ] `GHL_CONVERSATIONS_API_KEY` set, and `GHL_CALL_STUDENT_MEDIA_CHANNEL` confirmed from a real call
+- [x] `GHL_CONVERSATIONS_API_KEY`, `GHL_API_KEY` (with the call-log scope) and `GHL_LOCATION_ID` exist in the local `.env`; NOT yet on the server
+- [ ] `GHL_VOICE_AGENT_ID` set to the new outbound agent once it exists
 - [ ] Decide: alert Rob when a draft is waiting (proposed by Claude, not requested by Ali); alert Ali
       if a draft sits unapproved (proposed, Ali has not said yes). Neither is built.
 - [ ] Host cron for `execution/notification_tick.py` every 5 minutes (not installed)

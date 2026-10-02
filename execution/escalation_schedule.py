@@ -9,11 +9,12 @@ database uses. Time zones are only applied to decide local hours.
 
 Schedule (T0 = the moment Rob approves):
     T0        call + text + email
-    T0 + 2h   call + email
+    T0 + 2h   email                (no second call: GHL Voice AI allows ONE call per phone number per day)
     T0 + 4h   text + email
     day 2-4   one call + one text + one email at 9:00 AM student-local time
-Quiet hours: 9 PM to 8 AM student-local, calls and texts only. An attempt that lands in that
-window is held and released at 8 AM. Email goes at any time.
+Quiet hours, student-local: calls only 8 AM to 8 PM (GHL Voice AI itself places calls only in that window and
+silently reschedules the rest, so we match it); texts 9 PM to 8 AM is quiet (Ali). Email goes at any time.
+An attempt that lands in quiet hours is held and released at 8 AM.
 """
 
 from dataclasses import dataclass
@@ -24,7 +25,8 @@ from zoneinfo import ZoneInfo
 from area_code_timezones import AREA_CODE_TIMEZONES
 
 FALLBACK_TIMEZONE = "America/Chicago"      # Ali: only when the area code lookup fails
-QUIET_START_HOUR = 21                      # 9 PM
+QUIET_START_HOUR = 21                      # 9 PM: texts (Ali)
+CALL_QUIET_START_HOUR = 20                 # 8 PM: calls. GHL Voice AI only calls 8 AM-8 PM in the contact's zone
 QUIET_END_HOUR = 8                         # 8 AM
 DAILY_ATTEMPT_HOUR = 9                     # days 2-4, student-local
 FOLLOW_UP_DAYS = 3                         # days 2, 3 and 4 (Kes: "3 days after day 1")
@@ -83,10 +85,14 @@ def _to_utc_naive(local_aware: datetime) -> datetime:
     return local_aware.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def in_quiet_hours(utc_naive: datetime, tz_name: str) -> bool:
-    """True from 9 PM up to (not including) 8 AM student-local time."""
+def quiet_start_hour(channel: str) -> int:
+    return CALL_QUIET_START_HOUR if channel == "call" else QUIET_START_HOUR
+
+
+def in_quiet_hours(utc_naive: datetime, tz_name: str, channel: str = "sms") -> bool:
+    """True from the channel's quiet start (8 PM calls, 9 PM texts) up to, not including, 8 AM student-local."""
     hour = _to_local(utc_naive, tz_name).hour
-    return hour >= QUIET_START_HOUR or hour < QUIET_END_HOUR
+    return hour >= quiet_start_hour(channel) or hour < QUIET_END_HOUR
 
 
 def release_time(utc_naive: datetime, tz_name: str, channel: str) -> datetime:
@@ -95,11 +101,11 @@ def release_time(utc_naive: datetime, tz_name: str, channel: str) -> datetime:
     quiet hours is held until 8 AM local: the same morning if it is after midnight, otherwise
     the next morning.
     """
-    if channel not in PHONE_CHANNELS or not in_quiet_hours(utc_naive, tz_name):
+    if channel not in PHONE_CHANNELS or not in_quiet_hours(utc_naive, tz_name, channel):
         return utc_naive
     local = _to_local(utc_naive, tz_name)
     morning = datetime.combine(local.date(), time(QUIET_END_HOUR), tzinfo=ZoneInfo(tz_name))
-    if local.hour >= QUIET_START_HOUR:
+    if local.hour >= quiet_start_hour(channel):
         morning += timedelta(days=1)
     return _to_utc_naive(morning)
 
@@ -112,7 +118,6 @@ def build_plan(start_utc: datetime, tz_name: str) -> List[Planned]:
         Planned("start", "call", start_utc),
         Planned("start", "sms", start_utc),
         Planned("start", "email", start_utc),
-        Planned("d1_2h", "call", start_utc + timedelta(hours=2)),
         Planned("d1_2h", "email", start_utc + timedelta(hours=2)),
         Planned("d1_4h", "sms", start_utc + timedelta(hours=4)),
         Planned("d1_4h", "email", start_utc + timedelta(hours=4)),

@@ -104,6 +104,21 @@ The detail below is in the order the work happened; this block is the summary.
   unverified, and what the base kit lacks) and a local skill `.claude/skills/ghl-conversations-calls/` (`.claude/` is
   git-ignored in this repo, hence the tracked doc).
 
+- **Kes: the voice agent is GHL Voice AI (screenshot of its logs); "use the key in .env, adhere to GHL rules, I added
+  voice-ai-dashboard.readonly, test it".** Read GHL's docs and TESTED READ-ONLY against the live account (no field was
+  written, no call placed; no secret printed): the four trigger fields exist and are large-text; the call-log scope works
+  (152 live logs); conversations token works, contacts token refused there; contact `phone` is E.164; exact-phone lookup
+  returns the right contact. **GHL rules applied:** calls only 8 AM-8 PM in the contact's zone (our call quiet hours are now
+  8 PM-8 AM; texts stay 9 PM-8 AM) and ONE call per number per day (the +2h call on day 1 is dropped, plan is now 15
+  attempts: 4 calls over 4 days, well under 14 in 14 days); GHL checks neither consent nor DND, so ours stay. **Call reading
+  rebuilt on Voice AI call logs** (`GhlClient.voice_ai_call_logs`, `ghl_conversations.human_words/reached_a_person/
+  fetch_new_calls`): only `human:` lines reach the AI, a call counts only if long enough (default 10 s) and the student
+  spoke; `GHL_VOICE_AGENT_ID` limits it to the outbound agent. Removed the Conversations-transcript call code and
+  `GHL_CALL_STUDENT_MEDIA_CHANNEL`. Verified our parser on real transcripts (no agent sentence leaks into the student's
+  words). API tests now freeze the clock (they would have flipped after 8 PM Central). Tests: 701 root, 191 dashboard.
+  Still OFF; no credentials on the server; NOT done: writing `interview_notification` (needs a test contact) and how the
+  value reaches the agent's prompt.
+
 ### End-of-day summary (2026-10-01)
 
 | Item | Result | Evidence |

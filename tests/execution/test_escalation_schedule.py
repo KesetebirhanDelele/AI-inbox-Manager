@@ -45,7 +45,19 @@ def test_stored_zone_wins_but_a_bad_one_is_ignored():
     (datetime(2026, 10, 5, 15, 0), LA, False),     # 08:00 PDT
 ])
 def test_in_quiet_hours(utc, tz, quiet):
-    assert es.in_quiet_hours(utc, tz) is quiet
+    assert es.in_quiet_hours(utc, tz) is quiet                       # the text rule: 9 PM to 8 AM
+
+
+@pytest.mark.parametrize("utc, call_quiet, sms_quiet", [
+    (datetime(2026, 10, 5, 0, 59), False, False),    # 19:59 CDT
+    (datetime(2026, 10, 5, 1, 0), True, False),      # 20:00 CDT: calls are done for the day, texts are not
+    (datetime(2026, 10, 5, 1, 59), True, False),     # 20:59 CDT
+    (datetime(2026, 10, 5, 2, 0), True, True),       # 21:00 CDT: both quiet
+    (datetime(2026, 10, 5, 13, 0), False, False),    # 08:00 CDT: both open
+])
+def test_calls_stop_at_8pm_because_ghl_only_places_calls_8am_to_8pm_but_texts_run_to_9pm(utc, call_quiet, sms_quiet):
+    assert es.in_quiet_hours(utc, CHI, "call") is call_quiet
+    assert es.in_quiet_hours(utc, CHI, "sms") is sms_quiet
 
 
 def test_a_held_call_or_text_is_released_at_8am_local():
@@ -54,6 +66,12 @@ def test_a_held_call_or_text_is_released_at_8am_local():
     small_hours = datetime(2026, 10, 5, 8, 0)       # 03:00 CDT on the 5th
     assert es.release_time(small_hours, CHI, "sms") == datetime(2026, 10, 5, 13, 0)  # same morning
     assert es.release_time(datetime(2026, 10, 5, 13, 0), LA, "call") == datetime(2026, 10, 5, 15, 0)
+
+
+def test_a_call_after_8pm_is_held_to_8am_but_a_text_at_the_same_time_is_not():
+    evening = datetime(2026, 10, 5, 1, 30)           # 20:30 CDT on the 4th
+    assert es.release_time(evening, CHI, "call") == datetime(2026, 10, 5, 13, 0)      # 8 AM CDT on the 5th
+    assert es.release_time(evening, CHI, "sms") == evening
 
 
 def test_email_is_never_held_and_daytime_calls_are_not_moved():
@@ -70,18 +88,25 @@ START = datetime(2026, 10, 5, 20, 0)                # 15:00 CDT, a Monday
 
 def test_plan_has_the_approved_shape():
     plan = es.build_plan(START, CHI)
-    assert len(plan) == 7 + 9
+    assert len(plan) == 6 + 9
     by_step = {}
     for p in plan:
         by_step.setdefault(p.step, {})[p.channel] = p.planned_for
     assert set(by_step["start"]) == {"call", "sms", "email"}
-    assert set(by_step["d1_2h"]) == {"call", "email"}
+    assert set(by_step["d1_2h"]) == {"email"}                         # GHL: one call per phone number per day
     assert set(by_step["d1_4h"]) == {"sms", "email"}
-    assert by_step["d1_2h"]["call"] == START + timedelta(hours=2)
+    assert by_step["d1_2h"]["email"] == START + timedelta(hours=2)
     assert by_step["d1_4h"]["sms"] == START + timedelta(hours=4)
     for day in ("day2", "day3", "day4"):
         assert set(by_step[day]) == {"call", "sms", "email"}
     assert "day5" not in by_step                    # three follow-up days after day 1, no more
+
+
+def test_ghls_one_call_per_number_per_day_and_14_in_14_days_are_never_exceeded():
+    calls = [p for p in es.build_plan(START, CHI) if p.channel == "call"]
+    assert len(calls) == 4                                           # day 1 plus days 2-4, well under 14
+    days = [es._to_local(es.scheduled_time(p, CHI), CHI).date() for p in calls]
+    assert len(set(days)) == len(days)                               # never two calls on one local day
 
 
 def test_follow_up_days_are_9am_student_local():

@@ -59,6 +59,7 @@ class GhlConfig:
     api_key: str = ""
     conversations_api_key: str = ""            # second Private Integration token: conversations scopes only
     location_id: str = ""
+    voice_agent_id: str = ""                   # only read call logs of this Voice AI agent (the outbound one)
     timeout_seconds: float = 30.0
     retry_max: int = 3
     write_mode: str = "shadow"
@@ -81,6 +82,7 @@ class GhlConfig:
             api_key=g("GHL_API_KEY"),
             conversations_api_key=g("GHL_CONVERSATIONS_API_KEY"),
             location_id=g("GHL_LOCATION_ID"),
+            voice_agent_id=g("GHL_VOICE_AGENT_ID"),
             timeout_seconds=float(g("GHL_TIMEOUT_SECONDS", "30")),
             retry_max=int(g("GHL_RETRY_MAX", "3")),
             write_mode=g("GHL_WRITE_MODE", "shadow").lower(),
@@ -229,16 +231,19 @@ class GhlClient:
         outer = result.get("messages", []) if isinstance(result, dict) else []
         return outer.get("messages", []) if isinstance(outer, dict) else outer
 
-    def message_transcription(self, message_id: str) -> Optional[List[dict]]:
-        """GHL's own transcript of a call message as sentence entries, or None if it has none (normal, not an error)."""
-        try:
-            result = self._request("GET", f"/conversations/locations/{self.config.location_id}/messages/{message_id}/transcription",
-                                   token=self._conv())
-        except GhlError as exc:
-            if exc.status_code == 400:
-                return None
-            raise
-        return result if isinstance(result, list) else (result.get("transcriptions") if isinstance(result, dict) else None)
+    def voice_ai_call_logs(self, contact_id: str, agent_id: Optional[str] = None, page_size: int = 20) -> List[dict]:
+        """
+        This contact's Voice AI call logs, newest first. Each has duration, a speaker-labelled transcript
+        ("bot:" / "human:" lines), summary and the actions the agent triggered. TRIAL (test) calls are excluded.
+
+        Verified live 2026-10-02: works with the contacts token once it has the voice-ai-dashboard.readonly scope.
+        """
+        params: Dict[str, Any] = {"locationId": self.config.location_id, "contactId": contact_id, "callType": "LIVE",
+                                  "pageSize": min(page_size, 50), "page": 1, "sortBy": "createdAt", "sort": "descend"}
+        if agent_id:
+            params["agentId"] = agent_id
+        result = self._request("GET", "/voice-ai/dashboard/call-logs", params=params)
+        return result.get("callLogs", []) if isinstance(result, dict) else []
 
     # -- writes (shadow-gated) -----------------------------------------------
 
