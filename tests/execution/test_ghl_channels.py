@@ -81,6 +81,45 @@ def test_call_writes_only_the_interview_notification_field():
     assert "Test" in updates["interview_notification"] and "say yes" in updates["interview_notification"]
 
 
+def full_event(**over):
+    base = dict(sub_type="Phone Screen", company_name="Acme", position_title="Data Analyst",
+                interview_date="2026-10-08", interview_time="2:00 PM", interview_timezone="CT",
+                interview_format="video", contact_name="Jane Recruiter", num_interviewers=2)
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def test_the_call_value_carries_the_interview_details_for_the_voice_agent():
+    c = ctx()
+    c.event = full_event()
+    script = nc.call_script(c)
+    for fact in ("Interview type: Phone Screen", "Company: Acme", "Position: Data Analyst", "Date: 2026-10-08",
+                 "Time: 2:00 PM CT", "Format: video", "Contact at the company: Jane Recruiter",
+                 "Number of interviewers: 2"):
+        assert fact in script
+    assert "Test" in script and "say yes" in script and "Ref 7" in script
+
+
+def test_the_call_value_only_states_facts_we_have_and_says_when_the_date_is_unknown():
+    c = ctx()
+    c.event = full_event(interview_date=None, interview_time=None, interview_timezone=None,
+                         position_title=None, interview_format=None, contact_name=None, num_interviewers=None)
+    script = nc.call_script(c)
+    assert "Company: Acme" in script and "Position" not in script and "Format" not in script
+    assert "not confirmed yet" in script
+    c.event = None
+    assert "a new interview request" in nc.call_script(c)
+
+
+def test_the_second_and_third_call_values_differ_so_the_workflow_triggers_again():
+    values = []
+    for step in ("start", "d1_2h", "day2", "day3", "day4"):
+        c = ctx(step=step)
+        c.event = full_event()
+        values.append(nc.call_script(c))
+    assert len(set(values)) == 5
+
+
 def test_every_write_differs_so_a_field_change_trigger_always_fires():
     """GHL workflows fire when a field CHANGES; an identical reminder would silently send nothing."""
     texts = set()

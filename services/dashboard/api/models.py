@@ -383,6 +383,25 @@ class ReplyAnalysis(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class NotificationInbound(Base):
+    """
+    One message or call read from the student's GHL Conversations and processed for a sequence.
+    The unique GHL message id is what makes polling idempotent: a message is handled exactly once.
+    """
+    __tablename__ = "notification_inbound"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sequence_id = Column(Integer, ForeignKey("notification_sequences.id"), nullable=False, index=True)
+    ghl_message_id = Column(String(100), nullable=False, unique=True, index=True)
+    channel = Column(String(10), nullable=False)           # sms | email | call
+    direction = Column(String(10))
+    text = Column(Text)                                    # the student's words (calls: only their side, if isolable)
+    received_at = Column(DateTime)
+    # yes_rule | stop_rule | ai | call_unreadable | call_no_transcript | call_recorded | echo
+    handled_as = Column(String(30), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ChecklistCompletion(Base):
     """
     Tracks completion state of process checklist steps per interview event.

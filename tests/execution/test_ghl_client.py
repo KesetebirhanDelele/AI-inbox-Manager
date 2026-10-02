@@ -71,6 +71,14 @@ def test_field_labels_and_block_tags_can_be_set_from_env():
 
 # -- transport ------------------------------------------------------------------
 
+def test_a_near_match_is_never_taken_for_the_student_and_duplicates_are_refused():
+    near = client(Resp(200, {"contacts": [{"id": "c9", "phone": "+19725550199"}, {"id": "c8"}]}))
+    assert near.search_contact_by_phone("+19725550100") is None            # wrong student must not be contacted
+    twin = client(Resp(200, {"contacts": [{"id": "a", "phone": "9725550100"}, {"id": "b", "phone": "+19725550100"}]}))
+    with pytest.raises(gc.GhlError, match="share this phone number"):
+        twin.search_contact_by_phone("+19725550100")
+
+
 def test_a_429_and_a_disguised_timeout_are_retried_then_succeed():
     c = client(Resp(429), Resp(401, {"statusCode": 401, "message": "Command timed out"}), Resp(200, {"contacts": []}))
     assert c.search_contact_by_phone("+19725550100") is None
@@ -106,9 +114,9 @@ def test_calls_are_paced():
     assert sleeps and abs(sleeps[0] - 0.15) < 1e-9
 
 
-def test_the_search_sends_the_location_and_returns_the_first_contact():
-    c = client(Resp(200, {"contacts": [{"id": "c1"}, {"id": "c2"}]}))
-    assert c.search_contact_by_phone("+19725550100") == {"id": "c1"}
+def test_the_search_sends_the_location_and_returns_the_exact_match():
+    c = client(Resp(200, {"contacts": [{"id": "c1", "phone": "+1 (972) 555-0100"}, {"id": "c2", "phone": "+19725550199"}]}))
+    assert c.search_contact_by_phone("+19725550100") == {"id": "c1", "phone": "+1 (972) 555-0100"}
     call = c._session.calls[0]
     assert call["kw"]["params"] == {"locationId": "loc", "query": "+19725550100"}
     assert call["headers"]["Authorization"] == "Bearer tok" and call["headers"]["Version"] == "2021-07-28"
@@ -164,3 +172,46 @@ def test_block_reason_covers_dnd_per_channel_the_contact_flag_and_tags():
     assert gc.block_reason({"dndSettings": {"Call": {"status": "inactive"}}}, "call") is None
     assert "do not call" in gc.block_reason({"tags": ["Student", "Do Not Call"]}, "call")
     assert gc.block_reason({"tags": ["Student"]}, "call") is None
+
+
+# -- conversations (second token, read-only) -------------------------------------
+
+def conv_client(*responses):
+    return client(*responses, conversations_api_key="conv-tok")
+
+
+def test_conversation_reads_use_the_conversations_token_not_the_contacts_token():
+    c = conv_client(Resp(200, {"conversations": [{"id": "conv1"}]}))
+    assert c.conversations_for_contact("c1") == [{"id": "conv1"}]
+    call = c._session.calls[0]
+    assert call["headers"]["Authorization"] == "Bearer conv-tok"
+    assert call["kw"]["params"] == {"locationId": "loc", "contactId": "c1", "limit": 5}
+
+
+def test_conversation_reads_need_the_second_token():
+    c = client(Resp(200, {}))                                      # contacts token only
+    with pytest.raises(gc.GhlError, match="GHL_CONVERSATIONS_API_KEY"):
+        c.conversations_for_contact("c1")
+    assert c._session.calls == []
+
+
+def test_messages_are_unwrapped_from_ghls_double_nesting_and_the_single_shape():
+    double = {"messages": {"lastMessageId": "x", "nextPage": False, "messages": [{"id": "m1"}]}}
+    single = {"messages": [{"id": "m2"}]}
+    assert conv_client(Resp(200, double)).conversation_messages("conv1") == [{"id": "m1"}]
+    assert conv_client(Resp(200, single)).conversation_messages("conv1") == [{"id": "m2"}]
+
+
+def test_a_missing_transcript_is_none_but_other_errors_still_raise():
+    assert conv_client(Resp(400, {"message": "recording not found"})).message_transcription("m1") is None
+    sentences = [{"mediaChannel": 1, "transcript": "hi"}]
+    assert conv_client(Resp(200, sentences)).message_transcription("m1") == sentences
+    assert conv_client(Resp(200, {"transcriptions": sentences})).message_transcription("m1") == sentences
+    with pytest.raises(gc.GhlError):
+        conv_client(Resp(404, {})).message_transcription("m1")
+
+
+def test_the_conversations_token_comes_from_env():
+    cfg = gc.GhlConfig.from_env({"GHL_CONVERSATIONS_API_KEY": "t", "GHL_LOCATION_ID": "loc"})
+    assert cfg.can_read_conversations and not cfg.can_read
+    assert not gc.GhlConfig.from_env({}).can_read_conversations

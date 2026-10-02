@@ -41,6 +41,12 @@ class GhlError(RuntimeError):
         self.status_code = status_code
 
 
+def _digits_tail(phone: Any) -> str:
+    """The last 10 digits of a phone number, so +1 972 555 0100 and (972) 555-0100 compare equal."""
+    digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
 def _truthy(value: Optional[str], default: bool = False) -> bool:
     if value is None or value.strip() == "":
         return default
@@ -51,6 +57,7 @@ def _truthy(value: Optional[str], default: bool = False) -> bool:
 class GhlConfig:
     base_url: str = "https://services.leadconnectorhq.com"
     api_key: str = ""
+    conversations_api_key: str = ""            # second Private Integration token: conversations scopes only
     location_id: str = ""
     timeout_seconds: float = 30.0
     retry_max: int = 3
@@ -72,6 +79,7 @@ class GhlConfig:
         return cls(
             base_url=g("GHL_BASE_URL", cls.base_url),
             api_key=g("GHL_API_KEY"),
+            conversations_api_key=g("GHL_CONVERSATIONS_API_KEY"),
             location_id=g("GHL_LOCATION_ID"),
             timeout_seconds=float(g("GHL_TIMEOUT_SECONDS", "30")),
             retry_max=int(g("GHL_RETRY_MAX", "3")),
@@ -88,6 +96,10 @@ class GhlConfig:
     @property
     def can_read(self) -> bool:
         return bool(self.api_key and self.location_id)
+
+    @property
+    def can_read_conversations(self) -> bool:
+        return bool(self.conversations_api_key and self.location_id)
 
     @property
     def is_live(self) -> bool:
@@ -119,9 +131,9 @@ class GhlClient:
 
     # -- transport ------------------------------------------------------------
 
-    def _headers(self) -> Dict[str, str]:
-        return {"Authorization": f"Bearer {self.config.api_key}", "Content-Type": "application/json",
-                "Accept": "application/json", "Version": API_VERSION}
+    def _headers(self, token: Optional[str] = None, version: Optional[str] = None) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {token or self.config.api_key}", "Content-Type": "application/json",
+                "Accept": "application/json", "Version": version or API_VERSION}
 
     def _pace(self) -> None:
         """Shared limiter in front of every call: bursts return 429."""
@@ -132,14 +144,15 @@ class GhlClient:
                 self._sleep(wait)
         self._last_call = self._monotonic()
 
-    def _request(self, method: str, path: str, retry_delay: float = 1.0, **kwargs: Any) -> Any:
-        if not self.config.can_read:
-            raise GhlError("GHL_API_KEY and GHL_LOCATION_ID are required")
+    def _request(self, method: str, path: str, retry_delay: float = 1.0, token: Optional[str] = None,
+                 version: Optional[str] = None, **kwargs: Any) -> Any:
+        if not (token or self.config.api_key) or not self.config.location_id:
+            raise GhlError("GHL_API_KEY (or the conversations token) and GHL_LOCATION_ID are required")
         url = self.config.base_url.rstrip("/") + path
         for attempt in range(self.config.retry_max + 1):
             self._pace()
             try:
-                resp = self._session.request(method, url, headers=self._headers(),
+                resp = self._session.request(method, url, headers=self._headers(token, version),
                                              timeout=self.config.timeout_seconds, **kwargs)
             except requests.exceptions.Timeout as exc:
                 if attempt < self.config.retry_max:
@@ -161,10 +174,20 @@ class GhlClient:
     # -- reads (always safe) --------------------------------------------------
 
     def search_contact_by_phone(self, phone_e164: str) -> Optional[dict]:
-        """The first contact GHL returns for this E.164 number, or None. 'Not found' is a normal result."""
+        """
+        The contact whose phone number EXACTLY matches, or None. 'Not found' is a normal result.
+
+        GHL's search is a free-text query, so it can return near matches. Taking the first result could
+        send one student's interview details to another student, so only a contact whose digits equal
+        ours is accepted, and two different exact matches are refused as ambiguous.
+        """
         result = self._request("GET", "/contacts/", params={"locationId": self.config.location_id, "query": phone_e164})
         contacts = result.get("contacts", []) if isinstance(result, dict) else []
-        return contacts[0] if contacts else None
+        wanted = _digits_tail(phone_e164)
+        exact = [c for c in contacts if wanted and _digits_tail(c.get("phone")) == wanted]
+        if len(exact) > 1:
+            raise GhlError(f"{len(exact)} GHL contacts share this phone number; refusing to guess which student")
+        return exact[0] if exact else None
 
     def get_contact(self, contact_id: str) -> dict:
         result = self._request("GET", f"/contacts/{contact_id}")
@@ -185,6 +208,37 @@ class GhlClient:
             if str(f.get("name", "")).strip().lower() == wanted or key == wanted or key.split(".", 1)[-1] == wanted:
                 return f.get("id")
         return None
+
+    # -- conversations (read-only; needs the SECOND token, the contacts token is refused with 401) ----
+
+    def _conv(self) -> str:
+        if not self.config.can_read_conversations:
+            raise GhlError("GHL_CONVERSATIONS_API_KEY is required to read conversations")
+        return self.config.conversations_api_key
+
+    def conversations_for_contact(self, contact_id: str, limit: int = 5) -> List[dict]:
+        """The contact's conversations, newest first."""
+        result = self._request("GET", "/conversations/search", token=self._conv(),
+                               params={"locationId": self.config.location_id, "contactId": contact_id, "limit": limit})
+        return result.get("conversations", []) if isinstance(result, dict) else []
+
+    def conversation_messages(self, conversation_id: str, limit: int = 50) -> List[dict]:
+        """Messages in a conversation, newest first. GHL double-nests this response; both shapes are handled."""
+        result = self._request("GET", f"/conversations/{conversation_id}/messages", token=self._conv(),
+                               params={"limit": limit})
+        outer = result.get("messages", []) if isinstance(result, dict) else []
+        return outer.get("messages", []) if isinstance(outer, dict) else outer
+
+    def message_transcription(self, message_id: str) -> Optional[List[dict]]:
+        """GHL's own transcript of a call message as sentence entries, or None if it has none (normal, not an error)."""
+        try:
+            result = self._request("GET", f"/conversations/locations/{self.config.location_id}/messages/{message_id}/transcription",
+                                   token=self._conv())
+        except GhlError as exc:
+            if exc.status_code == 400:
+                return None
+            raise
+        return result if isinstance(result, list) else (result.get("transcriptions") if isinstance(result, dict) else None)
 
     # -- writes (shadow-gated) -----------------------------------------------
 

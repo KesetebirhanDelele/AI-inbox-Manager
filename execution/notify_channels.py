@@ -93,9 +93,39 @@ def sms_text(ctx: SendContext) -> str:
             f"Reply YES to confirm you got this. {_ref(ctx)}")
 
 
+def interview_facts(event: Any) -> list:
+    """The interview details the voice agent may pass to the candidate. Only facts we actually have."""
+    def pick(*names):
+        for n in names:
+            v = getattr(event, n, None)
+            if v not in (None, ""):
+                return str(v).strip()
+        return ""
+
+    facts = []
+    kind = pick("sub_type").replace("_", " ")
+    if kind:
+        facts.append(f"Interview type: {kind}")
+    for label, value in (("Company", pick("company_name")), ("Position", pick("position_title")),
+                         ("Date", pick("interview_date")),
+                         ("Time", " ".join(x for x in (pick("interview_time"), pick("interview_timezone")) if x)),
+                         ("Format", pick("interview_format")), ("Contact at the company", pick("contact_name")),
+                         ("Number of interviewers", pick("num_interviewers"))):
+        if value:
+            facts.append(f"{label}: {value}")
+    if facts and not pick("interview_date"):
+        facts.append("Date and time: not confirmed yet, the company will schedule it")
+    return facts
+
+
 def call_script(ctx: SendContext) -> str:
-    return (f"{step_tag(ctx)}Hello {_first_name(ctx.student)}, this is Colaberry Interview Support. You have a new "
-            f"interview request{_company_phrase(ctx.event)}. Please say yes to confirm you got this message. {_ref(ctx)}")
+    """
+    The value written to `interview_notification`: everything the voice agent needs to tell the candidate
+    about the interview, then what to ask. Unique per attempt (step tag + Ref) so the workflow re-triggers.
+    """
+    details = "; ".join(interview_facts(ctx.event)) or "a new interview request"
+    return (f"{step_tag(ctx)}Call {_first_name(ctx.student)} for Colaberry Interview Support. Tell them about their "
+            f"interview. Details: {details}. Then ask them to say yes to confirm they received this information. {_ref(ctx)}")
 
 
 def email_parts(ctx: SendContext) -> tuple:

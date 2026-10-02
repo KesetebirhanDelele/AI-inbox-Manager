@@ -38,11 +38,25 @@ def run(now: datetime = None):
     if db is None:
         raise SystemExit("No database session")
     base = os.getenv("NOTIFY_ACK_BASE_URL", "https://2-29-47-89.nip.io/api/notifications/ack")
-    report = engine.tick(db, now or datetime.utcnow(), notify_channels.channels_from_env(), engine.RobAlerts(), base)
+    now = now or datetime.utcnow()
+    alerts = engine.RobAlerts()
+    report = engine.tick(db, now, notify_channels.channels_from_env(), alerts, base)
     print(f"tick: sent={report.sent} dry_run={report.dry_run} failed={report.failed} skipped={report.skipped} "
-          f"rob_no_response={report.rob_no_response} ended={report.ended}")
+          f"deferred={report.deferred} rob_no_response={report.rob_no_response} ended={report.ended}")
     for line in report.details:
         print(f"  problem: {line}")
+
+    # Replies and calls are read from the student's GHL Conversations (needs GHL_CONVERSATIONS_API_KEY).
+    import ghl_client
+    config = ghl_client.GhlConfig.from_env()
+    if config.can_read_conversations:
+        polled = engine.poll_replies(db, now, ghl_client.GhlClient(config), alerts)
+        print(f"poll: sequences={polled.sequences} new_messages={polled.new_messages} "
+              f"stopped={polled.stopped} errors={polled.errors}")
+        for line in polled.details:
+            print(f"  problem: {line}")
+    else:
+        print("poll: skipped (GHL_CONVERSATIONS_API_KEY not set)")
     return report
 
 

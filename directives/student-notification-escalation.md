@@ -17,6 +17,7 @@ Turning it on for real students needs the "Before turning it on" checklist at th
 | Scheduler pass (does nothing unless enabled) | `execution/notification_tick.py` |
 | New tables only (existing tables untouched) | `notification_sequences`, `notification_attempts`, `reply_analyses`; migration `003` |
 | Approve starts it (when enabled); email "I got this" link; Rob's status/close; secret-protected reply endpoint | `services/dashboard/api/routers/notifications.py` |
+| Reading replies and calls from GHL Conversations (polling, idempotent, echo filter, student-only call words) | `execution/ghl_conversations.py`, `escalation_engine.poll_replies()`, table `notification_inbound` |
 | Tests | `tests/execution/test_escalation_*.py`, `test_reply_analysis.py`, `services/dashboard/tests/test_notification_escalation.py` |
 
 ## How Cora delivers each channel (researched 2026-10-02 in `cora-recap-engine`)
@@ -44,19 +45,36 @@ or key. Standards come from `.claude/skills/ghl-integration/KIT.md`: shadow by d
 `GHL_WRITE_MODE=live` AND `GHL_WRITE_SHADOW_LOG_ONLY=false` AND `GHL_WRITE_NOTIFY_FIELDS=true`; writes by
 field UUID; a successful write means "handed to GHL", not delivered; opt-outs checked before every send.
 
+**Answers from Kes (2026-10-02) and what they changed:**
+1. **The call value carries the interview facts.** `interview_notification` holds what the voice agent tells the
+   candidate: interview type, company, position, date, time and time zone, format, contact at the company, number of
+   interviewers (only facts we have; "date and time not confirmed yet" when unknown), then the ask to say yes. Built in
+   `notify_channels.call_script()` / `interview_facts()`.
+2. **A changed value re-triggers; an identical one does not.** So the 2nd, 3rd... call must read slightly differently:
+   every value ends with a step tag ("Reminder 1:", "Day 2 reminder:", "Final reminder:") plus `Ref N`. Tested.
+3. **Results are read from the candidate's GHL Conversations by API** (the second token, `GHL_CONVERSATIONS_API_KEY`).
+4. **Replies go to GHL Conversations; all channels are handled by GHL.** So we POLL instead of waiting for a webhook:
+   `execution/ghl_conversations.py` + `escalation_engine.poll_replies()`, run by `notification_tick.py` after each send
+   pass. It reads inbound texts and emails (our own outbound emails logged as inbound are filtered out by the
+   confirmation link and subject), and call messages with GHL's transcript. Each GHL message is handled once
+   (table `notification_inbound`, unique message id). One student with two open notices is handled once for both.
+   The `/inbound/reply` webhook stays as an optional extra.
+5. **Every student exists as a GHL contact.** The contact is found by EXACT phone match (a near match is never used,
+   two exact matches are refused) so one student's details can never go to another.
+
+**Calls and the AI.** GHL's transcript lists sentences per `mediaChannel` but does not say which channel is the
+student. Set `GHL_CALL_STUDENT_MEDIA_CHANNEL` once confirmed from a real call. Until then a finished call is never
+analysed and never stops a sequence; Rob gets one alert ("a call finished but could not be read"). When set, only the
+student's sentences reach the AI. Calls that did not connect (voicemail, no answer, busy, failed) are recorded and not
+read; a transcript GHL has not produced yet is retried for 15 minutes.
+
 **Still UNVERIFIED (confirm in GHL before switching on; do not guess):**
-1. What the voice-agent workflow does with the value of `interview_notification`. We write the call script
-   (name, company, "please say yes to confirm", plus a step tag and `Ref N`). If the workflow expects something
-   else, change `call_script()`.
-2. GHL workflows fire when a field CHANGES. Every value we write is unique per attempt (step tag + `Ref N`), but
-   confirm that a changed value always re-triggers (and that re-writing the same value does not).
-3. How the call result comes back (workflow webhook, a Voice AI event, or a `TYPE_CALL` message we read), and
-   whether a spoken "yes" is available as a transcript. Until then a call only acknowledges via a transcript or
-   reply posted to `/api/notifications/inbound/reply`. Voice AI honouring Call DND and calling hours: confirm.
-4. Student replies by text arrive in GHL, not here: a GHL workflow must forward them to
-   `POST /api/notifications/inbound/reply` (header `X-Notify-Secret`).
-5. Each student must exist as a GHL contact whose phone matches ours; otherwise the attempt FAILS (visible to the
-   health check) instead of skipping quietly.
+1. Which `mediaChannel` in GHL's call transcript is the student, and whether Voice AI calls appear as `TYPE_CALL`
+   messages with a status such as completed / voicemail / no-answer (the status words are my guess).
+2. Whether the voice workflow reads a long single-line value correctly (the field type matters; labelled facts are
+   separated by "; ").
+3. Voice AI honouring Call DND and calling hours (we apply quiet hours and the opt-out check ourselves anyway).
+4. The exact `phone` field format GHL returns on a contact (we compare the last 10 digits).
 
 Earlier research, kept for reference (Cora's own code, not the GHL dashboard):
 
@@ -144,8 +162,8 @@ number must be voice-enabled.
       checks DND but writes nothing; read the `[GHL shadow]` log lines before going live
 - [ ] Cora's current daily SMS/call usage on the shared number
 - [ ] Student opt-in for texts and calls confirmed
-- [ ] Inbound replies: a GHL (or provider) workflow that forwards student replies to
-      `POST /api/notifications/inbound/reply` with `X-Notify-Secret` (`NOTIFY_INBOUND_SECRET`)
+- [x] Inbound replies: read by polling GHL Conversations (needs `GHL_CONVERSATIONS_API_KEY`); no forwarding workflow needed
+- [ ] `GHL_CONVERSATIONS_API_KEY` set, and `GHL_CALL_STUDENT_MEDIA_CHANNEL` confirmed from a real call
 - [ ] Decide: alert Rob when a draft is waiting (proposed by Claude, not requested by Ali); alert Ali
       if a draft sits unapproved (proposed, Ali has not said yes). Neither is built.
 - [ ] Host cron for `execution/notification_tick.py` every 5 minutes (not installed)

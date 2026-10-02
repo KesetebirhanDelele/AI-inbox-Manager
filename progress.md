@@ -79,6 +79,20 @@ The detail below is in the order the work happened; this block is the summary.
   forwarding of student SMS replies to our webhook, and that each student exists as a GHL contact.
   Still deployed OFF; no credentials on the server, nothing can be sent.
 
+- **Kes answered the five GHL questions; built the reading side.** (1) The call value now carries the interview
+  facts (type, company, position, date, time, format, contact, interviewers) for the voice agent. (2) A changed
+  value re-triggers the workflow, so every attempt's value differs (step tag + Ref). (3)(4) Replies and calls are
+  READ from the candidate's GHL Conversations with the second token: new `execution/ghl_conversations.py`, client
+  methods `conversations_for_contact` / `conversation_messages` / `message_transcription`,
+  `escalation_engine.poll_replies()` (run by `notification_tick.py`), new table `notification_inbound` (one row per
+  GHL message id, so each is handled once; migration 004). Echoes of our own emails are filtered; calls that did not
+  connect are recorded, not read; a missing transcript is retried for 15 minutes. **Only the student's side of a call
+  transcript is ever analysed, and only once `GHL_CALL_STUDENT_MEDIA_CHANNEL` is set**; until then a finished call
+  only alerts Rob. (5) Students exist in GHL; contact lookup now needs an EXACT phone match (a near match could have
+  sent one student's details to another; two exact matches are refused). Found and fixed a design bug on the way: one
+  student with two open notices would have recorded the same reply twice and crashed the poll, so open sequences are
+  now grouped by GHL contact. 50 more tests (root 677, dashboard 191). Still OFF, no credentials on the server.
+
 ### End-of-day summary (2026-10-01)
 
 | Item | Result | Evidence |
