@@ -54,10 +54,12 @@ Nothing can reach a student.
 
 **Verified live (read-only, 2026-10-02):** the four trigger fields exist (large text); the Voice AI call-log scope works with `GHL_API_KEY`
 (152 live logs); `GHL_CONVERSATIONS_API_KEY` works; contact phone is E.164; exact-phone lookup works; our `human:` parser kept the
-agent's words out. NOT done: writing `interview_notification` (needs a test contact) and placing a test call.
+agent's words out. **Test call DONE 2026-10-02 (`execution/ghl_test_call.py --email ... --send`, Kes's own contact): the value reached the
+agent, correct facts spoken, reference not read, "yes" captured as a `human:` line, call log readable (agent id, duration, transcript).**
+Not yet seen: voicemail, wrong person, STOP request; agent greeted "Hi Kes" (own greeting setting) instead of verifying the name.
 
 **Open / next (in order)**
-1. Kes gives a TEST CONTACT (his own) -> one live write of `interview_notification` between 8 AM-8 PM his time -> check the call log
+1. DONE 2026-10-02 (see above). Next: test voicemail / wrong person / STOP once; then tag action for STOP. Original step: check the call log
    (agent said the right facts; did not read "Reference"; a "yes" shows as a `human:` line). This also answers how the field value
    reaches the agent (UNVERIFIED: merge syntax `{{contact.interview_notification}}` in the Voice AI prompt).
 2. Create the new outbound Voice AI agent from the prompt doc; confirm the existing number is an eligible From number; set
@@ -748,3 +750,12 @@ a rebase or conflict resolution against current `master` before merge.
 - **pre-2026-06** — Railway backend + Windows Task Scheduler era. Deprecated.
 
 For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
+
+### 2026-10-02 (evening): live voice test + test script
+- Built `execution/ghl_test_call.py` (dry run by default; `--send` writes ONLY `interview_notification` on one exact-match contact after the
+  DND/opt-out check; `--readback` prints that contact's Voice AI call logs). Added `GhlClient.search_contact_by_email` (exact match) and the
+  `GHL_FIELD_INTERVIEW_NOTIFICATION` env alias. Tests: `tests/execution/test_ghl_test_call.py`.
+- Ran it live on Kes's own contact: the GHL workflow fired, the agent called, read the facts correctly, "yes" was captured. Escalation still
+  OFF; no GHL credentials on the server. `GHL_VOICE_AGENT_ID` not needed for triggering; only for filtering call logs. Also removed the
+  "adapted from the receptionist" explanation from the prompt doc.
+- Follow-up: test voicemail, wrong person and STOP; fix greeting so it asks "Am I speaking with ...?".

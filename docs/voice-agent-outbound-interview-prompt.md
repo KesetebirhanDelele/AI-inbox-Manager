@@ -1,15 +1,17 @@
 # Outbound interview-notification voice agent: prompt and setup
 
-Prompt for the NEW GHL Voice AI agent that phones a candidate about an interview. Adapted from the AI Receptionist
-prompt Kes supplied on 2026-10-02 (same section style and rules; the goal changed from "collect a caller's contact
-details" to "tell the candidate about their interview and get a confirmation").
+Prompt for the NEW GHL Voice AI agent that phones a candidate about an interview.
 
 How it fits: our app writes the GHL contact field `interview_notification` (see
 `directives/student-notification-escalation.md`); a GHL workflow triggered by that field changing runs the "Voice AI
 Outbound Call" action with THIS agent. The agent's call log is then read back by our app: only the lines the candidate
 speaks (`human:`) are used to decide whether they acknowledged.
 
-Status: drafted 2026-10-02, **not yet configured in GHL**. Items marked UNVERIFIED need one real test call.
+Status: configured in GHL and **proven by one live test call on 2026-10-02** (test script `execution/ghl_test_call.py`, Kes's own contact).
+Result: the field value reached the agent (merge syntax works); it said the right company, position, date and format; it did not read the
+reference; "yes" was captured as a `human:` line; the call log exposes the agent id, duration, transcript and summary. Not yet seen:
+a voicemail call, a wrong-person answer, a STOP request. Known gaps: the agent greeted "Hi Kes" instead of asking "Am I speaking with ...?"
+(the agent's own greeting setting overrides step 1) and GHL adds its own opt-out line to the greeting.
 
 ---
 
@@ -115,19 +117,7 @@ STOP REQUEST:
     If the person asks not to be called again: apologize, say you will not call again, and end the call. Do not argue or ask why.
 ```
 
-## 2. What changed from the AI Receptionist prompt
-
-| Receptionist (inbound) | This agent (outbound) | Why |
-|---|---|---|
-| Goal: collect name, email, address and the reason for the call | Goal: verify the person, tell them the interview details, get a confirmation | Different job. We already hold their contact details. |
-| Spell the name back one letter at a time | Confirm only "Am I speaking with {{first name}}?" | No details are collected, so no spelling is needed. |
-| "Use a tool if the question matches" | Answer only from the interview information, else "a team member will reach out" | No tools yet. Same safe rule as before. |
-| No identity check | Wrong person: no details shared, call ends | Interview details are private. |
-| No voicemail section | Short voicemail with **no** interview details | Do not leave private details on a recording. |
-| No opt-out section | STOP REQUEST | GHL does not check consent for outbound calls; we must honour a request. |
-| Reads from the prompt only | Reads `{{contact.interview_notification}}` | This is how our app passes the facts for each call. |
-
-## 3. What the app writes into the field
+## 2. What the app writes into the field
 
 `execution/notify_channels.py::call_script()` writes FACTS ONLY (the instructions live in the prompt above), for example:
 
@@ -138,12 +128,12 @@ Attempt: first notice. Candidate first name: Sehrish. Interview details: Intervi
 The attempt label is `first notice`, `day 2 reminder`, `day 3 reminder` or `final reminder`. The value differs every attempt
 because GHL only re-triggers a workflow when the field CHANGES.
 
-## 4. Setup checklist (in GHL)
+## 3. Setup checklist (in GHL)
 
 1. Create the new Voice AI agent with the prompt above and its own knowledge base (empty is fine at first).
 2. In the workflow that triggers on the contact field `interview_notification` changing: add the "Voice AI Outbound Call"
-   action, choose this agent, and choose the From number. UNVERIFIED: that the existing number is listed as eligible.
-3. Make sure the prompt can read the two fields. UNVERIFIED: that the merge syntax `{{contact.interview_notification}}` and
+   action, choose this agent, and choose the From number. Verified: the call went out from the existing number.
+3. Make sure the prompt can read the two fields. Verified by the 2026-10-02 test call: the merge syntax `{{contact.interview_notification}}` and
    `{{contact.first_name}}` is what GHL Voice AI prompts accept. If not, use whatever mechanism GHL gives for contact data
    in an outbound agent and keep the same two inputs.
 4. Add an action or tag so a STOP REQUEST adds the contact tag `do not call` (our app checks that tag and Do-Not-Disturb
@@ -153,7 +143,7 @@ because GHL only re-triggers a workflow when the field CHANGES.
    the agent said the right company, position and date; it did not read "Reference" aloud; and a "yes" shows up as a
    `human:` line.
 
-## 5. Inbound callbacks (the other agent)
+## 4. Inbound callbacks (the other agent)
 
 A candidate who calls back reaches the number's INBOUND agent (the AI Receptionist). Add this section to its prompt:
 
@@ -166,7 +156,7 @@ INTERVIEW CALLBACKS:
 UNVERIFIED: whether GHL lets one number route inbound to a different agent than the one placing outbound calls from it.
 The docs say the same agent can serve both; a separate outbound agent on the same From number is our recommendation.
 
-## 6. GHL rules this agent runs under (from GHL's help pages)
+## 5. GHL rules this agent runs under (from GHL's help pages)
 
 Calls only 8 AM to 8 PM in the contact's zone; one call per phone number per day; 14 per 14 days; GHL does not check consent or
 Do-Not-Disturb. Our schedule is built around these (`directives/student-notification-escalation.md`).

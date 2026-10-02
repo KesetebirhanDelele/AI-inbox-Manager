@@ -91,7 +91,7 @@ class GhlConfig:
             field_email_subject=g("GHL_FIELD_NOTIFY_EMAIL_SUBJECT", cls.field_email_subject),
             field_email_body=g("GHL_FIELD_NOTIFY_EMAIL_BODY", cls.field_email_body),
             field_sms=g("GHL_FIELD_NOTIFY_SMS", cls.field_sms),
-            field_call=g("GHL_FIELD_NOTIFY_CALL", cls.field_call),
+            field_call=g("GHL_FIELD_NOTIFY_CALL") or g("GHL_FIELD_INTERVIEW_NOTIFICATION", cls.field_call),
             block_tags=tags,
         )
 
@@ -189,6 +189,15 @@ class GhlClient:
         exact = [c for c in contacts if wanted and _digits_tail(c.get("phone")) == wanted]
         if len(exact) > 1:
             raise GhlError(f"{len(exact)} GHL contacts share this phone number; refusing to guess which student")
+        return exact[0] if exact else None
+
+    def search_contact_by_email(self, email: str) -> Optional[dict]:
+        """The contact whose email EXACTLY matches (case-insensitive), or None; two exact matches are refused."""
+        result = self._request("GET", "/contacts/", params={"locationId": self.config.location_id, "query": email})
+        contacts = result.get("contacts", []) if isinstance(result, dict) else []
+        exact = [c for c in contacts if str(c.get("email", "")).strip().lower() == email.strip().lower()]
+        if len(exact) > 1:
+            raise GhlError(f"{len(exact)} GHL contacts share this email; refusing to guess")
         return exact[0] if exact else None
 
     def get_contact(self, contact_id: str) -> dict:
