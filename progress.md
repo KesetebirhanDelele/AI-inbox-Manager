@@ -22,6 +22,59 @@ Newest first.
 **Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
 The detail below is in the order the work happened; this block is the summary.
 
+### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
+
+**One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED
+and DEPLOYED but SWITCHED OFF. `master` == `origin/master` == server (`.deployed_commit`). No GHL credentials are on the server.
+Nothing can reach a student.
+
+**Where everything lives**
+| What | Where |
+|---|---|
+| Design, decisions, schedule, settings, checklist | `directives/student-notification-escalation.md` (read first) |
+| GHL facts: verified / unverified / what the kit lacks | `docs/ghl-conversations-and-calls.md`; local skills `.claude/skills/ghl-integration` and `ghl-conversations-calls` (`.claude/` is git-ignored) |
+| Voice agent prompt + GHL setup checklist | `docs/voice-agent-outbound-interview-prompt.md` |
+| Use cases and user stories (17 UCs) | `docs/use-cases.html`; published artifact https://claude.ai/artifact/FRzyZVP1uBnsvMPEViEZiw (private) |
+| Code | `execution/escalation_schedule.py`, `escalation_engine.py`, `notify_channels.py`, `ghl_client.py`, `ghl_conversations.py`, `reply_analysis.py`, `notification_tick.py`, `area_code_timezones.py`; API routes in `services/dashboard/api/routers/notifications.py`; tables `notification_sequences`, `notification_attempts`, `reply_analyses`, `notification_inbound` |
+| Daily health check | `execution/health_check.py` (host cron `/etc/cron.d/inboxgenius-health`, 07:30 UTC; Monday all-clear email) |
+
+**Decisions (who decided)**
+- Ali: all three channels (email, text, voice call); student must acknowledge; keep after them until they do; Rob approves the first send;
+  confirm with Rob what he does today BEFORE switching on; share the Cora number budget; delete the 20 non-interview rows (done);
+  quiet hours 9 PM-8 AM in the STUDENT'S time zone for calls and texts (area-code fallback, Central last); email any time;
+  day 1 as designed, then one call+text+email per day for up to 3 more days; telling Rob does not stop the sequence;
+  AI reading of replies in SHADOW mode for 2 weeks (to 2026-10-16) before it may stop anything.
+- Kes: `master` is the single source of truth (work on a short-lived branch, verify, merge, deploy from master); the voice agent is
+  GHL Voice AI; the trigger fields are `interview_notification` (call), `Support Issue Ticket #2` + `Message:` (email),
+  `Support issue Ticket #4` (text); a changed value re-triggers a workflow, an identical one does not; use the `.env` key;
+  adhere to GHL's rules; the Cora repo is READ-ONLY reference (never edit it).
+- Claude (Kes accepted): calls end at 8 PM (GHL's own window) and there is no 2nd call on day 1 (GHL allows one call per number
+  per day, 14 in 14 days); each attempt's value is unique; own SMS budget 150 of the shared 999 (`NOTIFY_SMS_DAILY_SEGMENT_CAP`);
+  exact-phone contact match; a connected call with no readable student words never stops a sequence.
+
+**Verified live (read-only, 2026-10-02):** the four trigger fields exist (large text); the Voice AI call-log scope works with `GHL_API_KEY`
+(152 live logs); `GHL_CONVERSATIONS_API_KEY` works; contact phone is E.164; exact-phone lookup works; our `human:` parser kept the
+agent's words out. NOT done: writing `interview_notification` (needs a test contact) and placing a test call.
+
+**Open / next (in order)**
+1. Kes gives a TEST CONTACT (his own) -> one live write of `interview_notification` between 8 AM-8 PM his time -> check the call log
+   (agent said the right facts; did not read "Reference"; a "yes" shows as a `human:` line). This also answers how the field value
+   reaches the agent (UNVERIFIED: merge syntax `{{contact.interview_notification}}` in the Voice AI prompt).
+2. Create the new outbound Voice AI agent from the prompt doc; confirm the existing number is an eligible From number; set
+   `GHL_VOICE_AGENT_ID`; add an action so a STOP request tags the contact `do not call`.
+3. Kes confirms with Rob what Rob does today; get `ROB_ALERT_EMAIL`; confirm students opted in to texts/calls; Cora's real usage.
+4. Shadow rehearsal on the server (`NOTIFY_CHANNEL_*=ghl`, `GHL_WRITE_MODE=shadow`), read the `[GHL shadow]` log lines, then a human
+   approves the three `GHL_WRITE_*` switches and `NOTIFY_ESCALATION_ENABLED`; install the 5-minute host cron for `notification_tick.py`.
+5. Not built yet: alert Rob when a draft is waiting (Claude's idea, Ali has not agreed); alert Ali when a draft sits unapproved.
+
+**How to work here (hard-won)**
+- Tests: `python -m pytest tests -q --no-cov` (root, ~701) and `python -m pytest services/dashboard/tests -q --no-cov` (~191, needs `bcrypt`).
+- Deploy: branch from master -> tests -> merge fast-forward -> `git push origin master` -> delete branch -> `scripts/deploy_hetzner.sh`
+  (it refuses 00-11 minutes past an even UTC hour). Then the sync check in CLAUDE.md (tree clean, master == origin, deployed == master).
+- Shell quoting: long heredocs with quotes in the Bash tool break. Write files with the Write tool, or write a patch script to the
+  scratchpad and run it. Never print secrets (CLAUDE.md); check `.env` values with `grep -c "^KEY=.\+"`.
+- A health-check run EMAILS Kes unless `ALERT_EMAIL_TO=` is blanked (`docker exec -e ALERT_EMAIL_TO= ...`).
+
 ### 2026-10-02 update
 
 - **Deleted the 20 non-interview events** (Job Invite 12, Job Alert 6, Application Notification 1,
@@ -118,6 +171,14 @@ The detail below is in the order the work happened; this block is the summary.
   words). API tests now freeze the clock (they would have flipped after 8 PM Central). Tests: 701 root, 191 dashboard.
   Still OFF; no credentials on the server; NOT done: writing `interview_notification` (needs a test contact) and how the
   value reaches the agent's prompt.
+
+- **Outbound voice agent prompt written** (Kes supplied the AI Receptionist prompt to adapt): `docs/voice-agent-outbound-interview-prompt.md`.
+  Same section style and rules (provided information only, no assumptions, no verbatim repeats, "a team member will reach out"),
+  new goal (verify the person, tell them the interview details, get a "yes"), plus VOICEMAIL (no interview details left),
+  STOP REQUEST, wrong-person handling, and an INTERVIEW CALLBACKS section for the inbound receptionist. The app's
+  `interview_notification` value is now FACTS ONLY (`Attempt: ...; Candidate first name; Interview details; Reference`); the
+  instructions moved into the prompt so the two never contradict. Not yet configured in GHL. Use cases and user stories page
+  rewritten to 17 use cases (new: UC12-UC17 for the notification feature): `docs/use-cases.html` + the published artifact.
 
 ### End-of-day summary (2026-10-01)
 

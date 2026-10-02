@@ -46,9 +46,11 @@ or key. Standards come from `.claude/skills/ghl-integration/KIT.md`: shadow by d
 field UUID; a successful write means "handed to GHL", not delivered; opt-outs checked before every send.
 
 **Answers from Kes (2026-10-02) and what they changed:**
-1. **The call value carries the interview facts.** `interview_notification` holds what the voice agent tells the
-   candidate: interview type, company, position, date, time and time zone, format, contact at the company, number of
-   interviewers (only facts we have; "date and time not confirmed yet" when unknown), then the ask to say yes. Built in
+1. **The call value carries the interview facts, and only facts.** `interview_notification` holds, for example,
+   `Attempt: first notice. Candidate first name: X. Interview details: Interview type: ...; Company: ...; Position: ...;
+   Date: ...; Time: ...; Format: ...; Contact at the company: .... Reference: N.` (only facts we have; "date and time not
+   confirmed yet" when unknown). The INSTRUCTIONS (greet, verify the person, deliver, ask for a yes, voicemail, stop request)
+   live in the Voice AI agent's prompt: `docs/voice-agent-outbound-interview-prompt.md`. Built in
    `notify_channels.call_script()` / `interview_facts()`.
 2. **A changed value re-triggers; an identical one does not.** So the 2nd, 3rd... call must read slightly differently:
    every value ends with a step tag ("Reminder 1:", "Day 2 reminder:", "Final reminder:") plus `Ref N`. Tested.

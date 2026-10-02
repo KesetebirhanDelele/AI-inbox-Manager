@@ -78,7 +78,8 @@ def test_call_writes_only_the_interview_notification_field():
     channel("call", g).send(ctx())
     _, updates = g.writes[0]
     assert list(updates) == ["interview_notification"]
-    assert "Test" in updates["interview_notification"] and "say yes" in updates["interview_notification"]
+    value = updates["interview_notification"]
+    assert "Candidate first name: Test" in value and "Attempt: first notice" in value and "Reference: 7" in value
 
 
 def full_event(**over):
@@ -97,7 +98,8 @@ def test_the_call_value_carries_the_interview_details_for_the_voice_agent():
                  "Time: 2:00 PM CT", "Format: video", "Contact at the company: Jane Recruiter",
                  "Number of interviewers: 2"):
         assert fact in script
-    assert "Test" in script and "say yes" in script and "Ref 7" in script
+    assert "Candidate first name: Test" in script and "Reference: 7" in script
+    assert "say yes" not in script and "Tell them" not in script           # instructions live in the agent prompt, not the value
 
 
 def test_the_call_value_only_states_facts_we_have_and_says_when_the_date_is_unknown():
@@ -108,7 +110,7 @@ def test_the_call_value_only_states_facts_we_have_and_says_when_the_date_is_unkn
     assert "Company: Acme" in script and "Position" not in script and "Format" not in script
     assert "not confirmed yet" in script
     c.event = None
-    assert "a new interview request" in nc.call_script(c)
+    assert "a new interview request (no details available)" in nc.call_script(c)
 
 
 def test_the_second_and_third_call_values_differ_so_the_workflow_triggers_again():

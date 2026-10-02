@@ -118,14 +118,21 @@ def interview_facts(event: Any) -> list:
     return facts
 
 
+ATTEMPT_LABELS = {"start": "first notice", "d1_2h": "reminder 1", "d1_4h": "reminder 2",
+                  "day2": "day 2 reminder", "day3": "day 3 reminder", "day4": "final reminder"}
+
+
 def call_script(ctx: SendContext) -> str:
     """
-    The value written to `interview_notification`: everything the voice agent needs to tell the candidate
-    about the interview, then what to ask. Unique per attempt (step tag + Ref) so the workflow re-triggers.
+    The value written to `interview_notification`: FACTS ONLY. The agent's instructions (greet, verify, deliver,
+    ask for a yes) live in the Voice AI agent's prompt (docs/voice-agent-outbound-interview-prompt.md), so the
+    value never repeats or contradicts them. It tells the agent which attempt this is, so a reminder can say it is
+    following up. Unique per attempt (attempt label + reference) because GHL only re-triggers on a CHANGED value.
     """
-    details = "; ".join(interview_facts(ctx.event)) or "a new interview request"
-    return (f"{step_tag(ctx)}Call {_first_name(ctx.student)} for Colaberry Interview Support. Tell them about their "
-            f"interview. Details: {details}. Then ask them to say yes to confirm they received this information. {_ref(ctx)}")
+    details = "; ".join(interview_facts(ctx.event)) or "a new interview request (no details available)"
+    label = ATTEMPT_LABELS.get(ctx.attempt.step, "reminder")
+    return (f"Attempt: {label}. Candidate first name: {_first_name(ctx.student)}. "
+            f"Interview details: {details}. Reference: {ctx.sequence.id}.")
 
 
 def email_parts(ctx: SendContext) -> tuple:

@@ -1,0 +1,305 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InboxGenius Use Cases</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+/* Layout: single reading column; each use case is a block with its stories listed beneath, each story carrying its own status. */
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --fg:#1d2624; --muted:#5d6b67; --line:#d9dfdc;
+  --accent:#0f6b5c; --accent-soft:#e0f0ec;
+  --ok:#1d7a3e; --ok-soft:#e1f3e7; --gap:#a4381f; --gap-soft:#fbe7e1; --part:#8a5a00; --part-soft:#fbefd2; --new:#33527a; --new-soft:#e3ebf7; --off:#4a4a6a; --off-soft:#e9e8f4;
+  --font-display:'Fraunces',Georgia,serif; --font-body:'IBM Plex Sans',system-ui,sans-serif; --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121816; --surface:#1a2220; --fg:#e6ece9; --muted:#9aaaa5; --line:#2c3835;
+  --accent:#5cc7b2; --accent-soft:#17332d;
+  --ok:#6fd290; --ok-soft:#163421; --gap:#ff9d85; --gap-soft:#3b1d16; --part:#f0c35c; --part-soft:#33290f; --new:#9cbcf0; --new-soft:#1b2a40; --off:#b9b6ee; --off-soft:#27264a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121816; --surface:#1a2220; --fg:#e6ece9; --muted:#9aaaa5; --line:#2c3835;
+  --accent:#5cc7b2; --accent-soft:#17332d;
+  --ok:#6fd290; --ok-soft:#163421; --gap:#ff9d85; --gap-soft:#3b1d16; --part:#f0c35c; --part-soft:#33290f; --new:#9cbcf0; --new-soft:#1b2a40; --off:#b9b6ee; --off-soft:#27264a; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.55}
+.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:32px 64px}
+h1{font-family:var(--font-display);font-size:2rem;line-height:1.15;margin:0 0 8px;text-wrap:balance}
+h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
+.lede{color:var(--muted);margin:0 0 20px;max-width:65ch}
+.actors{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:20px}
+.actor{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 12px;min-width:0}
+.actor b{display:block;font-size:.95rem}
+.actor span{color:var(--muted);font-size:.85rem}
+.summary{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 16px;margin-bottom:12px}
+.summary strong{font-family:var(--font-display);font-size:1.6rem;font-variant-numeric:tabular-nums;margin-right:6px}
+.summary span{color:var(--muted);font-size:.9rem}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.85rem;color:var(--muted);margin-bottom:20px;align-items:center}
+.pill{display:inline-block;font-family:var(--font-mono);font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.ok{background:var(--ok-soft);color:var(--ok)} .gap{background:var(--gap-soft);color:var(--gap)} .part{background:var(--part-soft);color:var(--part)} .new{background:var(--new-soft);color:var(--new)} .off{background:var(--off-soft);color:var(--off)}
+.draft{background:transparent;color:var(--part);border:1px dashed var(--part)}
+.uc{background:var(--surface);border:1px solid var(--line);border-radius:8px;margin-bottom:18px;padding:18px 20px}
+.uc-head{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between}
+.uc h2{font-family:var(--font-display);font-size:1.25rem;margin:0;text-wrap:balance}
+.uc h2 small{font-family:var(--font-mono);font-size:.75rem;color:var(--accent);margin-right:8px;font-weight:500}
+.meta{color:var(--muted);font-size:.85rem;margin:6px 0 12px}
+.meta b{color:var(--fg);font-weight:500}
+.note{background:var(--part-soft);color:var(--fg);border-radius:6px;padding:8px 12px;font-size:.88rem;margin:0 0 12px}
+.note.ok{background:var(--ok-soft)} .note.off{background:var(--off-soft)}
+.stories{list-style:none;margin:0;padding:0;display:grid;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.stories li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;min-width:0}
+.stories .id{font-family:var(--font-mono);font-size:.72rem;color:var(--muted);padding-top:3px}
+.stories p{margin:0;min-width:0}
+.stories em{font-style:normal;color:var(--accent);font-weight:500}
+.stories .st{padding-top:2px}
+@media (max-width:520px){.stories li{grid-template-columns:auto 1fr}.stories .st{grid-column:2}}
+.foot{color:var(--muted);font-size:.85rem;margin-top:24px}
+.foot code{font-family:var(--font-mono);font-size:.8rem}
+</style>
+
+<div class="wrap">
+  <h1>InboxGenius: use cases and user stories</h1>
+  <p class="lede">InboxGenius reads the shared interview inbox, labels every email, and gives staff a dashboard to check the work. The newest part tells each student about their interview by call, text and email, and keeps following up until they confirm. Status as of 2 Oct 2026, after the deploy of commit 2298382.</p>
+
+  <div class="summary">
+    <span><strong>7</strong>working</span>
+    <span><strong>4</strong>partial</span>
+    <span><strong>5</strong>built, switched off</span>
+    <span><strong>1</strong>drafted</span>
+    <span>The student-notification feature (UC12 to UC17) is built and deployed but off: no credentials on the server, every channel is a dry run.</span>
+  </div>
+  <div class="legend">
+    <span><span class="pill ok">Working</span> running, checked on real mail or data</span>
+    <span><span class="pill part">Partial</span> built, something unproven or open</span>
+    <span><span class="pill off">Built, off</span> deployed but switched off, nothing sent</span>
+    <span><span class="pill draft">Drafted</span> written, not yet configured</span>
+    <span><span class="pill new">New</span> added since the last version</span>
+  </div>
+
+  <div class="actors">
+    <div class="actor"><b>Ali (Ops lead)</b><span>Owns label quality and approves what is switched on.</span></div>
+    <div class="actor"><b>Rob (Assistant)</b><span>Approves the first send and follows up personally.</span></div>
+    <div class="actor"><b>Student / candidate</b><span>Receives interview news and confirms it.</span></div>
+    <div class="actor"><b>Kes (Engineer)</b><span>Builds, deploys and monitors.</span></div>
+  </div>
+
+  <h2 class="band">Labeling the inbox</h2>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC1</small>Sort the inbox automatically</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> System, every 2 hours &nbsp;·&nbsp; <b>Result:</b> each unread email gets a category and a folder.</p>
+    <ul class="stories">
+      <li><span class="id">1.1</span><p>As <em>Ali</em>, I want every new email classified with a confidence score, so I can trust what ends up in each folder.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">1.2</span><p>As <em>Rob</em>, I want obvious senders (LinkedIn, Indeed, Skool, bare job links) sorted by rule, so routine mail clears fast and cheaply.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">1.3</span><p>As <em>Kes</em>, I want a per-run cost limit, so a flood of mail cannot cause a surprise bill.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">1.4</span><p>As <em>Rob</em>, I want mail the model is unsure about moved to "Needs Review".</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC2</small>Keep real interview emails visible</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> System &nbsp;·&nbsp; <b>Result:</b> interview emails stay in the inbox and are never moved or deleted.</p>
+    <ul class="stories">
+      <li><span class="id">2.1</span><p>As <em>a student</em>, I want my interview email left untouched in the inbox.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">2.2</span><p>As <em>Ali</em>, I want emails from known interview companies protected even if the model mislabels them.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">2.3</span><p>As <em>Ali</em>, I want to add or remove companies on a whitelist.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">2.4</span><p>As <em>Ali</em>, I want a job alert from a known company kept in the inbox without being counted as an interview. Seen working on real mail.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC3</small>Identify the type of interview</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> System &nbsp;·&nbsp; <b>Result:</b> phone screen, client screen, technical, cancelled, rescheduled or job machine.</p>
+    <p class="note ok"><b>Fixed.</b> The sub-classifier was never being called. It is now, with a safe fallback. The first live Phone Screen has been seen. Cancellations and second rounds are covered by tests only because none has arrived yet.</p>
+    <ul class="stories">
+      <li><span class="id">3.1</span><p>As <em>Ali</em>, I want each interview labeled with its real type, so I can measure the labeling.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">3.2</span><p>As <em>Rob</em>, I want a cancellation recognised, so I never tell a student their interview is coming.</p><span class="st pill part">Tests only</span></li>
+      <li><span class="id">3.3</span><p>As <em>a student</em>, I want to know whether this is a second-round or client interview.</p><span class="st pill part">Tests only</span></li>
+      <li><span class="id">3.4</span><p>As <em>Kes</em>, I want a test that fails if the sub-classifier stops being called.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">3.5</span><p>As <em>Ali</em>, I want each event to record whether its type came from the sub-classifier or the fallback.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC4</small>Work out which student an email is for</h2><span class="pill part">Partial</span></div>
+    <p class="meta"><b>Actor:</b> System &nbsp;·&nbsp; <b>Result:</b> the interview is linked to a student with a personal email.</p>
+    <p class="note"><b>Cause fixed, not yet reliable.</b> The forwarding headers were never captured. They are now, and one student has a saved assigned Gmail. The latest health check still found 3 of 5 new interview events with no student attached.</p>
+    <ul class="stories">
+      <li><span class="id">4.1</span><p>As <em>Rob</em>, I want the student matched from the forwarding headers.</p><span class="st pill part">Partial</span></li>
+      <li><span class="id">4.2</span><p>As <em>a student</em>, I want notices sent to my personal email, never my job-application Gmail.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">4.3</span><p>As <em>Ali</em>, I want unmatched emails flagged clearly, so no interview goes unclaimed.</p><span class="st pill part">Partial</span></li>
+      <li><span class="id">4.4</span><p>As <em>Ali</em>, I want the headers to win when they disagree with the name in the email, with the disagreement flagged.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC5</small>Draft the student notification for Rob</h2><span class="pill part">Partial</span></div>
+    <p class="meta"><b>Actor:</b> Rob &nbsp;·&nbsp; <b>Result:</b> a ready-made draft in the dashboard that Rob reviews and approves.</p>
+    <p class="note"><b>Replaced by UC12 once switched on.</b> Ali decided neither "the app emails" nor "Rob sends from Gmail" is enough: the app sends across three channels, with Rob approving the first send. Until then Approve still sends one email, and that send was tested (a test message reached Kes). The Approve button itself has not been clicked on a real draft.</p>
+    <ul class="stories">
+      <li><span class="id">5.1</span><p>As <em>Rob</em>, I want a draft with company, role, date and time filled in.</p><span class="st pill part">Partial</span></li>
+      <li><span class="id">5.2</span><p>As <em>Rob</em>, I want to edit, approve or reject a draft in the dashboard.</p><span class="st pill part">Untested click</span></li>
+      <li><span class="id">5.3</span><p>As <em>Rob</em>, I want missing fields highlighted on the draft.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">5.4</span><p>As <em>Rob</em>, I want the draft template to match the real interview type.</p><span class="st pill part">Tests only</span></li>
+      <li><span class="id">5.5</span><p>As <em>Rob</em>, I want each draft saved in Gmail to send by hand.</p><span class="st pill gap">Dropped</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC6</small>Review low-confidence classifications</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> Ali, Rob &nbsp;·&nbsp; <b>Result:</b> uncertain items surface in an approvals queue.</p>
+    <p class="note ok"><b>Proven on real mail.</b> Anything under 0.70 confidence is queued once per email (15 pending now). The first queued items were all noise at a flat 0.65 (forwarded LinkedIn links, Skool reminders), so sender rules now catch those before they reach the model. "Other" at exactly 0.0 is not queued.</p>
+    <ul class="stories">
+      <li><span class="id">6.1</span><p>As <em>Ali</em>, I want anything under 0.70 confidence in the approvals queue.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">6.2</span><p>As <em>Rob</em>, I want to approve, override or reject a label with one click.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">6.3</span><p>As <em>Ali</em>, I want my corrections turned into an accuracy figure.</p><span class="st pill part">Partial</span></li>
+      <li><span class="id">6.4</span><p>As <em>Ali</em>, I want the queue to skip plain junk, so Rob sees a handful of items a day, not hundreds.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC7</small>Protect the ambiguous "Other" bucket</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> System, Ali &nbsp;·&nbsp; <b>Result:</b> unclear emails can be recovered.</p>
+    <p class="note ok"><b>Fixed and checked live.</b> Unclear mail goes to a "Quarantine" folder instead of being deleted. Before this, 45 to 105 emails a day were permanently deleted. Quarantine has no clean-up schedule yet.</p>
+    <ul class="stories">
+      <li><span class="id">7.1</span><p>As <em>Ali</em>, I want "Other" mail moved to quarantine, not deleted.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">7.2</span><p>As <em>Ali</em>, I want a count of how often quarantined mail turns out to be real.</p><span class="st pill part">Not built</span></li>
+      <li><span class="id">7.3</span><p>As <em>Rob</em>, I want to rescue a wrongly quarantined email.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">7.4</span><p>As <em>Ali</em>, I want the dashboard to say "Quarantined", not "Deleted".</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">7.5</span><p>As <em>Ali</em>, I want mail left alone when the second check fails.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <h2 class="band">Watching and running the system</h2>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC8</small>Watch the system on the dashboard</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> Ali, Kes &nbsp;·&nbsp; <b>Result:</b> a live picture of volume, categories and accuracy.</p>
+    <ul class="stories">
+      <li><span class="id">8.1</span><p>As <em>Ali</em>, I want totals, category breakdown and trends.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">8.2</span><p>As <em>Ali</em>, I want each processing run and its outcome.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">8.3</span><p>As <em>Ali</em>, I want an accuracy view.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">8.4</span><p>As <em>Rob</em>, I want to trigger a run on demand.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC9</small>Follow each student's job search</h2><span class="pill part">Partial</span></div>
+    <p class="meta"><b>Actor:</b> Ali, Rob &nbsp;·&nbsp; <b>Result:</b> interviews, offers and preparation steps per student.</p>
+    <p class="note"><b>Cleaner.</b> The 20 non-interview rows that inflated the list were exported and deleted. Matching events to students is still incomplete (UC4).</p>
+    <ul class="stories">
+      <li><span class="id">9.1</span><p>As <em>Rob</em>, I want a list of upcoming interviews.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">9.2</span><p>As <em>Rob</em>, I want a checklist per interview.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">9.3</span><p>As <em>Ali</em>, I want per-student activity, company tracker, offers and missed interviews.</p><span class="st pill part">Partial</span></li>
+      <li><span class="id">9.4</span><p>As <em>Ali</em>, I want checklists that fit the interview type.</p><span class="st pill part">Untested</span></li>
+      <li><span class="id">9.5</span><p>As <em>Ali</em>, I want old non-interview rows removed from the interview list.</p><span class="st pill ok">Done</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC10</small>Keep the system running and tell us when it breaks</h2><span class="pill part">Partial</span></div>
+    <p class="meta"><b>Actor:</b> Kes &nbsp;·&nbsp; <b>Result:</b> failures are visible and fixable.</p>
+    <p class="note"><b>Code is on <code>master</code> in Kes's GitHub repository.</b> The server always runs the <code>master</code> commit. Whether that is the repository Ali meant is not confirmed.</p>
+    <ul class="stories">
+      <li><span class="id">10.1</span><p>As <em>Kes</em>, I want an alert email when a run fails or a fetch is partial.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">10.2</span><p>As <em>Kes</em>, I want the connection to reconnect after a drop.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">10.3</span><p>As <em>Ali</em>, I want the deployed code in a reviewable GitHub repository.</p><span class="st pill part">Unconfirmed</span></li>
+      <li><span class="id">10.4</span><p>As <em>Kes</em>, I want the deploy to refuse unsafe times.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">10.5</span><p>As <em>Ali</em>, I want a daily health check that emails only when something breaks, plus a Monday all-clear so a dead check cannot look healthy.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">10.6</span><p>As <em>Kes</em>, I want git, the repository and the server to always match.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC11</small>Correct past labels</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> Kes, Ali &nbsp;·&nbsp; <b>Result:</b> older interview events carry the real sub-type.</p>
+    <ul class="stories">
+      <li><span class="id">11.1</span><p>As <em>Ali</em>, I want old events re-labeled with the real classifier. All 27 were confirmed as first-round requests.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">11.2</span><p>As <em>Kes</em>, I want the re-label to default to report-only and keep the old value, so it can be undone.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <h2 class="band">Telling the student, and making sure they know <span class="pill new">New</span></h2>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC12</small>Notify the student by call, text and email</h2><span class="pill off">Built, off</span></div>
+    <p class="meta"><b>Actor:</b> Rob approves, system sends &nbsp;·&nbsp; <b>Result:</b> the student hears about the interview the same day, on three channels.</p>
+    <p class="note off"><b>Switched off.</b> Nothing reaches a student until three GHL write switches are set. Every channel defaults to a dry run that only logs. Email, text and call are each sent by writing a field on the student's GHL contact (Support Issue Ticket #2 and Message for email, Ticket #4 for text, <code>interview_notification</code> for the call), and a GHL workflow does the sending.</p>
+    <ul class="stories">
+      <li><span class="id">12.1</span><p>As <em>Ali</em>, I want nothing sent to a student before Rob approves the first send.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">12.2</span><p>As <em>a student</em>, I want a call, a text and an email at once when Rob approves, so I know today.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">12.3</span><p>As <em>the voice agent</em>, I want the interview facts (type, company, position, date, time, format, contact) passed on each call, so I can tell the student.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">12.4</span><p>As <em>Kes</em>, I want every message to differ slightly, because GHL only runs a workflow when the field changes.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">12.5</span><p>As <em>Kes</em>, I want sends to stay in a rehearsal mode until a human approves going live.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">12.6</span><p>As <em>Rob</em>, I want to be told when a draft is waiting for my approval.</p><span class="st pill part">Not built</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC13</small>Keep following up until the student confirms</h2><span class="pill off">Built, off</span></div>
+    <p class="meta"><b>Actor:</b> System &nbsp;·&nbsp; <b>Result:</b> no student is left not knowing.</p>
+    <p class="note off"><b>Schedule (Ali approved, GHL rules applied).</b> Day 1: call, text and email at approval; email at +2 hours; text and email at +4 hours. Then, for three more days, one call, one text and one email at 9 AM in the student's time zone. There is no second call on day 1 because GHL allows one call per number per day.</p>
+    <ul class="stories">
+      <li><span class="id">13.1</span><p>As <em>Ali</em>, I want the sequence to keep going for up to four days until the student confirms.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">13.2</span><p>As <em>Ali</em>, I want Rob told after day 1 goes unanswered, without that ending the sequence.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">13.3</span><p>As <em>Rob</em>, I want to be told when the sequence ends with no confirmation, so I can call them myself.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">13.4</span><p>As <em>Rob</em>, I want to close a sequence myself when a student tells me directly.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">13.5</span><p>As <em>Kes</em>, I want a failed or skipped attempt recorded with a reason, never silently dropped.</p><span class="st pill off">Built, off</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC14</small>Know the student actually received it</h2><span class="pill off">Built, off</span></div>
+    <p class="meta"><b>Actor:</b> System, AI &nbsp;·&nbsp; <b>Result:</b> an acknowledgement that stops the follow-ups.</p>
+    <p class="note off"><b>Read from GHL.</b> Replies and calls are read from the student's GHL Conversations and Voice AI call logs. The AI sees only the student's own words (the <code>human:</code> lines of a call), never the agent's or ours. For the first two weeks (to 16 Oct) it only records its judgement and stops nothing.</p>
+    <ul class="stories">
+      <li><span class="id">14.1</span><p>As <em>a student</em>, I want to reply YES to the text, and have that count.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.2</span><p>As <em>a student</em>, I want a one-tap "I got this" button in the email.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.3</span><p>As <em>Ali</em>, I want the AI to read the student's own reply or call and recognise they understood, even without a click, so follow-ups stop.</p><span class="st pill off">Shadow mode</span></li>
+      <li><span class="id">14.4</span><p>As <em>Ali</em>, I want to see how often the AI was right before it may stop anything.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.5</span><p>As <em>Rob</em>, I want a question, a "can't attend" or a confused reply sent to me, not auto-handled.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.6</span><p>As <em>a student</em>, I want a STOP reply to end all contact immediately.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.7</span><p>As <em>Kes</em>, I want each reply or call handled exactly once, and our own emails that GHL logs back as inbound ignored.</p><span class="st pill off">Built, off</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC15</small>Contact students only when allowed</h2><span class="pill off">Built, off</span></div>
+    <p class="meta"><b>Actor:</b> System &nbsp;·&nbsp; <b>Result:</b> no call at 6 AM, no message to someone who opted out, no crowding out Cora.</p>
+    <ul class="stories">
+      <li><span class="id">15.1</span><p>As <em>Ali</em>, I want quiet hours in each student's own time zone (worked out from the phone area code, Central only as a last resort).</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">15.2</span><p>As <em>a student</em>, I want no texts between 9 PM and 8 AM and no calls between 8 PM and 8 AM; emails can come any time.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">15.3</span><p>As <em>Kes</em>, I want never more than one call to a number per day, as GHL requires.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">15.4</span><p>As <em>a student</em>, I want my Do-Not-Disturb setting and any "do not call" tag respected before every send (GHL does not check).</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">15.5</span><p>As <em>Ali</em>, I want our texts capped (150 a day of the shared 999) so Cora is never starved, with extra texts moved to the next morning.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">15.6</span><p>As <em>Kes</em>, I want a student matched to their GHL contact by an exact phone number, so details never reach the wrong person.</p><span class="st pill ok">Checked live</span></li>
+      <li><span class="id">15.7</span><p>As <em>Ali</em>, I want to know whether students agreed to receive texts and calls.</p><span class="st pill part">Open question</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC16</small>The outbound interview voice agent</h2><span class="pill draft">Drafted</span></div>
+    <p class="meta"><b>Actor:</b> GHL Voice AI agent &nbsp;·&nbsp; <b>Result:</b> a clear, safe call that tells the student about their interview and asks for a "yes".</p>
+    <p class="note"><b>Prompt written, not yet in GHL.</b> It is adapted from the AI Receptionist prompt and saved in <code>docs/voice-agent-outbound-interview-prompt.md</code>. It needs one real test call to confirm how the interview facts reach the agent.</p>
+    <ul class="stories">
+      <li><span class="id">16.1</span><p>As <em>a student</em>, I want the caller to say it is an AI assistant from Colaberry Interview Support and check it is me first.</p><span class="st pill draft">Drafted</span></li>
+      <li><span class="id">16.2</span><p>As <em>a student</em>, I want the interview details told in plain words: company, position, date and time with zone, format.</p><span class="st pill draft">Drafted</span></li>
+      <li><span class="id">16.3</span><p>As <em>Ali</em>, I want the agent to ask the student to say yes, so there is something to read back.</p><span class="st pill draft">Drafted</span></li>
+      <li><span class="id">16.4</span><p>As <em>Ali</em>, I want the agent never to invent answers: unknown questions get "a team member will reach out".</p><span class="st pill draft">Drafted</span></li>
+      <li><span class="id">16.5</span><p>As <em>a student</em>, I want no interview details left on my voicemail, only a call-back prompt.</p><span class="st pill draft">Drafted</span></li>
+      <li><span class="id">16.6</span><p>As <em>a student</em>, I want the agent to stop calling when I ask, and our app to remember it.</p><span class="st pill part">Needs a GHL action</span></li>
+      <li><span class="id">16.7</span><p>As <em>a candidate calling back</em>, I want the number's inbound receptionist to hand me to Interview Support, not ask for my name spelling and address.</p><span class="st pill draft">Drafted</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC17</small>Prove it works before anyone is contacted</h2><span class="pill off">Built, off</span></div>
+    <p class="meta"><b>Actor:</b> Kes, Ali &nbsp;·&nbsp; <b>Result:</b> confidence before the first real send.</p>
+    <p class="note off"><b>Checked read-only against the real GHL account.</b> The four trigger fields exist, the call-log permission works (152 live calls), the conversations key works, and the parser kept the agent's words out of the student's. Not yet done: writing the field on a test contact and placing one test call.</p>
+    <ul class="stories">
+      <li><span class="id">17.1</span><p>As <em>Kes</em>, I want to rehearse against real contacts with writes switched off, and read what would have been sent.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">17.2</span><p>As <em>Ali</em>, I want the health check to flag a failed student attempt, so a student cannot silently go unnotified.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">17.3</span><p>As <em>Kes</em>, I want one real test call to my own contact, and to see how the interview facts reach the agent.</p><span class="st pill part">Waiting on a test contact</span></li>
+      <li><span class="id">17.4</span><p>As <em>Ali</em>, I want to confirm with Rob what he does today before anything is switched on, so nothing he relies on disappears.</p><span class="st pill part">Open</span></li>
+    </ul>
+  </section>
+
+  <p class="foot">Sources: <code>progress.md</code>, <code>directives/student-notification-escalation.md</code>, <code>docs/ghl-conversations-and-calls.md</code>, <code>docs/voice-agent-outbound-interview-prompt.md</code>, the production database and cron log. "Working" means seen on real mail or data. "Built, off" means deployed and tested but switched off, so nothing is sent. "Tests only" means covered by automated tests but not yet seen live.</p>
+</div>
