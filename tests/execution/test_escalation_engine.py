@@ -313,3 +313,58 @@ def test_replies_that_are_not_understood_go_to_rob_and_do_not_stop_the_sequence(
 def test_rob_alerts_are_logged_not_lost_when_no_address_is_configured(db):
     quiet = eng.RobAlerts(to="", send_fn=lambda **k: pytest.fail("must not send without an address"))
     assert quiet.no_response(None, "Test Student") is False and quiet.sent
+
+
+# -- deferred and skipped results (text budget, opt-outs) ------------------------
+
+class Scripted:
+    """A channel that returns a scripted result the first time, then a normal send."""
+    def __init__(self, name, first):
+        self.name, self.first, self.calls = name, first, 0
+
+    def send(self, ctx):
+        self.calls += 1
+        if self.calls == 1:
+            return self.first
+        return nc.ChannelResult(nc.SENT)
+
+
+def test_a_deferred_attempt_stays_pending_moves_to_the_retry_time_and_is_not_counted_as_sent(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    retry = datetime(2026, 10, 6, 19, 5)                          # 14:05 CDT: daytime and 3h+ clear of the day-2 text
+    sms = Scripted("sms", nc.ChannelResult(nc.DEFERRED, detail="daily text budget used", retry_at=retry))
+    ch = channels(sms=sms)
+    r = eng.tick(db, T0, ch, alerts())
+    assert (r.deferred, r.sent) == (1, 2)                          # the call and the email still went
+    start_sms = next(a for a in seq.attempts if a.channel == "sms" and a.step == "start")
+    assert start_sms.status == "pending" and start_sms.scheduled_for == retry and start_sms.sent_at is None
+    assert "budget" in start_sms.detail
+    eng.tick(db, datetime(2026, 10, 6, 14, 0), ch, alerts())      # the scheduler keeps running: day 2's text goes at 9 AM
+    eng.tick(db, retry - timedelta(minutes=1), ch, alerts())
+    assert start_sms.status == "pending"                           # not before its own time
+    eng.tick(db, retry, ch, alerts())
+    assert start_sms.status == "sent" and start_sms.sent_at == retry
+
+
+def test_a_deferred_retry_that_lands_in_quiet_hours_is_moved_to_8am(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    in_the_night = datetime(2026, 10, 6, 8, 0)                    # 03:00 CDT
+    sms = Scripted("sms", nc.ChannelResult(nc.DEFERRED, retry_at=in_the_night))
+    eng.tick(db, T0, channels(sms=sms), alerts())
+    start_sms = next(a for a in seq.attempts if a.channel == "sms" and a.step == "start")
+    assert start_sms.scheduled_for == datetime(2026, 10, 6, 13, 0)  # 08:00 CDT
+
+
+def test_a_skipped_result_is_recorded_with_its_reason_and_not_retried(db):
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    call = Scripted("call", nc.ChannelResult(nc.SKIPPED, detail="not contacted: Call Do-Not-Disturb is active"))
+    ch = channels(call=call)
+    r = eng.tick(db, T0, ch, alerts())
+    assert r.skipped == 1 and any("Do-Not-Disturb" in d for d in r.details)
+    start_call = next(a for a in seq.attempts if a.channel == "call" and a.step == "start")
+    assert start_call.status == "skipped" and "Do-Not-Disturb" in start_call.detail
+    eng.tick(db, T0, ch, alerts())
+    assert call.calls == 1

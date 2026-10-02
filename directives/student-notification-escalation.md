@@ -11,7 +11,8 @@ Turning it on for real students needs the "Before turning it on" checklist at th
 |---|---|
 | Schedule, quiet hours, time zone from area code | `execution/escalation_schedule.py`, `execution/area_code_timezones.py` |
 | Engine: start, tick, acknowledge, close, replies | `execution/escalation_engine.py` |
-| Channels: `dry_run`, `smtp` (email); GHL/Synthflow NOT built | `execution/notify_channels.py` |
+| Channels: `dry_run`, `smtp` (email), **`ghl`** (all three, shadow-gated); text gate and budget | `execution/notify_channels.py` |
+| GHL client: retries (incl. GHL's disguised 401 timeout), rate limit, field lookup by label/key, DND and opt-out-tag check, shadow gate | `execution/ghl_client.py` |
 | Reply reading: rules (YES/STOP) + AI in shadow mode | `execution/reply_analysis.py` |
 | Scheduler pass (does nothing unless enabled) | `execution/notification_tick.py` |
 | New tables only (existing tables untouched) | `notification_sequences`, `notification_attempts`, `reply_analyses`; migration `003` |
@@ -27,8 +28,37 @@ Kes asked how GHL triggers Cora's outgoing messages so we can follow the same pa
 | **Phone call** | **There is no Support Issue Ticket for calls.** Cora POSTs to a **Synthflow "Make Call" workflow webhook** (`SYNTHFLOW_LAUNCH_WORKFLOW_URL_New`, Bearer `SYNTHFLOW_API_KEY`, body `phone`, `name`, `campaign_name`, `prompt`, `metadata`). GHL's only role is that its New Lead / Cold Lead workflows call Cora's `POST /v1/webhooks/leads/{campaign}` (secret header `X-Cora-Webhook-Secret`), which then launches the Synthflow call. | `app/adapters/synthflow.py`, `call_intake.py`, `settings.py` |
 | Tickets #1 and #3 | #1 = call summary, #3 = task description. Neither sends anything. | `crm_jobs.py` |
 
-Not verified against the GHL or Synthflow dashboards (only Cora's code and docs were read). Someone with
-GHL access should open Automation > Workflows and confirm there is no workflow that starts a call from a field.
+**Update, same day (Kes): the voice call IS field-triggered for this project.** The contact field
+`interview_notification` triggers the GHL voice-agent workflow. So all three channels use the same pattern
+and the `ghl` channel is built for each:
+
+| Channel | Field(s) written | Workflow reacts to |
+|---|---|---|
+| Email | `Support Issue Ticket #2` (subject) + `Message:` (body) | Ticket #2 changing ("AI Agent - Send Email") |
+| SMS | `Support issue Ticket #4` | Ticket #4 changing ("AI Agent - Send SMS") |
+| Call | `interview_notification` | `interview_notification` changing (voice-agent workflow) |
+
+Labels are env-configurable (`GHL_FIELD_NOTIFY_EMAIL_SUBJECT`, `_EMAIL_BODY`, `_SMS`, `_CALL`). The three Cora
+labels are the defaults because they live in the same GHL location; `interview_notification` is matched by name
+or key. Standards come from `.claude/skills/ghl-integration/KIT.md`: shadow by default, live only with
+`GHL_WRITE_MODE=live` AND `GHL_WRITE_SHADOW_LOG_ONLY=false` AND `GHL_WRITE_NOTIFY_FIELDS=true`; writes by
+field UUID; a successful write means "handed to GHL", not delivered; opt-outs checked before every send.
+
+**Still UNVERIFIED (confirm in GHL before switching on; do not guess):**
+1. What the voice-agent workflow does with the value of `interview_notification`. We write the call script
+   (name, company, "please say yes to confirm", plus a step tag and `Ref N`). If the workflow expects something
+   else, change `call_script()`.
+2. GHL workflows fire when a field CHANGES. Every value we write is unique per attempt (step tag + `Ref N`), but
+   confirm that a changed value always re-triggers (and that re-writing the same value does not).
+3. How the call result comes back (workflow webhook, a Voice AI event, or a `TYPE_CALL` message we read), and
+   whether a spoken "yes" is available as a transcript. Until then a call only acknowledges via a transcript or
+   reply posted to `/api/notifications/inbound/reply`. Voice AI honouring Call DND and calling hours: confirm.
+4. Student replies by text arrive in GHL, not here: a GHL workflow must forward them to
+   `POST /api/notifications/inbound/reply` (header `X-Notify-Secret`).
+5. Each student must exist as a GHL contact whose phone matches ours; otherwise the attempt FAILS (visible to the
+   health check) instead of skipping quietly.
+
+Earlier research, kept for reference (Cora's own code, not the GHL dashboard):
 
 **Risks this raises for our build (do not skip):**
 1. **Cora's SMS ledger only counts texts Cora itself originates.** Texts we send would be invisible to it and
@@ -104,9 +134,14 @@ number must be voice-enabled.
 ## Before turning it on for real students (Ali's condition, now applied to switching on, not to building)
 - [ ] Kes confirms with Rob what Rob does today (WhatsApp / own email) so nothing he relies on disappears
 - [ ] Rob's address in `ROB_ALERT_EMAIL` (without it Rob's alerts are only written to the log)
-- [ ] SMS adapter: write the GHL field (or Twilio) with our own budget counter and quiet-hours/content checks (risk 1, 4)
-- [ ] Call adapter: a dedicated Synthflow agent and workflow, completion webhook to our app (risk 2, 3); confirm
-      how a spoken "yes" comes back
+- [x] SMS adapter built: GHL field write with our own daily budget (default 150 of the shared 999, set
+      `NOTIFY_SMS_DAILY_SEGMENT_CAP`), content gate, quiet hours (risk 1, 4). Cora's own texts are still not
+      counted: lower the cap by Cora's real usage.
+- [x] Call adapter built (GHL field `interview_notification`); the Synthflow route (risks 2, 3) is not needed
+- [ ] GHL credentials in `/repo/.env` (`GHL_API_KEY`, `GHL_LOCATION_ID`), the three `GHL_WRITE_*` switches
+      reviewed by a human, and the "Still UNVERIFIED" list above answered
+- [ ] Shadow rehearsal first: `NOTIFY_CHANNEL_*=ghl` with `GHL_WRITE_MODE=shadow` looks up the real contact and
+      checks DND but writes nothing; read the `[GHL shadow]` log lines before going live
 - [ ] Cora's current daily SMS/call usage on the shared number
 - [ ] Student opt-in for texts and calls confirmed
 - [ ] Inbound replies: a GHL (or provider) workflow that forwards student replies to
@@ -117,13 +152,15 @@ number must be voice-enabled.
 - [ ] Shadow mode ends 2026-10-16; `REPLY_AI_MODE=live` is also required before the AI may stop anything
 
 ## Settings (all off or safe by default)
-The API container only gets the variables listed under `api: environment:` in
-`services/dashboard/docker-compose.prod.yml`, and the tick script reads `/repo/.env`. When switching it on,
-add the `NOTIFY_*`, `ROB_ALERT_EMAIL` and `REPLY_AI_*` settings to BOTH places (and `OPENAI_API_KEY` to the API).
+Both the API and the tick script read `/repo/.env` (the API's `config.py` calls `load_dotenv()`, which walks up
+to the repo root), so put the settings there once; restart the API after changing it. Additional settings:
+`GHL_*` per the kit (`GHL_BASE_URL`, `GHL_API_KEY`, `GHL_LOCATION_ID`, `GHL_WRITE_MODE`,
+`GHL_WRITE_SHADOW_LOG_ONLY`, `GHL_WRITE_NOTIFY_FIELDS`, `GHL_FIELD_NOTIFY_*`), `NOTIFY_SMS_DAILY_SEGMENT_CAP`
+(default 150, hard ceiling 999) and `NOTIFY_BLOCK_TAGS` (opt-out tags; default includes "do not call").
 | Setting | Default | Meaning |
 |---|---|---|
 | `NOTIFY_ESCALATION_ENABLED` | off | Approve starts the escalation instead of sending one email |
-| `NOTIFY_CHANNEL_EMAIL` / `_SMS` / `_CALL` | `dry_run` | `dry_run` logs only; email can be `smtp`; SMS/call adapters not built |
+| `NOTIFY_CHANNEL_EMAIL` / `_SMS` / `_CALL` | `dry_run` | `dry_run` logs only; `ghl` writes the GHL field (shadow-gated); email can also be `smtp` |
 | `ROB_ALERT_EMAIL` | unset | Where Rob's alerts go; unset = logged only |
 | `NOTIFY_ACK_BASE_URL` | `https://2-29-47-89.nip.io/api/notifications/ack` | Base of the email "I got this" link |
 | `NOTIFY_INBOUND_SECRET` | unset | Secret for the inbound-reply endpoint; unset = endpoint closed |

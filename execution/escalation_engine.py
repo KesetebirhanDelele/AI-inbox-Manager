@@ -19,7 +19,7 @@ import os
 import re
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import escalation_schedule as sched
@@ -189,6 +189,7 @@ class TickReport:
     dry_run: int = 0
     failed: int = 0
     skipped: int = 0
+    deferred: int = 0
     rob_no_response: int = 0
     ended: int = 0
     details: List[str] = field(default_factory=list)
@@ -201,7 +202,7 @@ def _context(db, seq, attempt, ack_base_url: str, now: datetime) -> nc.SendConte
     student = db.get(M.Student, seq.student_id) if seq.student_id else None
     ack_url = f"{ack_base_url.rstrip('/')}/{seq.ack_token}" if ack_base_url else ""
     return nc.SendContext(attempt=attempt, sequence=seq, draft=draft, event=event, student=student,
-                          ack_url=ack_url, now=now)
+                          ack_url=ack_url, now=now, db=db)
 
 
 def _student_name(db, seq) -> str:
@@ -245,6 +246,15 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RobAlerts
             except Exception as exc:                # one bad attempt must never stop the rest
                 logger.error(f"Attempt {attempt.id} ({attempt.channel}) crashed: {exc}")
                 result = nc.ChannelResult(nc.FAILED, detail=f"crashed: {exc}"[:300])
+            if result.status == nc.DEFERRED:
+                # Not now (for example the daily text budget is used): stay pending and move to the
+                # retry time, kept outside quiet hours. It is not a failure and not a send.
+                retry = result.retry_at or (now + timedelta(hours=1))
+                attempt.scheduled_for = sched.release_time(retry, seq.timezone, attempt.channel)
+                attempt.detail = result.detail
+                db.commit()
+                report.deferred += 1
+                continue
             attempt.status = result.status
             attempt.detail = result.detail
             attempt.provider_id = result.provider_id
@@ -260,6 +270,9 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RobAlerts
                 report.sent += 1
             elif result.status == nc.DRY_RUN:
                 report.dry_run += 1
+            elif result.status == nc.SKIPPED:
+                report.skipped += 1
+                report.details.append(f"seq {seq.id} {attempt.channel}/{attempt.step}: skipped, {result.detail}")
             else:
                 report.failed += 1
                 report.details.append(f"seq {seq.id} {attempt.channel}/{attempt.step}: {result.detail}")

@@ -63,6 +63,22 @@ The detail below is in the order the work happened; this block is the summary.
   Nothing was enabled or sent. Still gated on: Kes confirming with Rob, Rob's address, Twilio/GHL/Synthflow
   access, Cora's usage, student opt-in.
 
+- **GHL channels built (Kes: "build it", voice field is `interview_notification`).** New
+  `execution/ghl_client.py` and the `ghl` channel in `notify_channels.py`, following
+  `.claude/skills/ghl-integration/KIT.md`: email = Ticket #2 (subject) + `Message:` (body); SMS = Ticket #4;
+  call = `interview_notification`. Shadow by default (live needs `GHL_WRITE_MODE=live` AND
+  `GHL_WRITE_SHADOW_LOG_ONLY=false` AND `GHL_WRITE_NOTIFY_FIELDS=true`), writes by field UUID, retries incl.
+  GHL's disguised 401 timeout, rate limiter, Do-Not-Disturb + opt-out-tag check before every send, a student with
+  no GHL contact FAILS visibly (health check) instead of skipping, every value unique per attempt (GHL fires on a
+  field CHANGE), text gate (no links, 3+ words, curly quotes normalised, segment cap) and our own daily SMS
+  budget (default 150 of the shared 999, counted from our real sends since midnight Pacific; deferred texts move
+  to 08:05 PT next day). Engine now handles `deferred` and `skipped` results. 52 new tests (root 627, dashboard
+  191). Corrected the API settings note: API and tick both read `/repo/.env`. `.env.example` updated.
+  **Not verified (written in the directive, must be answered in GHL before live):** what the voice workflow does
+  with the field value, that a changed value always re-triggers, how call results come back, Call DND/hours,
+  forwarding of student SMS replies to our webhook, and that each student exists as a GHL contact.
+  Still deployed OFF; no credentials on the server, nothing can be sent.
+
 ### End-of-day summary (2026-10-01)
 
 | Item | Result | Evidence |
