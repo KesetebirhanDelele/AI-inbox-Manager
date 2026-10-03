@@ -169,6 +169,18 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
 - **"In Inbox" meaning (removed tile):** the number of emails whose stored folder is INBOX (interview mail the pipeline keeps there, known-company mail, and mail not yet processed);
   the sync icon re-read Gmail. Not actionable, and Review > Inbox showed the same list, so both were removed.
 
+### 2026-10-03 (late, 3): emails with no body / sender "Unknown": root cause found and repaired
+- **Symptom (Kes):** expanding an interview on Interviews showed "No email body available" (and "from Unknown"). Production: 239 of 6,435 emails had no stored body, 163 of them sender
+  "Unknown", including 17 of 33 Interview Requests.
+- **Root cause:** the dashboard's IMAP "sync" (`integration/email_fetcher.fetch_and_store_emails`, behind the In Inbox sync icon and `?refresh=true` on /api/inbox/*) read the WRONG field
+  names (`from`, `body`, `date` instead of `sender_email`, `body_content`, `email_date`), matched rows by the unstable IMAP sequence number, and wrote sender "Unknown", an empty body and
+  today's date over stored emails. The pipeline's re-import path also never refilled a body for an existing row.
+- **Fixed:** the sync is deleted (`refresh` is now ignored on all three endpoints; test proves stored emails are untouched); `import_email_to_db` fills a missing body and never overwrites a
+  real subject/sender with a placeholder; the email panel is collapsible (Hide/Show) and says plainly when the text was not stored.
+- **Repair:** `execution/backfill_email_bodies.py` looks each damaged email up in Gmail "All Mail" by Message-ID (read-only) and fills only the damaged fields; `--verify N` samples healthy
+  rows against Gmail to see whether the sync also overwrote real emails with the wrong message. Results are recorded below once run.
+- Tests: 766 root, 206 dashboard.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

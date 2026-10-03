@@ -308,10 +308,17 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
         position = (extracted.get("position_title") or "")[:255] or None
 
         if existing is not None:
-            # Update folder + refresh the classification in place.
+            # Update folder + refresh the classification in place. A row that was first created as a stub (no body,
+            # sender "Unknown": 239 of them in production, 17 of 33 Interview Requests) gets its body filled in now,
+            # and a real subject/sender is never overwritten by a placeholder.
             existing.current_folder = folder
-            existing.subject = subject
-            existing.from_address = from_address
+            if subject != "No Subject" or not existing.subject:
+                existing.subject = subject
+            if from_address != "Unknown" or not existing.from_address:
+                existing.from_address = from_address
+            if body and not (existing.full_body or "").strip():
+                existing.full_body = body
+                existing.body_preview = body[:500]
             if message_id and not existing.message_id:
                 existing.message_id = message_id
             if seq_uid:

@@ -14,7 +14,6 @@ from database import get_db
 from utils_text import clean_preview, clean_email_text
 from auth import get_current_user
 from models import Email, Classification, UserSession
-from integration.email_fetcher import get_current_inbox_state, get_unread_emails
 
 router = APIRouter()
 
@@ -58,16 +57,13 @@ async def get_inbox_count(
     Returns:
         Count of emails in INBOX and whether it was synced from IMAP
     """
-    if refresh:
-        # Fetch fresh from IMAP - this updates the database
-        emails = get_current_inbox_state(db)
-        return InboxCountResponse(count=len(emails), synced=True)
-    else:
-        # Get count from database
-        count = db.query(Email).filter(
-            Email.current_folder == "INBOX"
-        ).count()
-        return InboxCountResponse(count=count, synced=False)
+    # `refresh` is accepted for old clients but ignored: the IMAP "sync" that used to run here read the wrong field
+    # names and overwrote stored emails with sender "Unknown" and an empty body. The scheduled pipeline is the only
+    # thing that writes emails.
+    count = db.query(Email).filter(
+        Email.current_folder == "INBOX"
+    ).count()
+    return InboxCountResponse(count=count, synced=False)
 
 
 @router.get("/current", response_model=List[EmailResponse])
@@ -85,16 +81,11 @@ async def get_current_inbox(
     Returns:
         List of emails currently in INBOX
     """
-    if refresh:
-        # Fetch fresh from IMAP
-        emails = get_current_inbox_state(db)
-    else:
-        # Get from database
-        emails = db.query(Email).filter(
-            Email.current_folder == "INBOX"
-        ).order_by(
-            Email.received_date.desc()
-        ).all()
+    emails = db.query(Email).filter(      # `refresh` is ignored (see /count)
+        Email.current_folder == "INBOX"
+    ).order_by(
+        Email.received_date.desc()
+    ).all()
 
     # Build response with latest classification
     response = []
@@ -138,15 +129,12 @@ async def get_unread_inbox_emails(
     Returns:
         List of unread emails
     """
-    if refresh:
-        emails = get_unread_emails(db)
-    else:
-        emails = db.query(Email).filter(
-            Email.current_folder == "INBOX",
-            Email.is_read == False
-        ).order_by(
-            Email.received_date.desc()
-        ).all()
+    emails = db.query(Email).filter(      # `refresh` is ignored (see /count)
+        Email.current_folder == "INBOX",
+        Email.is_read == False
+    ).order_by(
+        Email.received_date.desc()
+    ).all()
 
     # Build response
     response = []

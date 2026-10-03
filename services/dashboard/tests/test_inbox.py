@@ -4,8 +4,6 @@ from unittest.mock import patch, MagicMock
 
 from conftest import make_email, make_classification
 
-_INBOX_STATE = "routers.inbox.get_current_inbox_state"
-_UNREAD = "routers.inbox.get_unread_emails"
 
 
 class TestInboxCount:
@@ -24,16 +22,6 @@ class TestInboxCount:
         resp = client.get("/api/inbox/count", cookies=auth_cookies)
         assert resp.status_code == 200
         assert resp.json()["count"] == 2
-
-    def test_count_refresh_calls_imap(self, client, db, auth_cookies):
-        mock_emails = [MagicMock(), MagicMock(), MagicMock()]
-        with patch(_INBOX_STATE, return_value=mock_emails) as mock_fn:
-            resp = client.get("/api/inbox/count?refresh=true", cookies=auth_cookies)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["count"] == 3
-        assert data["synced"] is True
-        mock_fn.assert_called_once()
 
     def test_requires_auth(self, client, db):
         resp = client.get("/api/inbox/count")
@@ -74,12 +62,6 @@ class TestCurrentInbox:
         assert data[0]["latest_category"] is None
         assert data[0]["latest_confidence"] is None
 
-    def test_refresh_calls_imap(self, client, db, auth_cookies):
-        with patch(_INBOX_STATE, return_value=[]) as mock_fn:
-            resp = client.get("/api/inbox/current?refresh=true", cookies=auth_cookies)
-        assert resp.status_code == 200
-        mock_fn.assert_called_once()
-
     def test_requires_auth(self, client, db):
         resp = client.get("/api/inbox/current")
         assert resp.status_code == 401
@@ -111,12 +93,6 @@ class TestUnreadEmails:
         data = resp.json()
         assert len(data) == 1
         assert data[0]["is_read"] is False
-
-    def test_refresh_calls_imap(self, client, db, auth_cookies):
-        with patch(_UNREAD, return_value=[]) as mock_fn:
-            resp = client.get("/api/inbox/unread?refresh=true", cookies=auth_cookies)
-        assert resp.status_code == 200
-        mock_fn.assert_called_once()
 
     def test_requires_auth(self, client, db):
         resp = client.get("/api/inbox/unread")
@@ -180,3 +156,17 @@ class TestEmailDetail:
     def test_requires_auth(self, client, db):
         resp = client.get("/api/inbox/1")
         assert resp.status_code == 401
+
+
+class TestRefreshNeverRewritesStoredEmails:
+    """The IMAP "sync" used to read the wrong field names and overwrite stored emails with sender 'Unknown' and an empty body."""
+
+    def test_refresh_is_ignored_on_every_endpoint_and_nothing_is_changed(self, client, db, auth_cookies):
+        email = make_email(db, email_id="msg001", subject="Real subject", from_address="hr@acme.com", folder="INBOX")
+        email.full_body = "Real body"
+        db.commit()
+        for url in ("/api/inbox/count?refresh=true", "/api/inbox/current?refresh=true", "/api/inbox/unread?refresh=true"):
+            assert client.get(url, cookies=auth_cookies).status_code == 200
+        db.refresh(email)
+        assert (email.subject, email.from_address, email.full_body) == ("Real subject", "hr@acme.com", "Real body")
+        assert client.get("/api/inbox/count?refresh=true", cookies=auth_cookies).json()["synced"] is False
