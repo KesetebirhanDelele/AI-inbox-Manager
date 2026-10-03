@@ -158,6 +158,8 @@ because GHL only re-triggers a workflow when the field CHANGES.
 
 ## 4. Inbound callbacks (the other agent)
 
+**Status: NOT yet added to the AI Receptionist. On hold until Ali says who gets interview callbacks and within what time; then replace "a team member from Interview Support" below with his answer.**
+
 A candidate who calls back reaches the number's INBOUND agent (the AI Receptionist). Add this section to its prompt:
 
 ```

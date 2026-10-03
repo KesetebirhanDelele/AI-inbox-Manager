@@ -43,6 +43,10 @@ The detail below is in the order the work happened; this block is the summary.
 
 - Kes set the agent's Welcome Message (Outbound tab, "AI speaks first", 117/190 chars) to the identity question; prompt doc now names the exact setting. Next: re-test call (stage 1.1 of the test plan).
 
+- **PENDING (Ali):** the inbound AI Receptionist in GHL does NOT yet have the INTERVIEW CALLBACKS section (doc section 4). Waiting for Ali to say who
+  gets interview callbacks and within what time (question 4 in the draft email). Kes asked to be REMINDED after Ali responds: then update the
+  receptionist prompt with the named owner/time and run test 1.9 of `docs/test-plan-student-notifications.md`.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED
