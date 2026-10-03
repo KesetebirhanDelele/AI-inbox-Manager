@@ -163,3 +163,25 @@ def test_fetch_new_calls_skips_seen_old_and_unparseable_and_sorts_oldest_first()
     got = gcv.fetch_new_calls(client, "c1", SINCE, {"voiceai:seen"}, agent_id="agent-9")
     assert [c.id for c in got] == ["early", "late"]
     assert client.call_log_requests == [("c1", "agent-9")]
+
+
+# ── call_outcome: the deterministic reading of a call ─────────────────────────────────────────
+@pytest.mark.parametrize("transcript, expected", [
+    ("bot:Can you confirm you got this information? Just say yes.\nhuman:Yes.", "confirmed"),
+    ("bot:Can you confirm you got this information?\nhuman:Yeah, got it, thanks", "confirmed"),
+    ("bot:Can you confirm you got this information?\nhuman:Yes but I can't make it", ""),
+    ("bot:Can you confirm you got this information?\nhuman:No", ""),
+    ("bot:Would you like to hear the details?\nhuman:Yes please", ""),                       # no confirmation question yet
+    ("bot:Hi\nhuman:Don't call me again", "stop"),
+    ("bot:Hi\nhuman:please stop calling me", "stop"),
+    ("bot:Can you confirm you got this information?\nhuman:Yes\nbot:Thanks\nhuman:and remove me from your list", "stop"),
+    ("bot:Can you confirm you got this information?\nhuman:Yes\nbot:Thanks\nhuman:do not call me again", "stop"),   # stop wins
+    ("", ""),
+])
+def test_call_outcome(transcript, expected):
+    assert gcv.call_outcome(transcript) == expected
+
+
+def test_call_turns_merges_continuation_lines_and_interruptions():
+    turns = gcv.call_turns("bot:You're scheduled.\n\nCan you confirm?\nhuman:Yes.\nbot:Great")
+    assert turns == [("bot", "You're scheduled. Can you confirm?"), ("human", "Yes."), ("bot", "Great")]

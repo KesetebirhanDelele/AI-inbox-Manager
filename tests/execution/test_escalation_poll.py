@@ -249,3 +249,55 @@ def test_once_a_message_stops_the_sequence_later_ones_are_not_acted_on(db):
     conv = FakeConv([msg("a", "YES", at="2026-10-05T20:05:00.000Z"), msg("b", "STOP", at="2026-10-05T20:06:00.000Z")])
     report = poll(db, conv)
     assert report.stopped == 1 and seq.status == "acknowledged"          # not flipped to opted_out afterwards
+
+
+# ── calls decided by rule (the real 2026-10-02 test call, trimmed) ─────────────────────────────
+REAL_CALL = (
+    "bot:Hi Kes, this is Colaberry, School of Data & AI's AI assistant.\n"
+    "human:How can I help you today? \n"
+    "bot:I'm calling to share information about your upcoming interview. Would you like to hear the details now?\n"
+    "human:Yes, please. \n"
+    "bot:You're scheduled for a phone screen with Test Company.\n\nCan you confirm you got this information? Just say yes.\n"
+    "human:Yes. \n"
+    "bot:Great, thank you for confirming.\n"
+    "human:That's all. Thank you so much. \n"
+)
+
+
+def test_a_plain_yes_to_the_confirmation_question_acknowledges_even_in_shadow_mode(db):
+    seq = started(db)
+    poll(db, FakeConv(call_logs=[call_log(transcript=REAL_CALL)]), env={}, fn=lambda _m: pytest.fail("a rule decided this"))
+    assert seq.status == "acknowledged" and seq.ack_channel == "call" and seq.ack_kind == "explicit"
+    assert inbound_rows(db) == {("voiceai:L1", "yes_rule")}
+
+
+def test_a_yes_before_the_details_were_given_is_not_an_acknowledgement(db):
+    seq = started(db)
+    transcript = ("bot:Would you like to hear the details now?\nhuman:Yes, please.\n"
+                  "bot:Here they are... Can you confirm you got this information? Just say yes.\nhuman:Hmm, say that again?")
+    poll(db, FakeConv(call_logs=[call_log(transcript=transcript)]), env={}, fn=understood)
+    assert seq.status == "active"
+
+
+def test_yes_but_is_not_a_confirmation(db):
+    seq = started(db)
+    transcript = "bot:Can you confirm you got this information? Just say yes.\nhuman:Yes but I can't make that day"
+    poll(db, FakeConv(call_logs=[call_log(transcript=transcript)]), env={}, fn=understood)
+    assert seq.status == "active"
+
+
+def test_dont_call_me_again_on_a_call_opts_out_and_remembers_it(db):
+    seq = started(db)
+    al = alerts()
+    transcript = "bot:Hi Kes\nhuman:Please don't call me again."
+    poll(db, FakeConv(call_logs=[call_log(transcript=transcript)]), env={}, al=al, fn=lambda _m: pytest.fail("rule"))
+    assert seq.status == "opted_out" and any("opted out" in s for s in al.sent)
+    row = db.query(db.models.NotificationOptOut).one()
+    assert row.channel == "call" and row.source == "stop_call" and len(row.phone_tail) == 10
+
+
+def test_a_stop_text_remembers_the_text_opt_out_once(db):
+    seq = started(db)
+    poll(db, FakeConv([msg("m1", "STOP")]))
+    rows = db.query(db.models.NotificationOptOut).all()
+    assert [(r.channel, r.source) for r in rows] == [("sms", "stop_text")]

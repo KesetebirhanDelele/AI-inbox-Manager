@@ -711,6 +711,10 @@ Render (see `progress.md` open item 5).
 
 ## 16. Changelog (infra / architecture only)
 
+- **2026-10-02 (this fork)** — Student notification escalation (call + text + email via GHL) built and deployed OFF; new tables
+  `notification_sequences`, `notification_attempts`, `reply_analyses`, `notification_inbound`, `notification_opt_outs` (all new-table-only,
+  created by `create_all`). No new host jobs yet: the 5-minute `execution/notification_tick.py` cron is NOT installed. See
+  `directives/student-notification-escalation.md` and `docs/test-plan-student-notifications.md`.
 - **2026-10-01 (this fork)** — **Git workflow changed: `master` is the working line and
   what is deployed.** Previously work lived on `feat/hetzner-deployment` and `master` was
   frozen. `feat/hetzner-deployment` and `chore/cap-major-version-pins` were tagged

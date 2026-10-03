@@ -159,6 +159,20 @@ plan makes 4 in total). Telling Rob does **not** stop the sequence. Only an ackn
    follow-ups, the others alert Rob. Student text is data, never instructions.
 A STOP reply ends all contact. A voicemail does not count.
 
+**Calls are read by rule first (2026-10-02, from the first live test call).** `ghl_conversations.call_outcome()` reads the transcript
+in order: (1) a student line like "don't call me again" / "stop calling" / "remove me" = STOP (wins over everything); (2) the student's
+first answer right after the agent's question "Can you confirm you got this information?" that starts with a plain yes and has no
+"but / can't / not / no" = a confirmation, same as a YES text (explicit acknowledgement, works in shadow mode too). A yes BEFORE the
+details were given ("would you like to hear the details?") never counts. Anything else goes to the normal reading (AI, shadow).
+The agent prompt must keep the phrase "confirm you got" (`CONFIRM_QUESTION_MARKER`).
+
+**The app remembers STOP itself (2026-10-02).** A STOP text or a spoken stop writes a row in `notification_opt_outs` (phone last 10
+digits + channel: sms | call | email). `GhlChannel.send` checks it before every send, in addition to GHL Do-Not-Disturb and the
+opt-out tags, so the request holds even if GHL is never updated. Per channel: a stopped call does not stop texts. Clearing an
+opt-out is a manual database change (decide with Rob/Ali who may do it).
+
+Test plan with the exact steps and pass criteria: `docs/test-plan-student-notifications.md`.
+
 ## Shared Twilio number
 Texts use the number Cora already uses (972-992-1024), so they share one daily budget (Ali: all-carrier
 ceiling 3,000 segments/day; T-Mobile 999). Worst case here is about 100 segments/day. Keep a daily

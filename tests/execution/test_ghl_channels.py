@@ -305,3 +305,36 @@ def test_going_live_without_credentials_fails_at_startup_not_at_the_first_send()
 def test_to_e164():
     assert nc.to_e164("(972) 555-0100") == "+19725550100" and nc.to_e164("1-972-555-0100") == "+19725550100"
     assert nc.to_e164("+1 972 555 0100") == "+19725550100" and nc.to_e164("555-0100") is None and nc.to_e164(None) is None
+
+
+def test_a_recorded_opt_out_blocks_the_send_before_ghl_is_even_asked():
+    import models
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    eng = create_engine("sqlite://")
+    models.Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(models.NotificationOptOut(phone_tail="5551234567", channel="call", source="stop_call"))
+    db.commit()
+    assert nc.opted_out_in_app(db, "+15551234567", "call") is True
+    assert nc.opted_out_in_app(db, "+15551234567", "sms") is False          # per channel
+    assert nc.opted_out_in_app(db, "+15559999999", "call") is False
+    assert nc.opted_out_in_app(None, "+15551234567", "call") is False        # no session = not checked
+
+
+def test_the_channel_skips_a_student_who_asked_us_to_stop_and_makes_no_ghl_call():
+    import models
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    eng = create_engine("sqlite://")
+    models.Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    db.add(models.NotificationOptOut(phone_tail="9725550100", channel="call", source="stop_call"))
+    db.commit()
+    g = FakeGhl(live=True)
+    c = ctx()
+    c.db = db
+    r = channel("call", g).send(c)
+    assert r.status == nc.SKIPPED and "asked us to stop" in r.detail
+    assert g.lookups == [] and g.writes == []
+    assert channel("email", g).send(c).status == nc.SENT          # only the call channel was opted out

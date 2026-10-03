@@ -1,2 +1,0 @@
- fix the prompt and build what needs to be built and create test plans. summarize what is done today and draft email to Ali including questions for him that he needs to address if any right now except : Cora's real SMS usage (shared number budget).
-Ali's answer on the GitHub destination (whether he meant your account). The rest we will test step by step; Update progress.md and commit, deploy after

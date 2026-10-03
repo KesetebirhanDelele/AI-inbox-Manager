@@ -402,6 +402,22 @@ class NotificationInbound(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class NotificationOptOut(Base):
+    """
+    The app's own memory that a student asked us to stop on a channel (a STOP text, or "don't call me again"
+    on a call). Checked before every send, in addition to GHL Do-Not-Disturb and opt-out tags, so the request
+    holds even if the GHL side is never updated. Keyed by the last 10 digits of the phone number.
+    """
+    __tablename__ = "notification_opt_outs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    phone_tail = Column(String(10), nullable=False, index=True)
+    channel = Column(String(10), nullable=False)           # sms | call | email
+    source = Column(String(30), nullable=False)            # stop_text | stop_call | stop_email
+    sequence_id = Column(Integer)                          # the notice that was open when they asked
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ChecklistCompletion(Base):
     """
     Tracks completion state of process checklist steps per interview event.

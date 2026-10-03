@@ -1,24 +1,28 @@
 """
-One-contact test of the voice call path. Not part of the pipeline; run by hand.
+One-contact test of the notification channels (call, text, email). Not part of the pipeline; run by hand.
 
-  python execution/ghl_test_call.py --phone +15551234567   (or --email you@x.com)  # DRY RUN: looks up and checks, writes nothing
-  python execution/ghl_test_call.py --phone +15551234567 --send          # LIVE: writes `interview_notification` (the call starts)
-  python execution/ghl_test_call.py --phone +15551234567 --readback      # read the contact's Voice AI call logs
+  python execution/ghl_test_call.py --email you@x.com                        # DRY RUN of the call: looks up and checks, writes nothing
+  python execution/ghl_test_call.py --email you@x.com --send                 # LIVE: writes `interview_notification` (the call starts)
+  python execution/ghl_test_call.py --email you@x.com --channel sms --send   # LIVE: writes the text field (a text is sent)
+  python execution/ghl_test_call.py --email you@x.com --channel email --send # LIVE: writes the email subject + body fields
+  python execution/ghl_test_call.py --email you@x.com --readback             # the contact's Voice AI calls and recent messages
+(--phone +15551234567 works instead of --email.)
 
-Safety: only ONE field is ever written (the call field), only on the contact whose phone matches EXACTLY (last 10
-digits), and only after the same Do-Not-Disturb / opt-out check the app uses. `--send` turns the three live switches on
+Safety: only the field(s) of the ONE chosen channel are ever written, only on the contact whose phone or email matches EXACTLY
+(a phone is matched on its last 10 digits), and only after the same Do-Not-Disturb / opt-out check the app uses. `--send` turns the three live switches on
 for this process only; `.env` is never changed. The value is facts only, like the real one, with a TEST reference so
 it is unique and the agent can be told apart from a real notice.
 """
 import argparse
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import ghl_client as gc
 import ghl_conversations as gcv
+import notify_channels as nc
 
 
 def test_value(first_name: str, now: datetime) -> str:
@@ -27,6 +31,22 @@ def test_value(first_name: str, now: datetime) -> str:
                "Date: 2026-10-08; Time: 2:00 PM CT; Format: video; Contact at the company: Jane Recruiter")
     return (f"Attempt: first notice. Candidate first name: {first_name or 'there'}. "
             f"Interview details: {details}. Reference: TEST-{now.strftime('%Y%m%d%H%M%S')}.")
+
+
+def sms_test_text(now: datetime) -> str:
+    """A text that passes the same gate as real ones (no links, 3+ words, short). Unique per run."""
+    return ("Colaberry: your Data Analyst interview with Test Company is Thu Oct 8, 2 PM CT. "
+            f"Reply YES to confirm you got this. (test {now.strftime('%H%M%S')})")
+
+
+def email_test_parts(first_name: str, now: datetime) -> tuple:
+    """Subject and body for the email fields. No links. Unique per run."""
+    ref = f"TEST-{now.strftime('%Y%m%d%H%M%S')}"
+    subject = f"Test: interview notification ({ref})"
+    body = (f"Hi {first_name or 'there'}," + chr(10) * 2 + "This is a TEST of the Colaberry interview notification email. "
+            "Your Data Analyst interview with Test Company is Thursday, October 8 at 2:00 PM CT, by video." + chr(10) * 2 +
+            "No action is needed for this test.")
+    return subject, body
 
 
 def load_env() -> dict:
@@ -41,8 +61,9 @@ def run(argv=None, client_factory=gc.GhlClient, now=None, out=print) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--phone", help="the test contact's phone in E.164, e.g. +15551234567")
     ap.add_argument("--email", help="or the test contact's exact email")
-    ap.add_argument("--send", action="store_true", help="really write the field (starts the call)")
-    ap.add_argument("--readback", action="store_true", help="only read the contact's Voice AI call logs")
+    ap.add_argument("--channel", choices=("call", "sms", "email"), default="call", help="which channel to test (default call)")
+    ap.add_argument("--send", action="store_true", help="really write the field(s) (the call, text or email goes out)")
+    ap.add_argument("--readback", action="store_true", help="only read the contact's Voice AI calls and recent messages")
     args = ap.parse_args(argv)
     now = now or datetime.now(timezone.utc)
 
@@ -78,28 +99,54 @@ def run(argv=None, client_factory=gc.GhlClient, now=None, out=print) -> int:
         out(f"{len(calls)} Voice AI call(s) for this contact")
         for c in calls[:5]:
             out(f"- {c.created_at} duration {c.duration}s; student spoke: {bool(c.human_words)}; "
-                f"reached a person: {gcv.reached_a_person(c)}")
+                f"reached a person: {gcv.reached_a_person(c)}; app reads it as: {c.outcome or 'no rule match (AI reading)'}")
             out(f"  student said: {c.human_words[:200]!r}")
+        if cfg.can_read_conversations:
+            since = now.replace(tzinfo=None) - timedelta(days=1)
+            try:
+                msgs = gcv.fetch_new_messages(client, cid, since, set())
+            except gc.GhlError as exc:
+                msgs = []
+                out(f"could not read messages: {exc}")
+            out(f"{len(msgs)} message(s) in the last 24 hours (replies and our own emails)")
+            for m in msgs[:8]:
+                out(f"- {m.received_at} {m.channel} {m.direction}: {m.text[:100]!r}")
+        else:
+            out("(GHL_CONVERSATIONS_API_KEY not set: messages not read)")
         return 0
 
-    why = gc.block_reason(contact, "call", cfg.block_tags)
+    channel = args.channel
+    why = gc.block_reason(contact, channel, cfg.block_tags)
     if why:
         out(f"STOP: {why}. Nothing written.")
         return 2
-    if not client.field_id(cfg.field_call):
-        out(f"STOP: the field {cfg.field_call!r} does not exist in this GHL location.")
+    if channel == "call":
+        updates = {cfg.field_call: test_value(name, now)}
+    elif channel == "sms":
+        text = nc.normalize_sms(sms_test_text(now))
+        problem = nc.sms_content_problem(text)
+        if problem:
+            out(f"STOP: the test text fails the app's text gate: {problem}")
+            return 2
+        updates = {cfg.field_sms: text}
+    else:
+        subject, body = email_test_parts(name, now)
+        updates = {cfg.field_email_subject: subject, cfg.field_email_body: body}
+    missing = [label for label in updates if not client.field_id(label)]
+    if missing:
+        out(f"STOP: field(s) not found in this GHL location: {missing}")
         return 2
-    out(f"field {cfg.field_call!r} found; DND/opt-out check passed")
+    out(f"{channel}: field(s) {sorted(updates)} found; DND/opt-out check passed")
 
-    value = test_value(name, now)
     if not args.send:
-        out("DRY RUN: nothing written. The value that would be written:")
-        out(value)
-        out("Re-run with --send between 8 AM and 8 PM in the contact's time zone to place the call.")
+        out("DRY RUN: nothing written. What would be written:")
+        for label, value in updates.items():
+            out(f"  {label}: {value}")
+        out("Re-run with --send to do it" + (" (calls only 8 AM to 8 PM in the contact's time zone)." if channel == "call" else "."))
         return 0
 
-    client.write_fields(cid, {cfg.field_call: value})
-    out("WRITTEN: the call workflow should start within a minute. Check your phone, then run with --readback.")
+    client.write_fields(cid, updates)
+    out(f"WRITTEN: the {channel} workflow should start within a minute. Then run with --readback.")
     return 0
 
 

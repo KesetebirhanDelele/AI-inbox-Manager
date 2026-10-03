@@ -267,6 +267,15 @@ def to_e164(phone: Optional[str]) -> Optional[str]:
     return None
 
 
+def opted_out_in_app(db, phone_e164: str, channel: str) -> bool:
+    """True if the student asked us to stop on this channel (notification_opt_outs). No session = not checked."""
+    if db is None:
+        return False
+    import models
+    tail = re.sub(r"\D", "", phone_e164 or "")[-10:]
+    return db.query(models.NotificationOptOut).filter_by(phone_tail=tail, channel=channel).first() is not None
+
+
 class GhlChannel:
     """
     Hands one attempt to GHL by writing the right field on the student's contact.
@@ -296,6 +305,9 @@ class GhlChannel:
         phone = to_e164(getattr(ctx.student, "phone_number", None))
         if phone is None:
             return ChannelResult(FAILED, detail="student has no usable phone number to find the GHL contact")
+
+        if opted_out_in_app(ctx.db, phone, self.name):
+            return ChannelResult(SKIPPED, detail=f"not contacted: the student asked us to stop ({self.name})")
 
         updates = self._updates(ctx)
         segments = None

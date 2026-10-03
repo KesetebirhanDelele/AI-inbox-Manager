@@ -10,8 +10,13 @@ speaks (`human:`) are used to decide whether they acknowledged.
 Status: configured in GHL and **proven by one live test call on 2026-10-02** (test script `execution/ghl_test_call.py`, Kes's own contact).
 Result: the field value reached the agent (merge syntax works); it said the right company, position, date and format; it did not read the
 reference; "yes" was captured as a `human:` line; the call log exposes the agent id, duration, transcript and summary. Not yet seen:
-a voicemail call, a wrong-person answer, a STOP request. Known gaps: the agent greeted "Hi Kes" instead of asking "Am I speaking with ...?"
-(the agent's own greeting setting overrides step 1) and GHL adds its own opt-out line to the greeting.
+a voicemail call, a wrong-person answer, a STOP request. Gap found in that call and fixed in this version: the agent greeted "Hi Kes, this
+is Colaberry..." instead of asking "Am I speaking with ...?", because the agent's own WELCOME MESSAGE setting (spoken before the prompt
+runs) overrides step 1. Fix = set that setting (section 3, step 1a) and make step 1 wait for the answer instead of greeting again.
+GHL also adds its own opt-out sentence to the opening ("You can say, 'Don't call me again,' to opt out."); leave it, it is a useful consent line.
+The app reads the call from the transcript (docs/ghl-conversations-and-calls.md): it counts a plain yes to the agent's
+question "Can you confirm you got this information?" as a confirmation, and "don't call me again" as a STOP. **Keep the wording
+"confirm you got" in step 3**; if you reword that question, update `CONFIRM_QUESTION_MARKER` in `execution/ghl_conversations.py`.
 
 ---
 
@@ -73,16 +78,17 @@ STRUCTURED CALL FLOW SCRIPT:
 
  1. Greeting and identity:
 
-    Instruction: Say: "Hello, this is the Colaberry Interview Support assistant, an AI assistant. Am I speaking with {{contact.first_name}}?" Wait for the answer.
+    Instruction: The agent's welcome message has already said: "Hello, this is the Colaberry Interview Support assistant, an AI assistant. Am I speaking with {{contact.first_name}}?" Do not greet again. Wait for the answer. If the welcome message was not spoken, say it yourself.
 
-    - If yes: continue.
+    - If yes (for example "yes", "speaking", "this is {{contact.first_name}}"): go straight to step 2. Do NOT ask whether they would like to hear the details, and do not ask how you can help.
+    - If the person answers with a question or something unrelated (for example "how can I help you?" or "who is this?"): say you are calling from Colaberry Interview Support about their interview, then ask again: "Am I speaking with {{contact.first_name}}?"
     - If the person says it is the wrong person, or someone else answers: apologize briefly, do NOT share any interview details, and end the call.
     - If you reach a voicemail or an answering machine: follow the VOICEMAIL section.
     - If the person asks not to be called again: follow the STOP REQUEST section.
 
  2. Interview details:
 
-    Instruction: If the attempt is a reminder or final reminder, start with "I'm following up on your interview notice." Then tell them, in a natural order, only the details that are listed: the interview type, the company, the position, the date and time with the time zone, the format, and the contact at the company.
+    Instruction: If the attempt is a reminder or final reminder, start with "I'm following up on your interview notice." Then tell them straight away, in a natural order, only the details that are listed: the interview type, the company, the position, the date and time with the time zone, the format, and the contact at the company.
 
     - If no date and time is listed, say the company has not confirmed a date yet and the team will share it as soon as they have it.
     - If the interview type says cancelled, say plainly that the interview has been cancelled and that a team member will follow up.
@@ -131,14 +137,21 @@ because GHL only re-triggers a workflow when the field CHANGES.
 ## 3. Setup checklist (in GHL)
 
 1. Create the new Voice AI agent with the prompt above and its own knowledge base (empty is fine at first).
+1a. In the agent's settings, set the WELCOME / GREETING MESSAGE (the line spoken before the prompt runs; the exact setting name in the GHL
+   screen is not verified, look for Welcome Message / Greeting / First Message) to:
+   `Hello, this is the Colaberry Interview Support assistant, an AI assistant. Am I speaking with {{contact.first_name}}?`
+   Without this the agent never asks who it is talking to and a wrong person could hear the interview details.
 2. In the workflow that triggers on the contact field `interview_notification` changing: add the "Voice AI Outbound Call"
    action, choose this agent, and choose the From number. Verified: the call went out from the existing number.
 3. Make sure the prompt can read the two fields. Verified by the 2026-10-02 test call: the merge syntax `{{contact.interview_notification}}` and
    `{{contact.first_name}}` is what GHL Voice AI prompts accept. If not, use whatever mechanism GHL gives for contact data
    in an outbound agent and keep the same two inputs.
 4. Add an action or tag so a STOP REQUEST adds the contact tag `do not call` (our app checks that tag and Do-Not-Disturb
-   before every send). Without this, the agent's promise not to call again is only a promise.
-5. Copy the agent's id into `GHL_VOICE_AGENT_ID` so our app reads only this agent's call logs.
+   before every send). Without this, the agent's promise not to call again is only a promise. (Our app now also remembers a spoken
+   "don't call me again" itself, table `notification_opt_outs`, and skips that student's calls; the GHL tag is the second layer, and the
+   only one that stops OTHER GHL workflows.)
+5. Optional: copy the agent's id into `GHL_VOICE_AGENT_ID` so our app reads only this agent's call logs. It is NOT needed to place
+   the call (the field change triggers the workflow); it only narrows which calls are read back.
 6. Test with ONE real call to a test contact (your own), between 8 AM and 8 PM your time. Check three things in the call log:
    the agent said the right company, position and date; it did not read "Reference" aloud; and a "yes" shows up as a
    `human:` line.

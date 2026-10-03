@@ -22,6 +22,25 @@ Newest first.
 **Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
 The detail below is in the order the work happened; this block is the summary.
 
+### 2026-10-02 (night): prompt fix, call rules, own opt-out record, channel test tool, test plan
+- **Prompt** (`docs/voice-agent-outbound-interview-prompt.md`): the first test call showed the agent skipped "Am I speaking with ...?"
+  because the agent's own Welcome Message setting is spoken before the prompt. Added checklist step 1a (set the welcome message to the
+  identity question), made step 1 wait for the answer instead of greeting again, and made the agent go straight to the details after a
+  yes (no "would you like to hear the details?"). GHL also adds its own opt-out sentence to the opening; kept.
+- **Call reading by rule** (`ghl_conversations.call_outcome`, `call_turns`, `VoiceCall.outcome`; wired in `escalation_engine.poll_replies`):
+  a plain yes to the confirmation question = acknowledged (explicit, even in shadow mode); "don't call me again" = STOP. "yes but I can't"
+  and a yes before the details are NOT confirmations. Before this a call "yes" would only have been read by the AI in shadow mode.
+- **App-side opt-out memory**: new table `notification_opt_outs` (model, alembic 005, `init_db` import), written by
+  `escalation_engine.record_opt_out` on a STOP text/call/email, checked by `notify_channels.opted_out_in_app` before every GHL send.
+  New table only (create_all cannot add columns); `create_all` makes it on the next API start.
+- **Test tool** (`execution/ghl_test_call.py`): now `--channel call|sms|email`, writes only that channel's field(s) on one exact-match
+  contact after the DND check, `--readback` shows each call's `app reads it as` line plus the last 24 h of messages.
+- **Test plan**: `docs/test-plan-student-notifications.md` (stages 0-7 with expected results and a go-live gate).
+- Tests: 724 root + 191 dashboard passed. Still OFF: no GHL credentials on the server, escalation disabled, nothing sent to students.
+- Also: removed stray `samp.txt` (accidentally committed with the test script).
+- Deferred: text/email test writes, voicemail/wrong-person/STOP calls (Kes tests step by step per the plan); GHL `do not call` tag action;
+  server shadow rehearsal; 5-minute cron; Rob/Ali items.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

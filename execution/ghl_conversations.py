@@ -15,6 +15,7 @@ Pure parsing lives here (easy to test); the polling loop is in escalation_engine
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Set
@@ -94,10 +95,68 @@ class VoiceCall:
     human_words: str                   # ONLY the student's side of the transcript
     summary: str = ""
     actions: Optional[List[str]] = None
+    outcome: str = ""                  # "confirmed" | "stop" | "" (see call_outcome)
 
     @property
     def record_id(self) -> str:
         return VOICE_ID_PREFIX + self.id
+
+
+# The agent's confirmation question (docs/voice-agent-outbound-interview-prompt.md, step 3) must keep this phrase:
+# "Can you confirm you got this information? Please just say yes."
+CONFIRM_QUESTION_MARKER = "confirm you got"
+
+_STOP_REQUEST = re.compile(
+    r"\b(?:do not|don'?t|never|stop)\s+(?:ever\s+)?(?:call|calling|contact|contacting|phone)\b"
+    r"|\bremove (?:me|my number)\b|\btake me off\b|\bunsubscribe\b|\bno more calls\b")
+_YES_START = re.compile(r"^\W*(?:yes|yeah|yep|yup|ok|okay|sure|correct|i got it|got it|i did|i have)\b")
+_YES_BUT = re.compile(r"\b(?:but|cannot|can'?t|can not|not|no|won'?t|problem|reschedule)\b")
+
+
+def call_turns(transcript: Any) -> List[tuple]:
+    """The transcript as [(speaker, text)] in order, where speaker is 'bot' or 'human'. Unlabelled lines continue the speaker."""
+    if not isinstance(transcript, str):
+        return []
+    turns: List[list] = []
+    for line in transcript.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        lowered = stripped.lower()
+        if lowered.startswith("human:"):
+            speaker, stripped = "human", stripped[6:].strip()
+        elif lowered.startswith("bot:"):
+            speaker, stripped = "bot", stripped[4:].strip()
+        else:
+            speaker = turns[-1][0] if turns else None
+        if speaker is None or not stripped:
+            continue
+        if turns and turns[-1][0] == speaker:
+            turns[-1][1] += " " + stripped
+        else:
+            turns.append([speaker, stripped])
+    return [(s, t) for s, t in turns]
+
+
+def call_outcome(transcript: Any) -> str:
+    """
+    Deterministic reading of a call, before any AI:
+      "stop"      the student said something like "don't call me again" (wins over everything).
+      "confirmed" the student's answer right after the agent's confirmation question starts with a plain yes
+                  and holds no "but / can't / not / no" (so "yes but I can't make it" is NOT a confirmation).
+      ""          neither; the words go to the normal reply rules and the AI reading.
+    """
+    turns = call_turns(transcript)
+    for speaker, text in turns:
+        if speaker == "human" and _STOP_REQUEST.search(text.lower().replace("’", "'")):
+            return "stop"
+    for i, (speaker, text) in enumerate(turns):
+        if speaker == "bot" and CONFIRM_QUESTION_MARKER in text.lower():
+            answer = next((t for s, t in turns[i + 1:] if s == "human"), "")
+            low = answer.lower().replace("’", "'")
+            if _YES_START.search(low) and not _YES_BUT.search(low):
+                return "confirmed"
+    return ""
 
 
 def human_words(transcript: Any) -> str:
@@ -132,7 +191,7 @@ def parse_call_log(raw: Dict[str, Any]) -> Optional[VoiceCall]:
     actions = [str(a.get("actionType")) for a in (raw.get("executedCallActions") or []) if isinstance(a, dict)]
     return VoiceCall(id=str(raw["id"]), created_at=parse_time(raw.get("createdAt")), duration=duration,
                      human_words=human_words(raw.get("transcript")), summary=str(raw.get("summary") or ""),
-                     actions=actions)
+                     actions=actions, outcome=call_outcome(raw.get("transcript")))
 
 
 def reached_a_person(call: VoiceCall, min_seconds: int = DEFAULT_MIN_CALL_SECONDS) -> bool:

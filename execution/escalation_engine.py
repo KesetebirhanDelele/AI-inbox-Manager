@@ -211,6 +211,23 @@ def _student_name(db, seq) -> str:
     return (getattr(student, "full_name", None) or "A student")
 
 
+def _phone_tail(student) -> str:
+    return "".join(c for c in str(getattr(student, "phone_number", "") or "") if c.isdigit())[-10:]
+
+
+def record_opt_out(db, seq, channel: str, now: datetime) -> None:
+    """Remember that this student asked us to stop on `channel` (sms | call | email). Idempotent."""
+    M = _m()
+    student = db.get(M.Student, seq.student_id) if seq.student_id else None
+    tail = _phone_tail(student)
+    if len(tail) != 10 or channel not in ("sms", "call", "email"):
+        return
+    exists = db.query(M.NotificationOptOut).filter_by(phone_tail=tail, channel=channel).first()
+    if not exists:
+        db.add(M.NotificationOptOut(phone_tail=tail, channel=channel, source=f"stop_{'text' if channel == 'sms' else channel}",
+                                    sequence_id=seq.id, created_at=now))
+
+
 def _held_attempt_collides(attempt, siblings) -> bool:
     """A quiet-hours-held call/text is skipped if the same channel goes out within 3 hours anyway."""
     others = []
@@ -356,6 +373,7 @@ def handle_reply_for_sequences(db, sequences, text: str, channel: str, now: date
         for seq in sequences:
             seq.status, seq.closed_by, seq.closed_at = "opted_out", "student", now
             _cancel_pending(seq, "student replied STOP")
+            record_opt_out(db, seq, channel, now)
             alerts.opted_out(seq, _student_name(db, seq))
         db.commit()
         return {"handled": True, "action": "opted_out", "sequences": len(sequences)}
@@ -495,7 +513,10 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, 
             if not gcv.reached_a_person(call, call_min_seconds):
                 _record_inbound(db, primary, record, "call_recorded", text="")      # no conversation to read
                 continue
-            result = handle_reply_for_sequences(db, active, call.human_words, "call", now, alerts, completion_fn, env)
+            # a clear spoken "don't call me again" or a plain yes to the agent's confirmation question is decided by
+            # rule (same as a STOP / YES text); anything else goes to the normal reading with the student's words
+            rule_text = {"stop": "stop", "confirmed": "yes"}.get(call.outcome) or call.human_words
+            result = handle_reply_for_sequences(db, active, rule_text, "call", now, alerts, completion_fn, env)
             _record_inbound(db, primary, record, _handled_as(result), text=call.human_words)
             if result.get("action") in ("acknowledged", "opted_out"):
                 report.stopped += 1
