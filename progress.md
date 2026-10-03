@@ -204,6 +204,17 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
 - **Backfill applied (production):** 43 student-less events were identified (30 by an existing student, 11 by the delivery Gmail alone, 2 by the roster), 5 emails are no longer in Gmail; 43 drafts
   created, none sent. Students: 7 -> 19 (named from the Gmail or greeting, no phone for most; Rob corrects names/phones). Production now has 52 of 57 events with a student.
 
+### 2026-10-03 (late, 5): guessed students must be verified by Rob; greeting name is the display name
+- **Kes' rule:** a Gmail is just a username the person chose, and a candidate may have changed their email, so names the pipeline guesses must be flagged for verification (Rob traces the
+  original in the roster sheet/Drive), and a greeting like "Hi OMOLOLA" should surface as the candidate's name. **Precedence now:** the delivery Gmail is the identity KEY (the mailbox the email reached,
+  the student's username); the greeting/classifier name is the DISPLAY name when plausible (`plausible_person_name`: no job-title/greeting words; ALL-CAPS "OMOLOLA" becomes "Omolola"); otherwise a guess from
+  the Gmail. Roster / existing-student matches are trusted.
+- **Verification:** new table `student_verifications` (create_all, migration 006): a pipeline-created student gets an `unverified` row (basis `greeting_name` | `gmail_guess`, the guessed name and
+  the evidence "delivered to ...; greeting names ..."). The approval screen shows an orange "Verify who this student is" box (name, phone, personal email, "Confirm this student"); Approve is hidden/blocked
+  until confirmed, and the API refuses to approve an unverified student. Confirming also repoints the student's waiting drafts to the corrected personal email. Interviews shows "Verify the student first".
+  Students with no verification record (roster, earlier students) count as verified. Verified in a real browser against local Docker (form -> confirm -> Approve appears).
+- Production: `backfill_event_students.py --refresh-names` flags the 12 students the backfill created and improves their names from each one's latest email greeting (results below).
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

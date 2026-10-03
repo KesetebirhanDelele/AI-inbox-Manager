@@ -400,3 +400,49 @@ class TestReviewQueue:
 
     def test_requires_login(self, client):
         assert client.get("/api/notifications/review-queue").status_code == 401
+
+
+# ── students the pipeline had to guess must be verified before approval ─────────────────────────────────────
+
+class TestStudentVerification:
+    def _unverified(self, db, name="Opcrowne"):
+        from models import StudentVerification
+        student = make_student(db, username="opcrowne", full_name=name, personal_email="opcrowne@gmail.com")
+        db.add(StudentVerification(student_id=student.id, status="unverified", basis="gmail_guess", guessed_name=name,
+                                   evidence='The email was delivered to opcrowne@gmail.com. The greeting names "Omolola".'))
+        db.commit()
+        return student
+
+    def test_the_queue_flags_an_unverified_student_and_blocks_approval(self, client, db, auth_cookies):
+        student = self._unverified(db)
+        draft = make_notification_draft(db, make_interview_event(db, make_email(db), student=student))
+        item = client.get("/api/notifications/review-queue", cookies=auth_cookies).json()["items"][0]
+        assert item["state"] == "needs_verification" and item["can_approve"] is False
+        assert item["student"]["verification"]["status"] == "unverified" and "Omolola" in item["student"]["verification"]["evidence"]
+        assert "not verified" in item["blockers"][0]
+        resp = client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies)
+        assert resp.status_code == 400 and "not been verified" in resp.json()["detail"]
+
+    def test_verifying_corrects_the_details_and_unblocks_approval(self, client, db, auth_cookies):
+        student = self._unverified(db)
+        draft = make_notification_draft(db, make_interview_event(db, make_email(db), student=student), recipient_email="opcrowne@gmail.com")
+        resp = client.post(f"/api/notifications/students/{student.id}/verify", cookies=auth_cookies,
+                           json={"full_name": "Omolola Adeyemi", "phone_number": "312-555-0100", "personal_email": "omolola@example.com"})
+        assert resp.status_code == 200 and resp.json()["status"] == "verified" and resp.json()["verified_by"]
+        db.refresh(student)
+        db.refresh(draft)
+        assert (student.full_name, student.phone_number) == ("Omolola Adeyemi", "312-555-0100")
+        assert draft.recipient_email == "omolola@example.com"                        # the waiting draft follows the corrected email
+        item = client.get("/api/notifications/review-queue", cookies=auth_cookies).json()["items"][0]
+        assert item["state"] == "ready" and item["can_approve"] is True and item["student"]["verification"]["status"] == "verified"
+        with patch(_SEND_EMAIL, return_value={"status": "sent"}):
+            assert client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies).status_code == 200
+
+    def test_a_student_with_no_verification_record_is_treated_as_verified(self, client, db, auth_cookies):
+        student = make_student(db)
+        make_notification_draft(db, make_interview_event(db, make_email(db), student=student))
+        item = client.get("/api/notifications/review-queue", cookies=auth_cookies).json()["items"][0]
+        assert item["state"] == "ready" and item["student"]["verification"] is None
+
+    def test_verifying_an_unknown_student_is_a_404(self, client, db, auth_cookies):
+        assert client.post("/api/notifications/students/999/verify", cookies=auth_cookies, json={}).status_code == 404

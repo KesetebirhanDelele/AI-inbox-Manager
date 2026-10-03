@@ -574,21 +574,37 @@ def _name_hint(classification: Dict[str, Any], email_data: Dict[str, Any]) -> Op
         return None
 
 
+_NOT_PEOPLE = {"there", "team", "sir", "madam", "candidate", "applicant", "user", "friend", "everyone", "folks", "greetings",
+               "all", "hello", "dear", "recruiter", "manager", "hiring", "admin", "support"}
+
+
+def plausible_person_name(text: Optional[str]) -> bool:
+    """A name worth showing: letters, spaces, hyphens and apostrophes, 2-40 chars, no job-title or greeting words."""
+    value = (text or "").strip()
+    if not (2 <= len(value) <= 40) or not re.fullmatch(r"[A-Za-z][A-Za-z'\- ]*", value):
+        return False
+    from fetch_students_sheet import _looks_like_a_job_title
+    return not _looks_like_a_job_title(value) and not any(w.lower() in _NOT_PEOPLE for w in value.split())
+
+
 def recipient_only_student(gmail: str, name_hint: Optional[str] = None) -> Dict[str, Any]:
     """
-    A student known only by the Gmail an interview email was delivered to (not in the roster). The name is the greeting's name
-    when it appears in the Gmail ("Kenya" in kenyasbogans@), otherwise guessed from the address.
+    A student known only by the Gmail an interview email was delivered to (not in the roster).
+
+    The Gmail is the identity KEY (the mailbox the email reached; the username of the student record) and the greeting's name is
+    the DISPLAY name even when the Gmail does not contain it ("Hi OMOLOLA" for opcrowne@): a Gmail address is just a username the
+    person chose. With no usable greeting the name is guessed from the address. Either way the student is UNVERIFIED until Rob confirms.
     """
     local = gmail.split("@")[0].lower()
     words = [w for w in re.split(r"[^a-z]+", local) if len(w) >= 3]
-    name = " ".join(w.capitalize() for w in words[:2]) or local
+    guessed = " ".join(w.capitalize() for w in words[:2]) or local
     hint = (name_hint or "").strip()
-    if hint and 2 <= len(hint) <= 40 and _name_matches_gmail(hint, gmail):
-        from fetch_students_sheet import _looks_like_a_job_title
-        if not _looks_like_a_job_title(hint):
-            name = hint
+    use_hint = plausible_person_name(hint)
+    name = (hint.title() if hint.isupper() else hint) if use_hint else guessed
+    evidence = f"The email was delivered to {gmail.lower()}." + (f' The greeting or text names "{hint}".' if hint else " No name appears in the email.")
     return {"name": name, "username": local, "personal_email": gmail.lower(), "phone": "",
-            "assigned_to": None, "assistant_email": None, "identified_by": "recipient_gmail"}
+            "assigned_to": None, "assistant_email": None, "identified_by": "recipient_gmail",
+            "name_source": "greeting_name" if use_hint else "gmail_guess", "evidence": evidence}
 
 
 def _name_matches_gmail(full_name: str, gmail: str) -> bool:
@@ -718,6 +734,10 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
                     phone_number=student_config.get("phone"),
                 )
                 student_id = student_db["id"]
+                if student_config.get("identified_by") == "recipient_gmail":
+                    from log_interview import mark_unverified
+                    mark_unverified(db, student_id, student_config.get("name_source", "gmail_guess"),
+                                    student_config["name"], student_config.get("evidence", ""))
                 _logger.info(
                     f"Resolved student: {student_config['name']} (DB id={student_id})"
                 )

@@ -172,6 +172,20 @@ def log_interview_event(
     }
 
 
+def mark_unverified(db: Session, student_id: int, basis: str, guessed_name: str, evidence: str = "") -> bool:
+    """
+    Flag a pipeline-created student for Rob to verify. Never touches a student that already has a record (so a verified
+    student is never downgraded) and never flags the roster's students. Returns True when a new flag was created.
+    """
+    from models import StudentVerification
+    if db.query(StudentVerification).filter(StudentVerification.student_id == student_id).first():
+        return False
+    db.add(StudentVerification(student_id=student_id, status="unverified", basis=basis,
+                               guessed_name=guessed_name, evidence=evidence))
+    db.commit()
+    return True
+
+
 def log_notification_draft(
     db: Session,
     interview_event_id: int,

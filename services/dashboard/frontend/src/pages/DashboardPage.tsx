@@ -132,7 +132,7 @@ const DashboardPage = () => {
   const upcomingLater = (upcomingInterviews ?? []).length - upcomingThisWeek.length;
   const queueReady = reviewQueue ? reviewQueue.items.filter((i) => i.state === 'ready').length : 0;
   const queueFix = reviewQueue
-    ? reviewQueue.items.filter((i) => ['blocked', 'needs_student', 'no_draft'].includes(i.state)).length
+    ? reviewQueue.items.filter((i) => ['needs_verification', 'blocked', 'needs_student', 'no_draft'].includes(i.state)).length
     : 0;
 
 

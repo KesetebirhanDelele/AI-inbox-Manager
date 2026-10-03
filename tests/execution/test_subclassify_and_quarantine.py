@@ -409,3 +409,36 @@ def test_the_greeting_name_is_used_when_it_appears_in_the_delivery_gmail():
     assert pia.recipient_only_student("kenyasbogans@gmail.com", "Lead Business")["name"] == "Kenyasbogans"     # not in the Gmail
     assert pia.recipient_only_student("sehrishkhan.hjim@gmail.com", "Data Engineer")["name"] == "Sehrishkhan Hjim"
     assert pia.recipient_only_student("priyan.nt24@gmail.com", None)["name"] == "Priyan"
+
+
+# ── 9. greeting name = display name; the Gmail = identity key; guesses are flagged for Rob ─────────────────────
+
+def test_the_greeting_name_wins_even_when_the_gmail_does_not_contain_it():
+    cfg = pia.recipient_only_student("opcrowne@gmail.com", "Omolola")
+    assert cfg["name"] == "Omolola" and cfg["username"] == "opcrowne" and cfg["name_source"] == "greeting_name"
+    assert 'opcrowne@gmail.com' in cfg["evidence"] and '"Omolola"' in cfg["evidence"]
+
+
+def test_an_all_caps_greeting_is_title_cased():
+    assert pia.recipient_only_student("opcrowne@gmail.com", "OMOLOLA")["name"] == "Omolola"
+
+
+@pytest.mark.parametrize("hint", ["Lead Business", "Data Engineer", "There", "Team", "x", "Hi there", "A1B2", ""])
+def test_implausible_greeting_names_fall_back_to_the_gmail_guess(hint):
+    cfg = pia.recipient_only_student("kenyasbogans@gmail.com", hint)
+    assert cfg["name"] == "Kenyasbogans" and cfg["name_source"] == "gmail_guess"
+
+
+def test_a_guessed_student_is_flagged_and_a_verified_one_is_never_downgraded(identity_db):
+    import log_interview
+    db, models = identity_db
+    student = models.Student(username="opcrowne", full_name="Omolola", is_active=True)
+    db.add(student)
+    db.commit()
+    assert log_interview.mark_unverified(db, student.id, "greeting_name", "Omolola", "delivered to opcrowne@gmail.com") is True
+    row = db.query(models.StudentVerification).one()
+    assert row.status == "unverified" and row.basis == "greeting_name" and row.guessed_name == "Omolola"
+    row.status = "verified"
+    db.commit()
+    assert log_interview.mark_unverified(db, student.id, "gmail_guess", "Other", "x") is False
+    assert db.query(models.StudentVerification).one().status == "verified"

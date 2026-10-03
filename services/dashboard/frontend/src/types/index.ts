@@ -261,7 +261,7 @@ export interface NotificationDetail {
 export interface ReviewQueueItem {
   event_id: number;
   draft_id: number | null;
-  state: 'ready' | 'blocked' | 'needs_student' | 'no_draft' | 'approved' | 'failed' | string;
+  state: 'ready' | 'needs_verification' | 'blocked' | 'needs_student' | 'no_draft' | 'approved' | 'failed' | string;
   blockers: string[];
   warnings: string[];
   can_approve: boolean;
@@ -273,6 +273,13 @@ export interface ReviewQueueItem {
     personal_email?: string;
     assigned_gmail?: string;
     phone?: string;
+    verification?: {
+      status: 'unverified' | 'verified' | string;
+      basis?: string;
+      guessed_name?: string;
+      evidence?: string;
+      verified_by?: string;
+    } | null;
   } | null;
   interview: {
     type?: string;
@@ -328,6 +335,7 @@ export interface InterviewEventRecord {
   created_at: string;
   draft_id?: number | null;
   email_id?: number | null;
+  student_verification?: string | null;
   subject?: string;
   from_address?: string;
   received_date?: string;

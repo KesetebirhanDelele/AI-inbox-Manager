@@ -418,6 +418,25 @@ class NotificationOptOut(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class StudentVerification(Base):
+    """
+    Whether Rob has confirmed who a student is. A student the pipeline had to create from an email's delivery Gmail (not in the
+    roster or database) starts "unverified": the Gmail is only an address and the name is a guess (the greeting's name, or the Gmail).
+    Students with no row here (the roster, earlier students) count as verified. Approving a notification for an unverified student is refused.
+    """
+    __tablename__ = "student_verifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, unique=True, index=True)
+    status = Column(String(20), nullable=False, default="unverified")      # unverified | verified
+    basis = Column(String(30), nullable=False)                             # greeting_name | gmail_guess
+    guessed_name = Column(String(255))
+    evidence = Column(Text)                                                # for example: delivered to x@gmail.com; greeting "Hi OMOLOLA"
+    verified_by = Column(String(100))
+    verified_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ChecklistCompletion(Base):
     """
     Tracks completion state of process checklist steps per interview event.

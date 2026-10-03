@@ -26,6 +26,7 @@ from types import SimpleNamespace
 from models import (
     NotificationDraft,
     NotificationSequence,
+    StudentVerification,
     InterviewEvent,
     Student,
     Email,
@@ -366,6 +367,9 @@ async def get_review_queue(
         if status_ in ("sent", "rejected") and not include_done:
             continue
         blockers, warnings = [], []
+        verification = (db.query(StudentVerification).filter(StudentVerification.student_id == student.id).first()
+                        if student is not None else None)
+        unverified = verification is not None and verification.status != "verified"
         if student is None:
             blockers.append("No student identified for this email, so there is nobody to notify. Check the email and the student list.")
         elif not (student.phone_number or student.personal_email or student.assigned_gmail):
@@ -377,6 +381,9 @@ async def get_review_queue(
                 warnings.append("No email on file for the student: the GHL contact is found by phone only.")
         if draft is not None and not (draft.recipient_email or "").strip():
             warnings.append("The draft has no recipient email.")
+        if unverified:
+            blockers.append("This student was created from the email's delivery address and is not verified yet. "
+                            "Trace who they are (roster sheet, Drive, the original sign-up), correct the details below, and confirm.")
 
         text = clean_email_text((email.full_body or email.body_preview) if email else "")
         check = authenticity.assess(
@@ -389,7 +396,7 @@ async def get_review_queue(
             if student is not None:
                 blockers.append("No draft was created for this email.")
         elif status_ == "draft":
-            state = "blocked" if blockers else "ready"
+            state = "needs_verification" if unverified and len(blockers) == 1 else ("blocked" if blockers else "ready")
         else:
             state = status_ or "unknown"
 
@@ -423,6 +430,10 @@ async def get_review_queue(
                 "id": student.id, "name": student.full_name, "username": student.username,
                 "personal_email": student.personal_email, "assigned_gmail": student.assigned_gmail,
                 "phone": student.phone_number,
+                "verification": None if verification is None else {
+                    "status": verification.status, "basis": verification.basis, "guessed_name": verification.guessed_name,
+                    "evidence": verification.evidence, "verified_by": verification.verified_by,
+                },
             },
             "interview": {
                 "type": event.sub_type, "company": event.company_name, "position": event.position_title,
@@ -445,9 +456,47 @@ async def get_review_queue(
         if len(items) >= limit:
             break
 
-    order = {"ready": 0, "blocked": 1, "needs_student": 2, "no_draft": 3}
+    order = {"ready": 0, "needs_verification": 1, "blocked": 2, "needs_student": 3, "no_draft": 4}
     items.sort(key=lambda i: order.get(i["state"], 4))
     return {"escalation_enabled": escalation_on, "count": len(items), "items": items}
+
+
+class VerifyStudentRequest(BaseModel):
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    personal_email: Optional[str] = None
+
+
+@router.post("/students/{student_id}/verify")
+async def verify_student(
+    student_id: int,
+    request: VerifyStudentRequest,
+    db: Session = Depends(get_db),
+    user: UserSession = Depends(get_current_user),
+):
+    """Rob confirms who a pipeline-created student is, correcting the guessed name, phone and personal email."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if student is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+    if request.full_name is not None and request.full_name.strip():
+        student.full_name = request.full_name.strip()[:255]
+    if request.phone_number is not None and request.phone_number.strip():
+        student.phone_number = request.phone_number.strip()[:50]
+    if request.personal_email is not None and request.personal_email.strip():
+        student.personal_email = request.personal_email.strip()[:255]
+    row = db.query(StudentVerification).filter(StudentVerification.student_id == student_id).first()
+    if row is None:
+        row = StudentVerification(student_id=student_id, status="verified", basis="manual", guessed_name=student.full_name)
+        db.add(row)
+    row.status, row.verified_by, row.verified_at = "verified", user.username, datetime.utcnow()
+    # drafts already written for this student carry the old personal email: keep them pointing at the corrected one
+    if request.personal_email and request.personal_email.strip():
+        for draft in (db.query(NotificationDraft).join(InterviewEvent, NotificationDraft.interview_event_id == InterviewEvent.id)
+                      .filter(InterviewEvent.student_id == student_id, NotificationDraft.email_status == "draft").all()):
+            draft.recipient_email = student.personal_email
+    db.commit()
+    return {"student_id": student_id, "full_name": student.full_name, "phone_number": student.phone_number,
+            "personal_email": student.personal_email, "status": "verified", "verified_by": user.username}
 
 
 @router.get("/{notification_id}", response_model=NotificationDetail)
@@ -511,6 +560,12 @@ async def approve_notification(
     if not (student_for_guard.phone_number or student_for_guard.personal_email or student_for_guard.assigned_gmail):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="This student has no phone, email or Gmail on file. Add their contact details first.")
+
+    pending_check = (db.query(StudentVerification).filter(StudentVerification.student_id == student_for_guard.id,
+                                                          StudentVerification.status != "verified").first())
+    if pending_check is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="This student has not been verified yet. Confirm who they are first.")
 
     # Update status to approved
     draft.email_status = "approved"

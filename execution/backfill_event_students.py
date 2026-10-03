@@ -44,6 +44,57 @@ def email_data_from_gmail(parsed: Dict[str, Any], email_row: Any) -> Dict[str, A
     return data
 
 
+def refresh_names(apply: bool) -> Counter:
+    """
+    Flag, for Rob's verification, every student that was created from a delivery Gmail alone (username == the Gmail's local part, no
+    verification record yet), and improve the guessed name from the greeting of their latest email ("Hi OMOLOLA" for opcrowne@).
+    Students from the roster or with another username are left alone.
+    """
+    from process_inbox_auto import get_db_session, recipient_only_student, _name_hint
+    from backfill_email_bodies import _imap, lookup, ALL_MAIL
+    from backfill_interview_events import build_inputs
+    from log_interview import mark_unverified
+    from models import Classification, Email, InterviewEvent, Student, StudentVerification
+
+    db = get_db_session()
+    if db is None:
+        raise SystemExit("No database session")
+    result = Counter()
+    imap = _imap()
+    imap.select(ALL_MAIL, readonly=True)
+    flagged = {v.student_id for v in db.query(StudentVerification).all()}
+    for student in db.query(Student).order_by(Student.id).all():
+        gmail = (student.assigned_gmail or "").lower()
+        if not gmail or student.id in flagged or student.username != gmail.split("@")[0]:
+            continue
+        event = (db.query(InterviewEvent).filter(InterviewEvent.student_id == student.id)
+                 .order_by(InterviewEvent.id.desc()).first())
+        email = db.get(Email, event.email_id) if event else None
+        hint = None
+        if email is not None and email.message_id:
+            try:
+                parsed = lookup(imap, email.message_id)
+            except Exception as exc:
+                logger.warning(f"lookup failed for student {student.id}: {exc}")
+                parsed = None
+            cls_row = db.query(Classification).filter(Classification.email_id == email.id).order_by(Classification.id.desc()).first()
+            if parsed is not None and cls_row is not None:
+                _, classification = build_inputs(email, cls_row)
+                hint = _name_hint(classification, email_data_from_gmail(parsed, email))
+        config = recipient_only_student(gmail, hint)
+        result[f"flagged ({config['name_source']})"] += 1
+        print(f"{'flagged' if apply else 'would flag'}: student {student.id} {student.full_name!r} -> {config['name']!r} ({config['name_source']})")
+        if apply:
+            student.full_name = config["name"]
+            db.commit()
+            mark_unverified(db, student.id, config["name_source"], config["name"], config["evidence"])
+    try:
+        imap.logout()
+    except Exception:
+        pass
+    return result
+
+
 def run(apply: bool, limit: int = 0) -> Counter:
     from process_inbox_auto import get_db_session, _identify_student
     from backfill_email_bodies import _imap, lookup, ALL_MAIL
@@ -108,6 +159,9 @@ def run(apply: bool, limit: int = 0) -> Counter:
                                  phone_number=config.get("phone") or None)
         event.student_id = student["id"]
         db.commit()
+        if config.get("identified_by") == "recipient_gmail":
+            from log_interview import mark_unverified
+            mark_unverified(db, student["id"], config.get("name_source", "gmail_guess"), config["name"], config.get("evidence", ""))
         has_draft = db.query(NotificationDraft.id).filter(NotificationDraft.interview_event_id == event.id).first()
         if not has_draft:
             from draft_notification import draft_notification
@@ -132,8 +186,15 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--refresh-names", action="store_true",
+                    help="flag students created from a delivery Gmail for verification and improve their names from the greeting")
     args = ap.parse_args()
     logging.basicConfig(level=logging.WARNING)
+    if args.refresh_names:
+        print(dict(refresh_names(args.apply)))
+        if not args.apply:
+            print("DRY RUN: nothing was written. Re-run with --apply.")
+        return
     print(dict(run(args.apply, args.limit)))
     if not args.apply:
         print("DRY RUN: nothing was written. Re-run with --apply to attach students and create drafts.")

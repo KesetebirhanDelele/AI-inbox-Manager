@@ -32,6 +32,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** "Notified", "Needs your decision", or why there is nothing to notify yet. */
 const notificationOf = (e: InterviewEventRecord): { label: string; cls: string; decide: boolean } => {
+  if (e.notification_status === 'draft' && e.student_verification === 'unverified') {
+    return { label: 'Verify the student first', cls: 'bg-orange-100 text-orange-800', decide: true };
+  }
   if (e.notification_status) {
     return {
       label: NOTIF_LABELS[e.notification_status] || e.notification_status,

@@ -136,7 +136,7 @@ def find_student_name_in_body(body_content: str) -> Optional[str]:
 
     # Common patterns where the candidate name appears
     # Name capture group: one or two capitalized words (e.g., "John Smith")
-    name_group = r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)"
+    name_group = r"([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)?)"
     name_patterns = [
         r"(?:[Dd]ear|[Hh]i|[Hh]ello|[Aa]ttention)\s+" + name_group,
         r"(?:[Ii]nterview\s+(?:for|with)\s+)" + name_group,
@@ -147,6 +147,8 @@ def find_student_name_in_body(body_content: str) -> Optional[str]:
         match = re.search(pattern, body_content)
         if match:
             name = match.group(1).strip()
+            if name.isupper():
+                name = name.title()          # "Hi OMOLOLA," -> "Omolola"
             # Basic validation: name should be 2+ characters, not common words.
             # 2026-09-18: this list was too thin -- "Ok" (ordinary conversational
             # prose, not a name) slipped through and got auto-persisted as a
@@ -158,6 +160,8 @@ def find_student_name_in_body(body_content: str) -> Optional[str]:
                 "Ok", "Okay", "Hi", "Hello", "Hey", "Thanks", "Thank",
                 "Please", "Sure", "Best", "Regards", "Sincerely", "Yes", "No",
                 "Sorry", "Just", "Hope", "Great", "Good", "Kind", "Warm",
+                "There", "Everyone", "Candidate", "Applicant", "Sir", "Madam", "User", "Friend", "Folks", "Greetings",
+                "Recruiter", "Manager", "Hiring",
             }
             if len(name) >= 2 and name not in common_words:
                 logger.info(f"Found potential student name in body: {name}")

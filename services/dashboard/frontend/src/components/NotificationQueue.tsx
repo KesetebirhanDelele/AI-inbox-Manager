@@ -11,6 +11,7 @@ const VERDICT_STYLE: Record<string, { label: string; cls: string }> = {
 
 const STATE_LABEL: Record<string, { label: string; cls: string }> = {
   ready: { label: 'Ready for your decision', cls: 'bg-blue-100 text-blue-800' },
+  needs_verification: { label: 'Verify the student first', cls: 'bg-orange-100 text-orange-800' },
   blocked: { label: 'Fix first', cls: 'bg-red-100 text-red-800' },
   needs_student: { label: 'Student not identified', cls: 'bg-red-100 text-red-800' },
   no_draft: { label: 'No draft', cls: 'bg-gray-100 text-gray-700' },
@@ -33,6 +34,9 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
   const [editSubject, setEditSubject] = useState('');
   const [editBody, setEditBody] = useState('');
   const [editRecipient, setEditRecipient] = useState('');
+  const [vName, setVName] = useState(item.student?.name || '');
+  const [vPhone, setVPhone] = useState(item.student?.phone || '');
+  const [vEmail, setVEmail] = useState(item.student?.personal_email || '');
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['reviewQueue'] });
@@ -52,6 +56,10 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
       refresh();
     },
   });
+  const verify = useMutation({
+    mutationFn: (id: number) => apiClient.verifyStudent(id, { full_name: vName, phone_number: vPhone, personal_email: vEmail }),
+    onSuccess: refresh,
+  });
   const reject = useMutation({
     mutationFn: (p: { id: number; reason?: string }) => apiClient.rejectNotification(p.id, p.reason),
     onSuccess: () => {
@@ -65,7 +73,7 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
   const state = STATE_LABEL[item.state] || { label: item.state, cls: 'bg-gray-100 text-gray-700' };
   const iv = item.interview;
   const when = [iv.date, iv.time, iv.timezone].filter(Boolean).join(' ');
-  const error = (approve.error || reject.error || save.error) as { response?: { data?: { detail?: string } }; message?: string } | null;
+  const error = (approve.error || reject.error || save.error || verify.error) as { response?: { data?: { detail?: string } }; message?: string } | null;
 
   return (
     <li className="bg-white shadow rounded-lg overflow-hidden">
@@ -177,6 +185,40 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {s && s.verification && s.verification.status !== 'verified' && (
+          <div className="p-3 bg-orange-50 border border-orange-200 rounded space-y-2 text-sm">
+            <div className="font-semibold text-orange-900">Verify who this student is</div>
+            <div className="text-orange-900">
+              The pipeline created this student from the email, so the name is a{' '}
+              {s.verification.basis === 'greeting_name' ? 'guess from the greeting' : 'guess from the Gmail address'}
+              . A candidate may have changed their email: trace them in the roster sheet or Drive and correct the details.
+            </div>
+            {s.verification.evidence && <div className="text-xs text-orange-800">{s.verification.evidence}</div>}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <label className="text-xs text-gray-600">
+                Full name
+                <input type="text" value={vName} onChange={(e) => setVName(e.target.value)} className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-md" />
+              </label>
+              <label className="text-xs text-gray-600">
+                Phone
+                <input type="text" value={vPhone} onChange={(e) => setVPhone(e.target.value)} placeholder="e.g. 312-555-0100" className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-md" />
+              </label>
+              <label className="text-xs text-gray-600">
+                Personal email
+                <input type="email" value={vEmail} onChange={(e) => setVEmail(e.target.value)} className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-md" />
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={verify.isPending || !vName.trim()}
+              onClick={() => verify.mutate(s.id)}
+              className="px-4 py-2 bg-orange-600 text-white rounded-md text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+            >
+              {verify.isPending ? 'Saving...' : 'Confirm this student'}
+            </button>
           </div>
         )}
 
@@ -330,7 +372,7 @@ const NotificationQueue = () => {
   }
 
   const ready = data.items.filter((i) => i.state === 'ready').length;
-  const fix = data.items.filter((i) => ['blocked', 'needs_student', 'no_draft'].includes(i.state)).length;
+  const fix = data.items.filter((i) => ['needs_verification', 'blocked', 'needs_student', 'no_draft'].includes(i.state)).length;
   const shown = onlyReady ? data.items.filter((i) => i.state === 'ready') : data.items;
 
   return (

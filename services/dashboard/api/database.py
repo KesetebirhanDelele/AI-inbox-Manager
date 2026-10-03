@@ -90,7 +90,7 @@ def init_db():
         Email, Classification, Approval, ProcessRun,
         WhitelistCompany, EmailAction, UserSession, SystemConfig,
         Student, InterviewEvent, NotificationDraft, ChecklistCompletion,
-        NotificationSequence, NotificationAttempt, ReplyAnalysis, NotificationInbound, NotificationOptOut,
+        NotificationSequence, NotificationAttempt, ReplyAnalysis, NotificationInbound, NotificationOptOut, StudentVerification,
     )
     Base.metadata.create_all(bind=engine)
     _run_migrations()

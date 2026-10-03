@@ -14,7 +14,7 @@ from datetime import datetime, date
 from database import get_db
 from utils_text import clean_preview, clean_email_text
 from auth import get_current_user
-from models import Email, Classification, UserSession, InterviewEvent, Student, NotificationDraft
+from models import Email, Classification, UserSession, InterviewEvent, Student, NotificationDraft, StudentVerification
 from checklist_steps import normalize_sub_type
 
 router = APIRouter()
@@ -64,6 +64,7 @@ class InterviewEventRecord(BaseModel):
     # added when the Events Report was merged into the Interviews page (all optional)
     draft_id: Optional[int] = None
     email_id: Optional[int] = None
+    student_verification: Optional[str] = None      # 'unverified' | 'verified' | None (no record = a known student)
     subject: Optional[str] = None
     from_address: Optional[str] = None
     received_date: Optional[datetime] = None
@@ -272,6 +273,7 @@ async def get_interview_events(
         .all()
     )
 
+    verification_by_student = {v.student_id: v.status for v in db.query(StudentVerification).all()}
     records = []
     for event, student, notif, email in results:
         records.append(InterviewEventRecord(
@@ -292,6 +294,7 @@ async def get_interview_events(
             created_at=event.created_at,
             draft_id=notif.id if notif else None,
             email_id=event.email_id,
+            student_verification=verification_by_student.get(event.student_id) if event.student_id else None,
             subject=email.subject if email else None,
             from_address=email.from_address if email else None,
             received_date=email.received_date if email else None,
