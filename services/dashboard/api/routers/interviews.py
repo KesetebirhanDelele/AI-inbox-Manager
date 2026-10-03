@@ -63,6 +63,7 @@ class InterviewEventRecord(BaseModel):
     created_at: datetime
     # added when the Events Report was merged into the Interviews page (all optional)
     draft_id: Optional[int] = None
+    email_id: Optional[int] = None
     subject: Optional[str] = None
     from_address: Optional[str] = None
     received_date: Optional[datetime] = None
@@ -290,6 +291,7 @@ async def get_interview_events(
             recipient_email=notif.recipient_email if notif else None,
             created_at=event.created_at,
             draft_id=notif.id if notif else None,
+            email_id=event.email_id,
             subject=email.subject if email else None,
             from_address=email.from_address if email else None,
             received_date=email.received_date if email else None,

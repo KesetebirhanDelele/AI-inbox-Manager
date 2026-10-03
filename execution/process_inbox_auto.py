@@ -441,6 +441,7 @@ _CATEGORY_TO_SUB_TYPE = {
     "Phone Screen":              "phone_screen",
     "Final Interview Scheduled": "final_round",
     "Assessment":                "assessment",
+    "Instant Interview":         "interview_request",
 }
 _FORMAT_MAP = {
     "phone":     "phone",
@@ -527,6 +528,16 @@ def _resolve_assigned_gmail(email_data: Dict[str, Any]) -> Optional[str]:
     except Exception as e:
         logging.getLogger(__name__).warning(f"Header student resolution skipped: {e}")
     return None
+
+
+def _is_new_email(email_data: Dict[str, Any]) -> bool:
+    """True when this IMAP uid is not in the database yet (checked BEFORE the import)."""
+    db = get_db_session()
+    uid = str(email_data.get("email_id", ""))
+    if not db or not uid:
+        return True
+    from models import Email as EmailModel
+    return db.query(EmailModel).filter(EmailModel.email_id == uid).first() is None
 
 
 def creates_interview_event(classification: Dict[str, Any]) -> bool:
@@ -1349,9 +1360,17 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
 
                     logger.info(f"[{idx}/{len(emails)}] [{category}] ({confidence:.0%}) → {server_folder} — {email_subject}")
 
-                    # Save to database for audit trail
+                    # Save to database for audit trail. An interview-related email (Phone Screen, Cancelled,
+                    # Confirmation, Schedule, Assessment...) also needs its InterviewEvent, otherwise it never
+                    # reaches Interviews, Upcoming or the student notifications (20 such emails had none).
                     try:
-                        import_email_to_db(email_data, classification, server_folder)
+                        _new_here = _is_new_email(email_data)
+                        _db_id = import_email_to_db(email_data, classification, server_folder)
+                        if _db_id and _new_here and creates_interview_event(classification):
+                            if process_interview_email(email_data, _db_id, classification):
+                                logger.info(f"              [INTERVIEW EVENT CREATED]")
+                            else:
+                                logger.warning(f"              [INTERVIEW PROCESSING FAILED]")
                     except Exception as _e:
                         logger.error(f"              [DB import failed: {_e}]")
 

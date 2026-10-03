@@ -327,6 +327,7 @@ export interface InterviewEventRecord {
   recipient_email?: string;
   created_at: string;
   draft_id?: number | null;
+  email_id?: number | null;
   subject?: string;
   from_address?: string;
   received_date?: string;

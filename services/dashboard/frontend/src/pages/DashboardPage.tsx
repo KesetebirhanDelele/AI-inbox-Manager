@@ -1,14 +1,12 @@
-import { useState, Fragment } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
-import { TYPE_LABELS, TYPE_STYLES } from '../constants/interviewTypes';
+import { TYPE_LABELS } from '../constants/interviewTypes';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import CountdownTimer from '../components/CountdownTimer';
-import InterviewChecklist from '../components/InterviewChecklist';
-import type { InterviewRequest } from '../types';
 
 const Skel = ({ w = 'w-16', h = 'h-8' }: { w?: string; h?: string }) => (
   <div className={`animate-pulse bg-gray-300 rounded ${w} ${h}`} />
@@ -23,8 +21,6 @@ const formatStorage = (bytes: number | null | undefined): string => {
 
 const DashboardPage = () => {
   const queryClient = useQueryClient();
-  const [expandedInterviewId, setExpandedInterviewId] = useState<number | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [runResult, setRunResult] = useState<{ status: string; message?: string } | null>(null);
 
   const runProcessingMutation = useMutation({
@@ -86,22 +82,6 @@ const DashboardPage = () => {
     staleTime: 0,
     refetchOnMount: 'always',
     refetchInterval: 5 * 60 * 1000, // auto-refresh every 5 minutes
-  });
-
-  // Recent interviews (limit to 5)
-  const { data: interviews, isLoading: interviewsLoading } = useQuery({
-    queryKey: ['recentInterviews'],
-    queryFn: () => apiClient.getInterviewRequests(5, 0),
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchInterval: 5 * 60 * 1000,
-  });
-
-  // Inbox count with sync capability
-  const { data: inboxCount, refetch: refetchInboxCount } = useQuery({
-    queryKey: ['inboxCount'],
-    queryFn: () => apiClient.getInboxCount(false),
-    staleTime: 0,
   });
 
   // Stats charts data
@@ -187,31 +167,6 @@ const DashboardPage = () => {
     refetchOnMount: 'always',
   });
 
-  const handleSyncInbox = async () => {
-    setIsSyncing(true);
-    try {
-      await apiClient.getInboxCount(true);
-      await refetchInboxCount();
-      queryClient.invalidateQueries({ queryKey: ['summaryStats'] });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const toggleInterviewExpand = (interviewId: number) => {
-    setExpandedInterviewId(expandedInterviewId === interviewId ? null : interviewId);
-  };
-
-  const getTypeStyle = (interviewType?: string) => {
-    if (!interviewType) return 'bg-gray-100 text-gray-800';
-    return TYPE_STYLES[interviewType] || 'bg-gray-100 text-gray-800';
-  };
-
-  const getTypeLabel = (interviewType?: string) => {
-    if (!interviewType) return 'N/A';
-    return TYPE_LABELS[interviewType] || interviewType;
-  };
-
   return (
     <div className="space-y-6">
       {/* Page header: title centered, Run Now button right */}
@@ -257,7 +212,7 @@ const DashboardPage = () => {
       </div>
 
       {/* Summary Stats Cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {/* Emails Today — with optional Google Sheets audit subreport link */}
         {(() => {
           const sheetUrl = (import.meta.env.VITE_GOOGLE_SHEET_URL as string | undefined) || '';
@@ -377,76 +332,7 @@ const DashboardPage = () => {
           </div>
         </div>
 
-        {/* Inbox Count with Sync */}
-        <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="text-3xl font-bold text-blue-600">
-                    {statsLoading ? <Skel /> : inboxCount?.count ?? stats?.inbox_count ?? 0}
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <dt className="text-sm font-bold text-gray-800">
-                    In Inbox
-                  </dt>
-                </div>
-              </div>
-              <button
-                onClick={handleSyncInbox}
-                disabled={isSyncing}
-                className="p-2 text-gray-400 hover:text-primary-600 transition-colors disabled:opacity-50"
-                title="Sync from IMAP"
-              >
-                <svg
-                  className={`h-5 w-5 ${isSyncing ? 'animate-spin' : ''}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-              </button>
-            </div>
-            {inboxCount?.synced && (
-              <div className="mt-1 text-xs text-green-600">Live synced</div>
-            )}
-          </div>
-        </div>
       </div>
-
-      {/* Quick Reports — full width */}
-      <Link
-        to="/interviews"
-        className="block w-full overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow group"
-        style={{ backgroundColor: 'rgba(209,213,219,0.4)' }}
-      >
-        <div className="p-5 flex items-center gap-4">
-          <div className="flex-shrink-0 p-3 bg-indigo-100 rounded-full group-hover:bg-indigo-200 transition-colors">
-            <svg className="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-700 transition-colors">
-              Interviews
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Every interview with its student, date and notification status
-            </p>
-          </div>
-          <svg className="h-5 w-5 text-gray-300 group-hover:text-indigo-400 ml-auto transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
-      </Link>
 
       {/* Engineering KPIs */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-4">
@@ -830,150 +716,8 @@ const DashboardPage = () => {
       </div>
       )}
 
-      {/* Two-column layout: Recent Interviews + Recent Runs */}
-      <div className={`grid grid-cols-1 gap-6 ${interviewsLoading || (interviews && interviews.length > 0) ? 'lg:grid-cols-2' : ''}`}>
-        {/* Recent Interviews — hidden when empty */}
-        {(interviewsLoading || (interviews && interviews.length > 0)) && (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="bg-gray-200 px-6 py-3 flex items-center justify-between">
-            <h2 className="text-base font-bold text-gray-800 flex-1 text-center">Recent Interview Requests</h2>
-            <Link
-              to="/interviews"
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium ml-4"
-            >
-              View all
-            </Link>
-          </div>
-          <div className="px-4 py-5 sm:p-6">
-            {interviewsLoading ? (
-              <div className="space-y-2 py-4">
-                {[...Array(3)].map((_, i) => <Skel key={i} w="w-full" h="h-12" />)}
-              </div>
-            ) : interviews && interviews.length > 0 ? (
-              <>
-                {/* Mini pie chart — type breakdown */}
-                {(() => {
-                  const TYPE_COLORS: Record<string, string> = {
-                    'interview_request': '#3b82f6',
-                    'phone_screen': '#10b981',
-                    'client_screen': '#8b5cf6',
-                    'technical_interview': '#f59e0b',
-                    'cancelled': '#ef4444',
-                    'rescheduled': '#f97316',
-                    'job_machine': '#6366f1',
-                  };
-                  const counts: Record<string, number> = {};
-                  interviews.forEach((iv: InterviewRequest) => {
-                    const key = iv.interview_type || 'unknown';
-                    counts[key] = (counts[key] || 0) + 1;
-                  });
-                  const pieData = Object.entries(counts).map(([key, value]) => ({
-                    name: TYPE_LABELS[key] || key,
-                    value,
-                    color: TYPE_COLORS[key] || '#9ca3af',
-                  }));
-                  return (
-                    <div className="mb-4">
-                      <ResponsiveContainer width="100%" height={160}>
-                        <PieChart>
-                          <Pie
-                            data={pieData}
-                            dataKey="value"
-                            nameKey="name"
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={40}
-                            outerRadius={65}
-                            paddingAngle={3}
-                          >
-                            {pieData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value: number) => [`${value}`, 'Requests']} />
-                          <Legend iconType="circle" iconSize={9} formatter={(value) => <span style={{ fontSize: 11 }}>{value}</span>} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  );
-                })()}
-
-                {/* Interview list */}
-                <div className="space-y-3">
-                  {interviews.map((interview: InterviewRequest) => {
-                    const isExpanded = expandedInterviewId === interview.id;
-                    return (
-                      <Fragment key={interview.id}>
-                        <div
-                          className={`border rounded-lg transition-colors cursor-pointer ${
-                            isExpanded ? 'border-primary-300 bg-primary-50' : 'border-gray-200 hover:bg-gray-50'
-                          }`}
-                          onClick={() => toggleInterviewExpand(interview.id)}
-                        >
-                          <div className="p-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center space-x-2">
-                                  <span className="text-sm font-medium text-gray-900 truncate">
-                                    {interview.student_name || 'Unknown Student'}
-                                  </span>
-                                  <span className={`px-2 py-0.5 text-xs font-medium rounded ${getTypeStyle(interview.interview_type)}`}>
-                                    {getTypeLabel(interview.interview_type)}
-                                  </span>
-                                </div>
-                                <div className="mt-1 flex items-center space-x-2 text-xs text-gray-500">
-                                  <span>{interview.company_name || 'Unknown Company'}</span>
-                                  {interview.position && (
-                                    <>
-                                      <span>&bull;</span>
-                                      <span>{interview.position}</span>
-                                    </>
-                                  )}
-                                </div>
-                                <div className="mt-1 flex items-center space-x-3 text-xs text-gray-400">
-                                  <span>Received: {formatDateCST(interview.received_date)}</span>
-                                  {interview.interview_date && (
-                                    <span className="text-primary-600 font-medium">
-                                      Interview: {new Date(interview.interview_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                      {interview.interview_time && ` at ${interview.interview_time}`}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <svg
-                                className={`h-5 w-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </div>
-                          </div>
-                        </div>
-                        {isExpanded && (
-                          <div onClick={(e) => e.stopPropagation()} className="-mt-2 mb-1">
-                            {interview.interview_event_id ? (
-                              <InterviewChecklist interviewEventId={interview.interview_event_id} />
-                            ) : (
-                              <div className="border border-t-0 border-gray-200 rounded-b-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">
-                                No checklist available. This interview has not been sub-classified yet.
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-gray-500 text-center py-8">No recent interview requests</p>
-            )}
-          </div>
-        </div>
-        )}
-
+      {/* Recent processing runs */}
+      <div className="grid grid-cols-1 gap-6">
         {/* Recent Processing Runs */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="bg-gray-200 px-6 py-3 text-center">

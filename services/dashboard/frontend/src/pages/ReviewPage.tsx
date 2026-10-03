@@ -1,21 +1,19 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import InboxContent from '../components/InboxContent';
 import ApprovalsContent from '../components/ApprovalsContent';
 import NotificationQueue from '../components/NotificationQueue';
 
-type TabType = 'notifications' | 'inbox' | 'approvals';
+type TabType = 'notifications' | 'approvals';
 
 const ReviewPage = () => {
   const [searchParams] = useSearchParams();
   const requested = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<TabType>(
-    requested === 'approvals' || requested === 'inbox' ? requested : 'notifications',
+    requested === 'approvals' ? requested : 'notifications',
   );
 
   const tabs: { id: TabType; name: string }[] = [
     { id: 'notifications', name: 'Student notifications' },
-    { id: 'inbox', name: 'Inbox' },
     { id: 'approvals', name: 'Classification review' },
   ];
 
@@ -24,7 +22,7 @@ const ReviewPage = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Review</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Approve student notifications, monitor inbox emails, and review low-confidence classifications
+          Approve student notifications and review low-confidence classifications
         </p>
       </div>
 
@@ -53,7 +51,6 @@ const ReviewPage = () => {
       {/* Tab Content */}
       <div>
         {activeTab === 'notifications' && <NotificationQueue />}
-        {activeTab === 'inbox' && <InboxContent />}
         {activeTab === 'approvals' && <ApprovalsContent />}
       </div>
     </div>

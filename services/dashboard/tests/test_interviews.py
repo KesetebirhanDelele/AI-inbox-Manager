@@ -174,7 +174,7 @@ class TestInterviewEventsList:
         row = rows[0]
         assert row["event_id"] == event.id and row["student_name"] == student.full_name
         assert row["subject"] == "Phone screen - Acme" and row["from_address"] == "rohit.s@acme.com"
-        assert row["draft_id"] == draft.id and row["notification_status"] == "draft"
+        assert row["draft_id"] == draft.id and row["notification_status"] == "draft" and row["email_id"] == email.id
         assert row["received_date"] is not None and "confidence" in row
 
     def test_an_event_with_no_student_or_draft_still_appears(self, client, db, auth_cookies):

@@ -29,6 +29,10 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
   const [confirming, setConfirming] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editSubject, setEditSubject] = useState('');
+  const [editBody, setEditBody] = useState('');
+  const [editRecipient, setEditRecipient] = useState('');
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['reviewQueue'] });
@@ -38,6 +42,13 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
     mutationFn: (id: number) => apiClient.approveNotification(id),
     onSuccess: () => {
       setConfirming(false);
+      refresh();
+    },
+  });
+  const save = useMutation({
+    mutationFn: (id: number) => apiClient.editNotification(id, editSubject, editBody, editRecipient, false),
+    onSuccess: () => {
+      setEditing(false);
       refresh();
     },
   });
@@ -54,7 +65,7 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
   const state = STATE_LABEL[item.state] || { label: item.state, cls: 'bg-gray-100 text-gray-700' };
   const iv = item.interview;
   const when = [iv.date, iv.time, iv.timezone].filter(Boolean).join(' ');
-  const error = (approve.error || reject.error) as { response?: { data?: { detail?: string } }; message?: string } | null;
+  const error = (approve.error || reject.error || save.error) as { response?: { data?: { detail?: string } }; message?: string } | null;
 
   return (
     <li className="bg-white shadow rounded-lg overflow-hidden">
@@ -198,6 +209,18 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
                 </button>
                 <button
                   type="button"
+                  onClick={() => {
+                    setEditSubject(item.draft?.subject || '');
+                    setEditBody(item.draft?.body || '');
+                    setEditRecipient(item.draft?.recipient_email || '');
+                    setEditing(true);
+                  }}
+                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50"
+                >
+                  Edit draft
+                </button>
+                <button
+                  type="button"
                   onClick={() => setRejecting(true)}
                   className="px-4 py-2 bg-white border border-red-300 text-red-700 rounded-md text-sm font-medium hover:bg-red-50"
                 >
@@ -247,6 +270,26 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
                     Cancel
                   </button>
                 </div>
+              </div>
+            )}
+            {editing && (
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded space-y-2">
+                <input type="email" value={editRecipient} onChange={(e) => setEditRecipient(e.target.value)} placeholder="Recipient email"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md" />
+                <input type="text" value={editSubject} onChange={(e) => setEditSubject(e.target.value)} placeholder="Subject"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md" />
+                <textarea rows={8} value={editBody} onChange={(e) => setEditBody(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md font-mono" />
+                <div className="flex gap-2">
+                  <button type="button" disabled={save.isPending} onClick={() => save.mutate(item.draft_id as number)}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+                    {save.isPending ? 'Saving...' : 'Save changes'}
+                  </button>
+                  <button type="button" onClick={() => setEditing(false)} className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm">
+                    Cancel
+                  </button>
+                </div>
+                <div className="text-xs text-gray-500">Saving does not send anything. Approve when the draft is right.</div>
               </div>
             )}
             {error && (

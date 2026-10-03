@@ -146,6 +146,17 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
   students ("Ok", "Pandey") from an earlier name-matching bug, production shows 5 of 7 students with single-word names (to be reviewed with Rob).
 - Tests: 752 root, 205 dashboard. Deployed WITH `--build-web`.
 
+### 2026-10-03 (late): missing interview events, redundant screens removed, email body on Interviews
+- **Root cause of the 20 emails with no event:** `process_inbox_auto` created an InterviewEvent only in the "keep in inbox" branch (category Interview Request or a known company).
+  Phone Screen / Cancelled / Confirmation / Schedule / Assessment emails went down the "organize" branch, which filed them in a folder and never created an event, so they never reached
+  Interviews, Upcoming or notifications. **Fixed in the pipeline** (organize branch now calls `process_interview_email` for new interview-related mail; "Instant Interview" maps to an
+  interview request) and **backfilled** with `execution/backfill_interview_events.py` (dry-run default, `--apply`, reuses the real pipeline step, drafts only, never sends).
+- **Removed as redundant (Kes: "remove any redundant tile or tab"):** Dashboard "In Inbox" tile (it counted emails whose stored folder is INBOX, and its sync icon re-read Gmail;
+  duplicated the Inbox tab), the Dashboard "Interviews" quick-link banner (nav has it), the Dashboard "Recent Interview Requests" panel (overlapped Interviews), and Review > Inbox
+  (decisions live in Student notifications; its Edit draft moved into the queue card, which saves without sending). Kept: every tile Kes named, and the Reports tabs.
+- **Interviews page:** an expanded row now shows the email body (cleaned) above the checklist; the sender "Unknown" reads "an unknown sender".
+- Tests: 755 root, 205 dashboard.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

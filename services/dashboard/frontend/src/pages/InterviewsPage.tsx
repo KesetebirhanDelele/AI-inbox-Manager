@@ -6,6 +6,7 @@ import { TYPE_LABELS, TYPE_STYLES } from '../constants/interviewTypes';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import InterviewChecklist from '../components/InterviewChecklist';
+import EmailBodyPanel from '../components/EmailBodyPanel';
 import type { InterviewEventRecord, UpcomingInterview } from '../types';
 
 const NOTIF_STYLES: Record<string, string> = {
@@ -304,13 +305,18 @@ const InterviewsPage = () => {
                             <tr>
                               <td colSpan={9} className="p-0">
                                 <div onClick={(ev) => ev.stopPropagation()}>
-                                  {e.subject && (
-                                    <div className="border-t border-gray-200 bg-gray-50 px-6 py-3 text-sm text-gray-700">
-                                      <span className="text-xs text-gray-500">Email: </span>
-                                      {e.subject}
-                                      {e.from_address && <span className="text-xs text-gray-500"> from {e.from_address}</span>}
-                                    </div>
-                                  )}
+                                  <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 space-y-3">
+                                    {e.subject && (
+                                      <div className="text-sm text-gray-700">
+                                        <span className="text-xs text-gray-500">Email: </span>
+                                        {e.subject}
+                                        <span className="text-xs text-gray-500">
+                                          {' '}from {e.from_address && e.from_address !== 'Unknown' ? e.from_address : 'an unknown sender'}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {e.email_id ? <EmailBodyPanel emailId={e.email_id} /> : null}
+                                  </div>
                                   <InterviewChecklist interviewEventId={e.event_id} />
                                 </div>
                               </td>
