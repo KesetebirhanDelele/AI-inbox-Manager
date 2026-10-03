@@ -7,7 +7,6 @@ const SettingsPage = () => {
   const queryClient = useQueryClient();
   const [newCompany, setNewCompany] = useState('');
   const [notes, setNotes] = useState('');
-  const [processingResult, setProcessingResult] = useState<any>(null);
 
   const { data: whitelist, isLoading } = useQuery({
     queryKey: ['whitelist'],
@@ -34,23 +33,6 @@ const SettingsPage = () => {
   const { data: scheduleConfig, isLoading: scheduleLoading } = useQuery({
     queryKey: ['scheduleConfig'],
     queryFn: () => apiClient.getScheduleConfig(),
-  });
-
-  const runProcessingMutation = useMutation({
-    mutationFn: () => apiClient.runProcessing(),
-    onSuccess: (data) => {
-      setProcessingResult(data);
-      queryClient.invalidateQueries({ queryKey: ['summaryStats'] });
-      queryClient.invalidateQueries({ queryKey: ['processingRuns'] });
-      setTimeout(() => setProcessingResult(null), 10000);
-    },
-    onError: (error: any) => {
-      setProcessingResult({
-        status: 'error',
-        message: error.response?.data?.detail || error.message || 'Failed to run processing',
-      });
-      setTimeout(() => setProcessingResult(null), 10000);
-    },
   });
 
   const handleAdd = () => {
@@ -115,62 +97,6 @@ const SettingsPage = () => {
                 </dd>
               </div>
             </dl>
-          )}
-        </div>
-      </div>
-
-      {/* Manual Processing */}
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Manual Processing
-          </h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Trigger email processing manually to fetch and classify new emails from your inbox.
-            This will process up to {scheduleConfig?.batch_size ?? 'the configured number of'} emails.
-          </p>
-          <button
-            onClick={() => runProcessingMutation.mutate()}
-            disabled={runProcessingMutation.isPending}
-            className="px-4 py-2 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {runProcessingMutation.isPending ? (
-              <span className="flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Processing...
-              </span>
-            ) : (
-              'Run Email Processing'
-            )}
-          </button>
-
-          {/* Processing Result */}
-          {processingResult && (
-            <div
-              className={`mt-4 p-4 rounded-md ${
-                processingResult.status === 'success'
-                  ? 'bg-green-50 text-green-800 border border-green-200'
-                  : processingResult.status === 'info'
-                  ? 'bg-blue-50 text-blue-800 border border-blue-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
-              }`}
-            >
-              <p className="text-sm font-medium">{processingResult.message}</p>
-              {processingResult.summary?.imported && (
-                <div className="mt-2 text-sm">
-                  <p>Processed {processingResult.summary.total_emails} emails</p>
-                  <p>Found {processingResult.summary.interview_requests} interview requests</p>
-                </div>
-              )}
-              {processingResult.duration_seconds && (
-                <p className="mt-1 text-xs">
-                  Duration: {processingResult.duration_seconds.toFixed(1)}s
-                </p>
-              )}
-            </div>
           )}
         </div>
       </div>

@@ -8,6 +8,7 @@ script from the dashboard.
 import subprocess
 import sys
 import os
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -68,6 +69,52 @@ def get_run_lock_status() -> Optional[Dict[str, Any]]:
         return None
 
 
+REQUEST_MAX_AGE_SECONDS = 30 * 60      # an unserved request older than this is ignored by the server (execution/run_now_watcher.py)
+
+
+def _project_root() -> Path:
+    return Path(__file__).parent.parent.parent.parent.parent
+
+
+def request_run_on_server(triggered_by: str) -> Dict[str, Any]:
+    """
+    Production "Run Now": never run the pipeline inside the web process (it would compete with the scheduler for CPU and the
+    mailbox). Instead leave a request file that the server's one-minute watcher (execution/run_now_watcher.py, host cron
+    /etc/cron.d/inboxgenius-runnow) turns into the SAME run the scheduler does, under the same run lock, so it can never
+    overlap a scheduled run or another manual one.
+    """
+    import json
+
+    lock = get_run_lock_status()
+    if lock:
+        return {
+            "status": "locked",
+            "message": (
+                f"A processing run is already active (started by '{lock['triggered_by']}', running for "
+                f"{lock['elapsed_seconds']:.0f}s). Wait for it to finish, then look at Recent Processing Runs."
+            ),
+            "lock_info": lock,
+            "triggered_by": triggered_by,
+        }
+
+    request_path = _project_root() / "tmp" / "run_now.request"
+    try:
+        if request_path.exists():
+            age = time.time() - request_path.stat().st_mtime
+            if age < REQUEST_MAX_AGE_SECONDS:
+                return {"status": "queued", "message": "A run was already requested. The server starts it within a minute.",
+                        "triggered_by": triggered_by}
+        request_path.parent.mkdir(parents=True, exist_ok=True)
+        request_path.write_text(json.dumps({"requested_by": triggered_by, "requested_at": datetime.utcnow().isoformat()}))
+    except OSError as exc:
+        return {"status": "error", "message": f"Could not request a run: {exc}", "triggered_by": triggered_by}
+    return {
+        "status": "queued",
+        "message": "Run requested. The server starts it within a minute and it takes about 3 minutes; then refresh the dashboard.",
+        "triggered_by": triggered_by,
+    }
+
+
 def run_email_processing(db: Session, triggered_by: str = "manual") -> Dict[str, Any]:
     """
     Trigger the automated email processing script manually.
@@ -92,14 +139,7 @@ def run_email_processing(db: Session, triggered_by: str = "manual") -> Dict[str,
     # logged-in user start a run beside the scheduler (double-processing the
     # mailbox, extra OpenAI cost). To force a run, use the server command in §4c.
     if os.environ.get("ENVIRONMENT") == "production":
-        return {
-            "status": "unavailable",
-            "message": (
-                "Manual runs are disabled in production. The pipeline runs "
-                "automatically every 2 hours, on the hour (UTC), on the server."
-            ),
-            "triggered_by": triggered_by,
-        }
+        return request_run_on_server(triggered_by)
 
     # Find the project root
     # From services/dashboard/api/integration, go up 4 levels to ClaudeTest

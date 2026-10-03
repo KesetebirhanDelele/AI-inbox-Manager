@@ -711,6 +711,11 @@ Render (see `progress.md` open item 5).
 
 ## 16. Changelog (infra / architecture only)
 
+- **2026-10-03 (this fork)** — **Dashboard "Run Now" works in production.** It no longer runs the pipeline in the web process (that was disabled and just returned
+  "unavailable"): it writes `tmp/run_now.request`, and a host cron (`/etc/cron.d/inboxgenius-runnow`, source `execution/crontab.runnow`, installed with
+  `scp`, no image rebuild) runs `execution/run_now_watcher.py` in the cron container every minute when that file exists. The watcher starts the same
+  `process_inbox_auto.py` run the scheduler does, under the same run lock (no overlap), drops requests older than 30 minutes and waits while a run is active.
+  Log: `/opt/ai-inbox-manager/logs/runnow.log`. Also: new backfill `execution/backfill_interview_events.py`; interview events are now created for every interview-related email.
 - **2026-10-03 (this fork)** — Reminder, not a change: frontend edits (anything under `services/dashboard/frontend/`) only reach users when the deploy is
   run with `scripts/deploy_hetzner.sh --build-web`; a plain deploy updates the API and leaves the old screens in the `web` container.
 - **2026-10-02 (this fork)** — Student notification escalation (call + text + email via GHL) built and deployed OFF; new tables

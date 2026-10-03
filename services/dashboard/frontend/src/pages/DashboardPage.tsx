@@ -31,9 +31,10 @@ const DashboardPage = () => {
         setTimeout(() => setRunResult(null), 8000);
         return;
       }
-      if (data?.status === 'unavailable') {
-        setRunResult({ status: 'unavailable', message: 'Manual runs are disabled here. The pipeline runs automatically every 2 hours (on the hour, UTC).' });
-        setTimeout(() => setRunResult(null), 10000);
+      if (data?.status === 'queued' || data?.status === 'locked') {
+        // production: the server starts the run within a minute (or one is already running)
+        setRunResult({ status: 'unavailable', message: data?.message || 'Run requested.' });
+        setTimeout(() => setRunResult(null), 15000);
         return;
       }
       const count = data?.summary?.total_emails ?? data?.total_emails ?? 0;

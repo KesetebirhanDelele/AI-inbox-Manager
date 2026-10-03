@@ -134,19 +134,43 @@ class TestEngineeringKPIs:
         assert data["ai_cost_today_usd"] == round(0.07, 4)
 
 
-class TestManualRunDisabledInProduction:
-    """In production only the server's cron runs the pipeline; Run Now is off."""
+class TestRunNowInProduction:
+    """In production Run Now QUEUES a request; the server's watcher starts the same run the scheduler does."""
 
-    def test_production_returns_unavailable_with_accurate_message(self, monkeypatch):
-        from integration.process_runner import run_email_processing
+    def _setup(self, monkeypatch, tmp_path, lock=None):
+        import integration.process_runner as pr
         monkeypatch.setenv("ENVIRONMENT", "production")
-        result = run_email_processing(db=None, triggered_by="tester")  # db unused: returns first
-        assert result["status"] == "unavailable"
-        assert result["triggered_by"] == "tester"
-        msg = result["message"]
-        assert "every 2 hours" in msg
-        # The old message wrongly said it runs on a laptop via Windows Task Scheduler.
-        assert "Windows" not in msg and "local machine" not in msg
+        monkeypatch.setattr(pr, "_project_root", lambda: tmp_path)
+        monkeypatch.setattr(pr, "get_run_lock_status", lambda: lock)
+        return pr
+
+    def test_a_request_file_is_written_and_the_answer_says_it_is_queued(self, monkeypatch, tmp_path):
+        pr = self._setup(monkeypatch, tmp_path)
+        result = pr.run_email_processing(db=None, triggered_by="tester")  # db unused: returns first
+        assert result["status"] == "queued" and "within a minute" in result["message"]
+        import json
+        data = json.loads((tmp_path / "tmp" / "run_now.request").read_text())
+        assert data["requested_by"] == "tester"
+
+    def test_a_second_click_does_not_stack_requests(self, monkeypatch, tmp_path):
+        pr = self._setup(monkeypatch, tmp_path)
+        pr.run_email_processing(db=None, triggered_by="a")
+        again = pr.run_email_processing(db=None, triggered_by="b")
+        assert again["status"] == "queued" and "already requested" in again["message"]
+        import json
+        assert json.loads((tmp_path / "tmp" / "run_now.request").read_text())["requested_by"] == "a"
+
+    def test_a_run_in_progress_is_reported_and_nothing_is_queued(self, monkeypatch, tmp_path):
+        pr = self._setup(monkeypatch, tmp_path, lock={"pid": 1, "triggered_by": "scheduled", "elapsed_seconds": 42.0})
+        result = pr.run_email_processing(db=None, triggered_by="tester")
+        assert result["status"] == "locked" and "already active" in result["message"]
+        assert not (tmp_path / "tmp" / "run_now.request").exists()
+
+    def test_an_unwritable_location_is_an_error_not_a_crash(self, monkeypatch, tmp_path):
+        pr = self._setup(monkeypatch, tmp_path / "missing" / "deeper")
+        monkeypatch.setattr(pr.Path, "mkdir", lambda *a, **k: (_ for _ in ()).throw(OSError("read-only")))
+        result = pr.run_email_processing(db=None, triggered_by="tester")
+        assert result["status"] == "error" and "read-only" in result["message"]
 
 
 class TestDbStorageCap:

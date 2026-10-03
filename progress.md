@@ -157,6 +157,18 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
 - **Interviews page:** an expanded row now shows the email body (cleaned) above the checklist; the sender "Unknown" reads "an unknown sender".
 - Tests: 755 root, 205 dashboard.
 
+### 2026-10-03 (late, 2): backfill applied in production; "Run Now" made to work in production
+- **Backfill applied** (production, `backfill_interview_events.py --apply`): 31 old interview-category emails were candidates; 16 events created, 6 skipped (application notices
+  the primary classifier mislabelled as "Interview Cancelled", e.g. "Thank you for applying" / "Application update": a CLASSIFIER precision problem to fix separately),
+  9 skipped as older repeats of the same message (Eliassen "Application Next Steps" x11). Production now has 57 events, 9 drafts (all `draft`, nothing sent), 9 events with a
+  student: **student matching is now the bottleneck** (most emails name a person the roster does not know).
+- **Run Now**: verified by calling the same function the button calls inside the production API container: it returned "Manual runs are disabled in production" (by design of an earlier
+  developer: the run would compete with the scheduler). Now: the button writes `tmp/run_now.request`; host cron `/etc/cron.d/inboxgenius-runnow` (every minute, file-tested) runs
+  `execution/run_now_watcher.py` in the cron container, which starts the SAME `process_inbox_auto.py` run under the same run lock. Dashboard shows "Run requested..." or "a run is
+  already active". The duplicate "Manual Processing" card on Settings was removed. See RUNBOOK 16.
+- **"In Inbox" meaning (removed tile):** the number of emails whose stored folder is INBOX (interview mail the pipeline keeps there, known-company mail, and mail not yet processed);
+  the sync icon re-read Gmail. Not actionable, and Review > Inbox showed the same list, so both were removed.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

@@ -1,0 +1,6 @@
+# Host crontab for dashboard "Run Now" (Hetzner). Install on the SERVER (no image rebuild):
+#   scp execution/crontab.runnow root@2.29.47.89:/etc/cron.d/inboxgenius-runnow
+# Every minute: if the dashboard left tmp/run_now.request, start the same pipeline run the scheduler does.
+# The file test makes an idle minute cost nothing; the pipeline's run lock prevents any overlap with a scheduled run.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * root [ -f /opt/ai-inbox-manager/tmp/run_now.request ] && docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/run_now_watcher.py >> /opt/ai-inbox-manager/logs/runnow.log 2>&1
