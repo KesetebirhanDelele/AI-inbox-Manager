@@ -49,6 +49,22 @@ The detail below is in the order the work happened; this block is the summary.
 
 - Opening shortened (Kes found the GHL default disclosure + our greeting off-putting): Outbound AI Disclosure set to Custom ("Hi <first>, this is Colaberry's AI assistant calling about your interview. You can say 'stop calling' at any time."), Welcome Message reduced to "Am I speaking with <first>?"; prompt step 1 and checklist 1a/1b updated. Needs Ali's OK on the disclosure wording; re-test stage 1.1.
 
+### 2026-10-02 (end of day): where we stand, and what we are waiting for
+
+**WAITING ON ALI** (draft reply sent to Kes's Gmail drafts on the thread "AI-Inbox-Manager is now deployed and live on Hetzner"; Kes sends it):
+1. Consent: have students agreed to automated calls and texts? (GHL does not check.)
+2. Pilot size: first live run with 3 students Rob approves by hand, then everyone?
+3. Who may undo a STOP (recommended: Ali or Rob, on the student's written request).
+4. Who takes interview callbacks, and within what time. **Blocks the INTERVIEW CALLBACKS section of the inbound AI Receptionist (not yet added). Remind Kes when Ali answers.**
+5. Alerts: tell Rob when a draft is waiting; tell Ali if a draft sits unapproved past about 2 hours (neither built).
+Also to confirm with Ali: the wording of the custom AI disclosure on the outbound agent. Deliberately NOT asked now: Cora's real SMS usage, the GitHub destination.
+
+**Voice agent, as of tonight:** one live test call proved the field value reaches the agent, the facts are spoken correctly, the reference is not read, "yes" is captured. The opening was rebuilt (custom AI disclosure + one-line welcome message) and saved in GHL; **the greeting re-test call is due tomorrow between 8 AM and 8 PM Kes's time** (calls after 8 PM are not allowed; it was ~11 PM Eastern when Kes saved).
+
+**Next, in order (all on Kes's own contact, per `docs/test-plan-student-notifications.md`):** greeting re-test (1.1) -> wrong person (1.4) -> voicemail (1.5) -> STOP (1.6) -> text test (2.x) -> email test (3.x) -> GHL `do not call` tag action -> server shadow rehearsal (5.x) -> small live pilot (6.x) only after Ali's answers.
+
+**Use cases page** updated and republished (artifact version 4, same link; tracked copy `docs/use-cases.html`): UC16 now Partial with live-call evidence, new stories 14.8, 14.9, 15.8, 16.8, 16.9, 17.5-17.7, summary now 7 working / 5 partial / 5 built-off.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

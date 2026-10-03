@@ -60,10 +60,9 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
 
   <div class="summary">
     <span><strong>7</strong>working</span>
-    <span><strong>4</strong>partial</span>
+    <span><strong>5</strong>partial</span>
     <span><strong>5</strong>built, switched off</span>
-    <span><strong>1</strong>drafted</span>
-    <span>The student-notification feature (UC12 to UC17) is built and deployed but off: no credentials on the server, every channel is a dry run.</span>
+    <span>The student-notification feature (UC12 to UC17) is built and deployed but off: no credentials on the server, every channel is a dry run. The voice call itself was proven on a live test call on 2 Oct; text, email, voicemail, wrong-person and STOP tests are still to do (see the test plan).</span>
   </div>
   <div class="legend">
     <span><span class="pill ok">Working</span> running, checked on real mail or data</span>
@@ -256,6 +255,8 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">14.4</span><p>As <em>Ali</em>, I want to see how often the AI was right before it may stop anything.</p><span class="st pill off">Built, off</span></li>
       <li><span class="id">14.5</span><p>As <em>Rob</em>, I want a question, a "can't attend" or a confused reply sent to me, not auto-handled.</p><span class="st pill off">Built, off</span></li>
       <li><span class="id">14.6</span><p>As <em>a student</em>, I want a STOP reply to end all contact immediately.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.8</span><p>As <em>Ali</em>, I want a plain "yes" to the agent's question "Can you confirm you got this information?" to count as confirmed, even in shadow mode. "Yes, but I can't make it" does not.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.9</span><p>As <em>a student</em>, I want "don't call me again" said on a call to end all calls, same as a STOP text.</p><span class="st pill off">Built, off</span></li>
       <li><span class="id">14.7</span><p>As <em>Kes</em>, I want each reply or call handled exactly once, and our own emails that GHL logs back as inbound ignored.</p><span class="st pill off">Built, off</span></li>
     </ul>
   </section>
@@ -270,33 +271,39 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">15.4</span><p>As <em>a student</em>, I want my Do-Not-Disturb setting and any "do not call" tag respected before every send (GHL does not check).</p><span class="st pill off">Built, off</span></li>
       <li><span class="id">15.5</span><p>As <em>Ali</em>, I want our texts capped (150 a day of the shared 999) so Cora is never starved, with extra texts moved to the next morning.</p><span class="st pill off">Built, off</span></li>
       <li><span class="id">15.6</span><p>As <em>Kes</em>, I want a student matched to their GHL contact by an exact phone number, so details never reach the wrong person.</p><span class="st pill ok">Checked live</span></li>
-      <li><span class="id">15.7</span><p>As <em>Ali</em>, I want to know whether students agreed to receive texts and calls.</p><span class="st pill part">Open question</span></li>
+      <li><span class="id">15.8</span><p>As <em>a student</em>, I want my STOP remembered by the app for that channel even if GHL is never updated. A stopped call does not stop texts.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">15.7</span><p>As <em>Ali</em>, I want to know whether students agreed to receive texts and calls.</p><span class="st pill part">Asked Ali</span></li>
     </ul>
   </section>
 
   <section class="uc">
-    <div class="uc-head"><h2><small>UC16</small>The outbound interview voice agent</h2><span class="pill draft">Drafted</span></div>
+    <div class="uc-head"><h2><small>UC16</small>The outbound interview voice agent</h2><span class="pill part">Partial</span></div>
     <p class="meta"><b>Actor:</b> GHL Voice AI agent &nbsp;·&nbsp; <b>Result:</b> a clear, safe call that tells the student about their interview and asks for a "yes".</p>
-    <p class="note"><b>Prompt written, not yet in GHL.</b> It is adapted from the AI Receptionist prompt and saved in <code>docs/voice-agent-outbound-interview-prompt.md</code>. It needs one real test call to confirm how the interview facts reach the agent.</p>
+    <p class="note"><b>Proven on one live call (2 Oct), with fixes pending a re-test.</b> The agent is set up in GHL and called the test contact: the interview facts reached it, it said the right company, position, date and format, it did not read the reference number aloud, and the student's "yes" was captured. The first call skipped "Am I speaking with ...?", so the opening was rebuilt: a short custom AI disclosure ("this is Colaberry's AI assistant calling about your interview; you can say 'stop calling' at any time"), then the name check, then the details. Wrong person, voicemail and STOP calls are not yet tested. Prompt: <code>docs/voice-agent-outbound-interview-prompt.md</code>.</p>
     <ul class="stories">
-      <li><span class="id">16.1</span><p>As <em>a student</em>, I want the caller to say it is an AI assistant from Colaberry Interview Support and check it is me first.</p><span class="st pill draft">Drafted</span></li>
-      <li><span class="id">16.2</span><p>As <em>a student</em>, I want the interview details told in plain words: company, position, date and time with zone, format.</p><span class="st pill draft">Drafted</span></li>
-      <li><span class="id">16.3</span><p>As <em>Ali</em>, I want the agent to ask the student to say yes, so there is something to read back.</p><span class="st pill draft">Drafted</span></li>
-      <li><span class="id">16.4</span><p>As <em>Ali</em>, I want the agent never to invent answers: unknown questions get "a team member will reach out".</p><span class="st pill draft">Drafted</span></li>
-      <li><span class="id">16.5</span><p>As <em>a student</em>, I want no interview details left on my voicemail, only a call-back prompt.</p><span class="st pill draft">Drafted</span></li>
-      <li><span class="id">16.6</span><p>As <em>a student</em>, I want the agent to stop calling when I ask, and our app to remember it.</p><span class="st pill part">Needs a GHL action</span></li>
-      <li><span class="id">16.7</span><p>As <em>a candidate calling back</em>, I want the number's inbound receptionist to hand me to Interview Support, not ask for my name spelling and address.</p><span class="st pill draft">Drafted</span></li>
+      <li><span class="id">16.1</span><p>As <em>a student</em>, I want the caller to say it is an AI assistant from Colaberry Interview Support and check it is me first.</p><span class="st pill part">Re-test due</span></li>
+      <li><span class="id">16.2</span><p>As <em>a student</em>, I want the interview details told in plain words: company, position, date and time with zone, format.</p><span class="st pill ok">Proven on a call</span></li>
+      <li><span class="id">16.3</span><p>As <em>Ali</em>, I want the agent to ask the student to say yes, so there is something to read back.</p><span class="st pill ok">Proven on a call</span></li>
+      <li><span class="id">16.4</span><p>As <em>Ali</em>, I want the agent never to invent answers: unknown questions get "a team member will reach out".</p><span class="st pill ok">Seen once</span></li>
+      <li><span class="id">16.5</span><p>As <em>a student</em>, I want no interview details left on my voicemail, only a call-back prompt.</p><span class="st pill part">Not tested</span></li>
+      <li><span class="id">16.6</span><p>As <em>a student</em>, I want the agent to stop calling when I ask. Our app now remembers it; the GHL "do not call" tag action is still to build.</p><span class="st pill part">Partly built</span></li>
+      <li><span class="id">16.7</span><p>As <em>a candidate calling back</em>, I want the number's inbound receptionist to hand me to Interview Support, not ask for my name spelling and address.</p><span class="st pill part">On hold: waiting on Ali</span></li>
+          <li><span class="id">16.8</span><p>As <em>a student</em>, I want the call to open briefly and say why it is calling, not a long self-introduction.</p><span class="st pill part">Re-test due</span></li>
+      <li><span class="id">16.9</span><p>As <em>Ali</em>, I want someone other than the student who answers to hear no interview details.</p><span class="st pill part">Not tested</span></li>
     </ul>
   </section>
 
   <section class="uc">
     <div class="uc-head"><h2><small>UC17</small>Prove it works before anyone is contacted</h2><span class="pill off">Built, off</span></div>
     <p class="meta"><b>Actor:</b> Kes, Ali &nbsp;·&nbsp; <b>Result:</b> confidence before the first real send.</p>
-    <p class="note off"><b>Checked read-only against the real GHL account.</b> The four trigger fields exist, the call-log permission works (152 live calls), the conversations key works, and the parser kept the agent's words out of the student's. Not yet done: writing the field on a test contact and placing one test call.</p>
+    <p class="note off"><b>Checked read-only against the real GHL account.</b> The four trigger fields exist, the call-log permission works (152 live calls), the conversations key works, and the parser kept the agent's words out of the student's. The first live test call was placed on 2 Oct on the tester's own contact and read back. A one-contact test tool (call, text, email) and a written test plan with a go-live checklist now exist. Text, email, voicemail, wrong person and STOP tests are next.</p>
     <ul class="stories">
       <li><span class="id">17.1</span><p>As <em>Kes</em>, I want to rehearse against real contacts with writes switched off, and read what would have been sent.</p><span class="st pill off">Built, off</span></li>
       <li><span class="id">17.2</span><p>As <em>Ali</em>, I want the health check to flag a failed student attempt, so a student cannot silently go unnotified.</p><span class="st pill ok">Working</span></li>
-      <li><span class="id">17.3</span><p>As <em>Kes</em>, I want one real test call to my own contact, and to see how the interview facts reach the agent.</p><span class="st pill part">Waiting on a test contact</span></li>
+      <li><span class="id">17.3</span><p>As <em>Kes</em>, I want one real test call to my own contact, and to see how the interview facts reach the agent.</p><span class="st pill ok">Done for the call</span></li>
+      <li><span class="id">17.5</span><p>As <em>Kes</em>, I want one tool that tests a call, a text or an email on a single exact-match contact, refusing anyone on Do-Not-Disturb.</p><span class="st pill ok">Working (call used live)</span></li>
+      <li><span class="id">17.6</span><p>As <em>Ali</em>, I want a written test plan with pass criteria and a go-live checklist, so nothing reaches a real student until each step is proven.</p><span class="st pill ok">Written</span></li>
+      <li><span class="id">17.7</span><p>As <em>Ali</em>, I want to decide consent, the pilot size, who may undo a STOP, who takes callbacks, and the unapproved-draft alerts before go-live.</p><span class="st pill part">Emailed to Ali</span></li>
       <li><span class="id">17.4</span><p>As <em>Ali</em>, I want to confirm with Rob what he does today before anything is switched on, so nothing he relies on disappears.</p><span class="st pill part">Open</span></li>
     </ul>
   </section>
