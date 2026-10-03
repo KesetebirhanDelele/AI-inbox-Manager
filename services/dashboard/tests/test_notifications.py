@@ -300,3 +300,76 @@ class TestGetNotificationByEmail:
     def test_requires_auth(self, client, db):
         resp = client.get("/api/notifications/by-email/1")
         assert resp.status_code == 401
+
+
+# ── the review queue: one screen for Rob ──────────────────────────────────────────────────────
+
+class TestReviewQueue:
+    def _queue(self, client, auth_cookies, **params):
+        resp = client.get("/api/notifications/review-queue", params=params, cookies=auth_cookies)
+        assert resp.status_code == 200
+        return resp.json()
+
+    def test_a_ready_draft_shows_student_contact_facts_check_and_preview(self, client, db, auth_cookies):
+        from conftest import make_email, make_student, make_interview_event, make_notification_draft
+        student = make_student(db)
+        student.phone_number = "(972) 555-0100"
+        db.commit()
+        email = make_email(db, subject="Phone screen", from_address="rohit.s@acmecorp.com")
+        event = make_interview_event(db, email, student=student, company="Acme Corp")
+        make_notification_draft(db, event)
+
+        data = self._queue(client, auth_cookies)
+        item = data["items"][0]
+        assert data["escalation_enabled"] is False and item["state"] == "ready" and item["can_approve"] is True
+        assert item["student"]["phone"] == "(972) 555-0100" and item["interview"]["company"] == "Acme Corp"
+        assert item["authenticity"]["verdict"] in ("looks_genuine", "needs_check", "likely_job_board")
+        assert "Interview details:" in item["preview"]["call"] and "Ref" not in item["preview"]["text"]
+        assert "one email" in item["will_happen"] and item["blockers"] == []
+
+    def test_will_happen_says_what_approve_does_when_escalation_is_on(self, client, db, auth_cookies, monkeypatch):
+        from conftest import make_email, make_student, make_interview_event, make_notification_draft
+        event = make_interview_event(db, make_email(db), student=make_student(db))
+        make_notification_draft(db, event)
+        monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "true")
+        data = self._queue(client, auth_cookies)
+        assert data["escalation_enabled"] is True and "call, a text and an email" in data["items"][0]["will_happen"]
+
+    def test_an_event_with_no_student_is_listed_blocked_with_the_reason_and_cannot_be_approved(self, client, db, auth_cookies):
+        from conftest import make_email, make_interview_event
+        email = make_email(db, subject="Interview", from_address="info@dd.job-assist-now.com")
+        make_interview_event(db, email, student=None, company="Job-Assist-Now")
+        item = self._queue(client, auth_cookies)["items"][0]
+        assert item["state"] == "needs_student" and item["can_approve"] is False and item["draft_id"] is None
+        assert "No student identified" in item["blockers"][0]
+
+    def test_a_student_with_no_way_to_be_reached_blocks_approval(self, client, db, auth_cookies):
+        from conftest import make_email, make_student, make_interview_event, make_notification_draft
+        student = make_student(db, username="x", personal_email=None)
+        student.assigned_gmail = None
+        db.commit()
+        event = make_interview_event(db, make_email(db), student=student)
+        make_notification_draft(db, event)
+        item = self._queue(client, auth_cookies)["items"][0]
+        assert item["state"] == "blocked" and item["can_approve"] is False and "No phone, email or Gmail" in item["blockers"][0]
+
+    def test_a_job_board_email_gets_a_warning_first(self, client, db, auth_cookies):
+        from conftest import make_email, make_student, make_interview_event, make_notification_draft
+        email = make_email(db, subject="Confirm your availability", from_address="info@dd.job-assist-now.com")
+        email.body_preview = "Your request is still open. confirm your availability https://dd.job-assist-now.com/c/" + "A" * 50
+        db.commit()
+        event = make_interview_event(db, email, student=make_student(db), company="Job-Assist-Now")
+        make_notification_draft(db, event)
+        item = self._queue(client, auth_cookies)["items"][0]
+        assert item["authenticity"]["verdict"] == "likely_job_board" and "job-board mailer" in item["warnings"][0]
+        assert item["can_approve"] is True                      # advisory only: Rob decides
+
+    def test_done_notices_are_hidden_unless_asked_for(self, client, db, auth_cookies):
+        from conftest import make_email, make_student, make_interview_event, make_notification_draft
+        event = make_interview_event(db, make_email(db), student=make_student(db))
+        make_notification_draft(db, event, email_status="sent")
+        assert self._queue(client, auth_cookies)["count"] == 0
+        assert self._queue(client, auth_cookies, include_done=True)["count"] == 1
+
+    def test_requires_login(self, client):
+        assert client.get("/api/notifications/review-queue").status_code == 401

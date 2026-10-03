@@ -258,6 +258,58 @@ export interface NotificationDetail {
   email_subject_original?: string;
 }
 
+export interface ReviewQueueItem {
+  event_id: number;
+  draft_id: number | null;
+  state: 'ready' | 'blocked' | 'needs_student' | 'no_draft' | 'approved' | 'failed' | string;
+  blockers: string[];
+  warnings: string[];
+  can_approve: boolean;
+  will_happen: string;
+  student: {
+    id: number;
+    name?: string;
+    username?: string;
+    personal_email?: string;
+    assigned_gmail?: string;
+    phone?: string;
+  } | null;
+  interview: {
+    type?: string;
+    company?: string;
+    position?: string;
+    date?: string;
+    time?: string;
+    timezone?: string;
+    format?: string;
+    contact_name?: string;
+    contact_email?: string;
+    confidence?: number;
+  };
+  email: {
+    id: number;
+    subject?: string;
+    from_address?: string;
+    received_date?: string;
+    excerpt: string;
+  } | null;
+  authenticity: {
+    verdict: 'looks_genuine' | 'needs_check' | 'likely_job_board';
+    against: string[];
+    for: string[];
+    note: string;
+  };
+  draft: { subject?: string; body?: string; recipient_email?: string; status: string } | null;
+  preview: { call: string; text: string; email_subject?: string } | null;
+  sequence: { status: string; started_at?: string; ack_channel?: string } | null;
+}
+
+export interface ReviewQueue {
+  escalation_enabled: boolean;
+  count: number;
+  items: ReviewQueueItem[];
+}
+
 export interface InterviewEventRecord {
   event_id: number;
   student_name?: string;

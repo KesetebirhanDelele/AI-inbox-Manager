@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import InboxContent from '../components/InboxContent';
 import ApprovalsContent from '../components/ApprovalsContent';
+import NotificationQueue from '../components/NotificationQueue';
 
-type TabType = 'inbox' | 'approvals';
+type TabType = 'notifications' | 'inbox' | 'approvals';
 
 const ReviewPage = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('inbox');
+  const [activeTab, setActiveTab] = useState<TabType>('notifications');
 
   const tabs: { id: TabType; name: string }[] = [
+    { id: 'notifications', name: 'Student notifications' },
     { id: 'inbox', name: 'Inbox' },
-    { id: 'approvals', name: 'Approvals' },
+    { id: 'approvals', name: 'Classification review' },
   ];
 
   return (
@@ -17,7 +19,7 @@ const ReviewPage = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Review</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Monitor inbox emails and review pending approvals
+          Approve student notifications, monitor inbox emails, and review low-confidence classifications
         </p>
       </div>
 
@@ -45,6 +47,7 @@ const ReviewPage = () => {
 
       {/* Tab Content */}
       <div>
+        {activeTab === 'notifications' && <NotificationQueue />}
         {activeTab === 'inbox' && <InboxContent />}
         {activeTab === 'approvals' && <ApprovalsContent />}
       </div>

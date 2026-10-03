@@ -15,6 +15,7 @@ import type {
   EmailDetail,
   NotificationSummary,
   NotificationDetail,
+  ReviewQueue,
   StudentInfo,
   InterviewRequest,
   UpcomingInterview,
@@ -270,6 +271,13 @@ class ApiClient {
 
   async getNotificationDetail(notificationId: number): Promise<NotificationDetail> {
     const response = await this.client.get(`/api/notifications/${notificationId}`);
+    return response.data;
+  }
+
+  async getReviewQueue(includeDone = false): Promise<ReviewQueue> {
+    const response = await this.client.get('/api/notifications/review-queue', {
+      params: { include_done: includeDone },
+    });
     return response.data;
   }
 

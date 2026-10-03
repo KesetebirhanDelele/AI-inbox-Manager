@@ -89,6 +89,22 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
 - **Where Rob approves:** Review > Inbox tab (draft subject/body, "Approve & Send", "Edit"/"Save & Send"). The Approvals tab is the separate low-confidence
   classification review. Note: until escalation is enabled, "Approve & Send" sends ONE real email to the student.
 
+### 2026-10-03: Rob's approval screen ("Review > Student notifications") and the email authenticity check
+- **Why (Kes):** Rob could not see the draft, the student's contact details or any Approve button where he was looking (the old panel only existed for
+  emails with a matched student), and nothing told him whether an "interview" email was a real invitation or a job-board mailer (4 of the 8 drafts were
+  from Job-Assist-Now). Rob must be able to judge that before approving.
+- **Built:** `execution/email_authenticity.py` (deterministic, advisory: looks_genuine / needs_check / likely_job_board, with readable reasons for and
+  against: click-tracking links, job-board phrases, generic mailbox on a jobs domain, reference codes vs a named sender at the company's own domain,
+  a concrete date/time, a meeting link), `GET /api/notifications/review-queue` (one item per interview event: student + phone/email, interview
+  facts, source email excerpt, the check, draft, preview of the call/text/email, blockers and warnings, what Approve will do, follow-up status),
+  and the frontend `NotificationQueue` as the FIRST tab of Review ("Student notifications"; old Approvals tab renamed "Classification review").
+  Approve needs a second confirmation that states exactly what will happen; Reject asks for a reason. Events with no student are listed as
+  "Student not identified" with Approve disabled, so nothing hides. Advisory only: a job-board warning never blocks Rob.
+- **Limits:** the check reads only the stored first 500 characters of each email (the note says so); previews of the text/call are shown but those
+  channels are still off, and until escalation is enabled Approve sends ONE real email. Edit is still on the Inbox tab. Tests: 746 root, 199 dashboard.
+- **Not done:** widen the body-name finder for "Name, ..." openings (it missed "Sehrish, you asked to be considered"), assign-a-student action for unmatched
+  events, dashboard tile clean-up (analysis given to Kes, awaiting his choice), checklist wording ("via personal email").
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

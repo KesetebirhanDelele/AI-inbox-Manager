@@ -20,8 +20,11 @@ from datetime import datetime
 
 from database import get_db
 from auth import get_current_user
+from types import SimpleNamespace
+
 from models import (
     NotificationDraft,
+    NotificationSequence,
     InterviewEvent,
     Student,
     Email,
@@ -301,6 +304,132 @@ async def get_sent_notifications(
         _build_notification_summary(draft, event, student)
         for draft, event, student in results
     ]
+
+
+def _execution_module(name: str):
+    exec_dir = str(Path(__file__).resolve().parents[4] / "execution")
+    if exec_dir not in sys.path:
+        sys.path.insert(0, exec_dir)
+    return __import__(name)
+
+
+@router.get("/review-queue")
+async def get_review_queue(
+    include_done: bool = Query(False, description="also list notices already sent or rejected"),
+    limit: int = Query(100, ge=1, le=300),
+    db: Session = Depends(get_db),
+    user: UserSession = Depends(get_current_user),
+):
+    """
+    Everything Rob needs to approve or reject a student notification on ONE screen.
+
+    One item per interview event: the student and how to reach them, the interview facts, the source email with an
+    advisory authenticity check (genuine interview or job-board mailer), the draft, a preview of what the student will
+    receive, and the reasons Approve is blocked (blockers) or worth a second look (warnings). Events with no draft
+    (the student could not be identified) are listed too, with the reason, so nothing hides.
+    """
+    authenticity = _execution_module("email_authenticity")
+    nc = _execution_module("notify_channels")
+    escalation_on = _escalation_enabled()
+
+    rows = (
+        db.query(InterviewEvent, NotificationDraft, Student, Email)
+        .outerjoin(NotificationDraft, NotificationDraft.interview_event_id == InterviewEvent.id)
+        .outerjoin(Student, InterviewEvent.student_id == Student.id)
+        .outerjoin(Email, InterviewEvent.email_id == Email.id)
+        .order_by(desc(Email.received_date), desc(InterviewEvent.id))
+        .limit(limit * 3)
+        .all()
+    )
+
+    items = []
+    for event, draft, student, email in rows:
+        status_ = draft.email_status if draft else None
+        if status_ in ("sent", "rejected") and not include_done:
+            continue
+        blockers, warnings = [], []
+        if student is None:
+            blockers.append("No student identified for this email, so there is nobody to notify. Check the email and the student list.")
+        elif not (student.phone_number or student.personal_email or student.assigned_gmail):
+            blockers.append("No phone, email or Gmail on file for this student: nothing can be sent. Add their contact details first.")
+        else:
+            if not (student.phone_number or "").strip():
+                warnings.append("No phone number on file: the call and text will rely on the student's GHL contact having one.")
+            if not ((student.personal_email or "").strip() or (student.assigned_gmail or "").strip()):
+                warnings.append("No email on file for the student: the GHL contact is found by phone only.")
+        if draft is not None and not (draft.recipient_email or "").strip():
+            warnings.append("The draft has no recipient email.")
+
+        check = authenticity.assess(
+            email.subject if email else "", email.from_address if email else "",
+            (email.body_preview if email else "") or "", event.company_name)
+        if check["verdict"] == "likely_job_board":
+            warnings.insert(0, "This looks like a job-board mailer, not a real interview invitation. Please read the email before approving.")
+
+        if draft is None:
+            state = "needs_student" if student is None else "no_draft"
+            if student is not None:
+                blockers.append("No draft was created for this email.")
+        elif status_ == "draft":
+            state = "blocked" if blockers else "ready"
+        else:
+            state = status_ or "unknown"
+
+        preview = None
+        if draft is not None and student is not None:
+            ctx = nc.SendContext(attempt=SimpleNamespace(step="start"), sequence=SimpleNamespace(id="#"), draft=draft,
+                                 event=event, student=student, ack_url="", now=datetime.utcnow())
+            preview = {
+                "call": nc.call_script(ctx).replace(" Reference: #.", ""),
+                "text": nc.sms_text(ctx).replace(" Ref #", ""),
+                "email_subject": draft.email_subject,
+            }
+
+        sequence = None
+        if draft is not None:
+            seq = db.query(NotificationSequence).filter(NotificationSequence.draft_id == draft.id).first()
+            if seq is not None:
+                sequence = {"status": seq.status, "started_at": seq.started_at, "ack_channel": seq.ack_channel}
+
+        items.append({
+            "event_id": event.id,
+            "draft_id": draft.id if draft else None,
+            "state": state,
+            "blockers": blockers,
+            "warnings": warnings,
+            "can_approve": state == "ready",
+            "will_happen": ("Starts a call, a text and an email to the student, then follows up until they confirm."
+                            if escalation_on else
+                            "Sends one email to the student now. The call and text are not switched on yet."),
+            "student": None if student is None else {
+                "id": student.id, "name": student.full_name, "username": student.username,
+                "personal_email": student.personal_email, "assigned_gmail": student.assigned_gmail,
+                "phone": student.phone_number,
+            },
+            "interview": {
+                "type": event.sub_type, "company": event.company_name, "position": event.position_title,
+                "date": event.interview_date, "time": event.interview_time, "timezone": event.interview_timezone,
+                "format": event.interview_format, "contact_name": event.contact_name,
+                "contact_email": event.contact_email, "confidence": event.confidence,
+            },
+            "email": None if email is None else {
+                "id": email.id, "subject": email.subject, "from_address": email.from_address,
+                "received_date": email.received_date, "excerpt": email.body_preview or "",
+            },
+            "authenticity": check,
+            "draft": None if draft is None else {
+                "subject": draft.email_subject, "body": draft.email_body,
+                "recipient_email": draft.recipient_email, "status": draft.email_status,
+            },
+            "preview": preview,
+            "sequence": sequence,
+        })
+        if len(items) >= limit:
+            break
+
+    order = {"ready": 0, "blocked": 1, "needs_student": 2, "no_draft": 3}
+    items.sort(key=lambda i: order.get(i["state"], 4))
+    return {"escalation_enabled": escalation_on, "count": len(items), "items": items}
 
 
 @router.get("/{notification_id}", response_model=NotificationDetail)
