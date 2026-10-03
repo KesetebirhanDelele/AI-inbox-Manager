@@ -711,6 +711,8 @@ Render (see `progress.md` open item 5).
 
 ## 16. Changelog (infra / architecture only)
 
+- **2026-10-03 (this fork)** — Reminder, not a change: frontend edits (anything under `services/dashboard/frontend/`) only reach users when the deploy is
+  run with `scripts/deploy_hetzner.sh --build-web`; a plain deploy updates the API and leaves the old screens in the `web` container.
 - **2026-10-02 (this fork)** — Student notification escalation (call + text + email via GHL) built and deployed OFF; new tables
   `notification_sequences`, `notification_attempts`, `reply_analyses`, `notification_inbound`, `notification_opt_outs` (all new-table-only,
   created by `create_all`). No new host jobs yet: the 5-minute `execution/notification_tick.py` cron is NOT installed. See

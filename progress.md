@@ -105,6 +105,14 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
 - **Not done:** widen the body-name finder for "Name, ..." openings (it missed "Sehrish, you asked to be considered"), assign-a-student action for unmatched
   events, dashboard tile clean-up (analysis given to Kes, awaiting his choice), checklist wording ("via personal email").
 
+### 2026-10-03 (later): dashboard decision, and the frontend deploy lesson
+- **Kes's call on the dashboard tiles:** keep Upcoming Interviews This Week, Offers Received, This Week, Avg Duration, Failure Rate, AI Cost, Database Storage and
+  Emails Processed Today. Only change made: the "Students Not Yet Notified" table is replaced by one banner, "Student notifications: needs your
+  decision (N ready, M need fixing)", linking to Review > Student notifications. "Recent Interview Requests" left untouched (not discussed).
+- **LESSON (cost Kes a wasted check):** `scripts/deploy_hetzner.sh` rebuilds the web image ONLY with `--build-web`. A frontend change deployed without it
+  updates the API but the browser keeps the old screens. Any change under `services/dashboard/frontend/` must be deployed with `--build-web`
+  (outside the :00-:11 window of even UTC hours), then check the bundle on the server. Added to RUNBOOK.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

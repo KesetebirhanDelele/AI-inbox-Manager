@@ -70,7 +70,7 @@ const DashboardPage = () => {
       queryClient.invalidateQueries({ queryKey: ['offers'] });
       queryClient.invalidateQueries({ queryKey: ['todayEmails'] });
       queryClient.invalidateQueries({ queryKey: ['upcomingInterviews'] });
-      queryClient.invalidateQueries({ queryKey: ['missedNotifications'] });
+      queryClient.invalidateQueries({ queryKey: ['reviewQueue'] });
       queryClient.invalidateQueries({ queryKey: ['inboxCount'] });
       queryClient.invalidateQueries({ queryKey: ['engineeringKPIs'] });
       setTimeout(() => setRunResult(null), 8000);
@@ -157,12 +157,16 @@ const DashboardPage = () => {
     refetchInterval: 5 * 60 * 1000,
   });
 
-  const { data: missedNotifications, isLoading: missedLoading } = useQuery({
-    queryKey: ['missedNotifications'],
-    queryFn: () => apiClient.getMissedInterviews(),
+  const { data: reviewQueue, isLoading: queueLoading } = useQuery({
+    queryKey: ['reviewQueue', false],
+    queryFn: () => apiClient.getReviewQueue(false),
     staleTime: 0,
     refetchOnMount: 'always',
   });
+  const queueReady = reviewQueue ? reviewQueue.items.filter((i) => i.state === 'ready').length : 0;
+  const queueFix = reviewQueue
+    ? reviewQueue.items.filter((i) => ['blocked', 'needs_student', 'no_draft'].includes(i.state)).length
+    : 0;
 
 
 
@@ -763,60 +767,23 @@ const DashboardPage = () => {
       </div>
       )}
 
-      {/* Students Not Yet Notified */}
-      {(missedLoading || (missedNotifications && missedNotifications.length > 0)) && (
-        <div className="bg-white shadow rounded-lg overflow-hidden border-l-4 border-orange-400">
-          <div className="bg-orange-50 px-6 py-3 flex items-center gap-2">
-            <svg className="h-5 w-5 text-orange-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            <h2 className="text-base font-bold text-orange-800">
-              Students Not Yet Notified
-              {!missedLoading && missedNotifications && (
-                <span className="ml-2 px-2 py-0.5 bg-orange-200 text-orange-900 text-xs rounded-full">{missedNotifications.length}</span>
-              )}
-            </h2>
+      {/* Needs your decision: replaces the old "Students Not Yet Notified" table; the details live in Review */}
+      <Link
+        to="/review"
+        className="block bg-white shadow rounded-lg overflow-hidden border-l-4 border-blue-500 hover:bg-blue-50 transition-colors"
+      >
+        <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-gray-800">Student notifications: needs your decision</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {queueLoading || !reviewQueue
+                ? 'Loading...'
+                : `${queueReady} ready to approve or reject, ${queueFix} need fixing first (no student matched, or no way to reach them).`}
+            </p>
           </div>
-          <div className="px-4 py-5 sm:p-6">
-            {missedLoading ? (
-              <div className="space-y-2 py-2">
-                {[...Array(3)].map((_, i) => <Skel key={i} w="w-full" h="h-8" />)}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Student</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Position</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Received</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {(missedNotifications ?? []).map((item: any, idx: number) => (
-                      <tr key={item.email_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-orange-50'}>
-                        <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{item.student_name || '—'}</td>
-                        <td className="px-3 py-2 text-gray-700 max-w-[160px] truncate" title={item.company_name}>{item.company_name || '—'}</td>
-                        <td className="px-3 py-2 text-gray-600 max-w-[160px] truncate" title={item.position}>{item.position || '—'}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
-                          {item.received_date ? formatDateCST(item.received_date) : '—'}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span className="px-2 py-0.5 text-xs font-medium rounded bg-orange-100 text-orange-800">
-                            {item.notification_status === 'not_created' ? 'Not created' : item.notification_status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <span className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium">Open the approval screen</span>
         </div>
-      )}
+      </Link>
 
       {/* Emails Processed Today — hidden when empty */}
       {(todayEmailsLoading || (todayEmails && todayEmails.length > 0)) && (
