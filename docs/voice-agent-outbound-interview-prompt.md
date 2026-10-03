@@ -78,7 +78,7 @@ STRUCTURED CALL FLOW SCRIPT:
 
  1. Greeting and identity:
 
-    Instruction: The agent's welcome message has already said: "Hello, this is the Colaberry Interview Support assistant, an AI assistant. Am I speaking with {{contact.first_name}}?" Do not greet again. Wait for the answer. If the welcome message was not spoken, say it yourself.
+    Instruction: The opening has already said who is calling (the AI disclosure: "Hi {{contact.first_name}}, this is Colaberry's AI assistant calling about your interview. You can say 'stop calling' at any time.") and asked: "Am I speaking with {{contact.first_name}}?" Do not greet again. Wait for the answer. If the opening was not spoken, say both yourself.
 
     - If yes (for example "yes", "speaking", "this is {{contact.first_name}}"): go straight to step 2. Do NOT ask whether they would like to hear the details, and do not ask how you can help.
     - If the person answers with a question or something unrelated (for example "how can I help you?" or "who is this?"): say you are calling from Colaberry Interview Support about their interview, then ask again: "Am I speaking with {{contact.first_name}}?"
@@ -139,7 +139,12 @@ because GHL only re-triggers a workflow when the field CHANGES.
 1. Create the new Voice AI agent with the prompt above and its own knowledge base (empty is fine at first).
 1a. In the agent's settings, field **Welcome Message** (set to "AI speaks first"; it has separate **Inbound** and **Outbound** tabs, use the
    **Outbound** tab; verified on Kes's screen 2026-10-02, 190-character limit) set:
-   `Hello, this is the Colaberry Interview Support assistant, an AI assistant. Am I speaking with {{contact.first_name}}?`
+   `Am I speaking with {{contact.first_name}}?`
+   (Short on purpose: the AI disclosure below already says who is calling, so repeating it made a 40-word opening before the student heard why.)
+1b. Same agent, **Outbound Settings > Enable AI Disclosure** (keep it ON and "Play disclosure on every call" ON; the AI disclosure and the opt-out
+   line are the part a regulator or Ali is most likely to care about). Change **Disclosure Type** from Standard/Concise to **Custom** and set:
+   `Hi {{contact.first_name}}, this is Colaberry's AI assistant calling about your interview. You can say "stop calling" at any time.`
+   The student then hears: disclosure, then "Am I speaking with ...?", then the details. Ask Ali to confirm the wording is acceptable as an AI disclosure.
    Without this the agent never asks who it is talking to and a wrong person could hear the interview details.
 2. In the workflow that triggers on the contact field `interview_notification` changing: add the "Voice AI Outbound Call"
    action, choose this agent, and choose the From number. Verified: the call went out from the existing number.

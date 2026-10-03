@@ -47,6 +47,8 @@ The detail below is in the order the work happened; this block is the summary.
   gets interview callbacks and within what time (question 4 in the draft email). Kes asked to be REMINDED after Ali responds: then update the
   receptionist prompt with the named owner/time and run test 1.9 of `docs/test-plan-student-notifications.md`.
 
+- Opening shortened (Kes found the GHL default disclosure + our greeting off-putting): Outbound AI Disclosure set to Custom ("Hi <first>, this is Colaberry's AI assistant calling about your interview. You can say 'stop calling' at any time."), Welcome Message reduced to "Am I speaking with <first>?"; prompt step 1 and checklist 1a/1b updated. Needs Ali's OK on the disclosure wording; re-test stage 1.1.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED
