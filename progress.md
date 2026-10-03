@@ -65,6 +65,19 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
 
 **Use cases page** updated and republished (artifact version 4, same link; tracked copy `docs/use-cases.html`): UC16 now Partial with live-call evidence, new stories 14.8, 14.9, 15.8, 16.8, 16.9, 17.5-17.7, summary now 7 working / 5 partial / 5 built-off.
 
+### 2026-10-03: email-first GHL contact lookup, and Rob told when a student cannot be reached
+- **Why (Kes):** the interview notice identifies a student by email, so email should be the normal way to find the GHL contact; phone was
+  only my build assumption (exact-phone match was my safe default). Live check (read-only, counts only, 2026-10-03): 7 students in the
+  table, only 2 with a phone, 4 with a personal email, 3 with neither; GHL found by PHONE for the 2 that have one, but searching by our
+  stored personal email found NO contact for any of the 4 emails: for both phone-matched students GHL holds a DIFFERENT gmail address than
+  ours, and for one of them the GHL contact's first name differs from the student's. So the data in the two systems disagrees and must be
+  cleaned; email-first today would reach nobody, which is exactly why Rob must be told.
+- **Built:** `find_ghl_contact()` (personal email, assigned Gmail, then phone; identifiers must agree; phone-only match needs the same first
+  name), `UNREACHABLE:` attempt details, `RobAlerts.cannot_reach` (once per sequence; immediately when nothing is on file),
+  `start_sequence` keeps call/text attempts for any student that can be found by email, new tests (740 root pass, 191 dashboard).
+- **Open:** reconcile student emails/phones between our table and GHL (Rob/Kes); student matching of interview events (3 of 5 no student);
+  time zone should come from the GHL contact's phone when ours is missing.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

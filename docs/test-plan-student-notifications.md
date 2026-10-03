@@ -14,6 +14,15 @@ Legend: **Who** = Kes does it by hand / Claude runs it. **Evidence** = what to p
 | 0.2 | Test contact is clean | Kes's GHL contact: phone set, no DND, no `do not call` tag | `ghl_test_call.py --email <kes>` dry run says "DND/opt-out check passed" |
 | 0.3 | Time window | Calls only 8 AM-8 PM in the contact's zone; one call per number per day | Plan call tests for different days or accept one per day |
 
+## 0b. Finding the contact (do before stage 5)
+
+| # | Check | How | Pass |
+|---|---|---|---|
+| 0b.1 | Email-first lookup | Test student record with Kes's personal email only (no phone) | `[GHL shadow]` log shows the contact found by email; a call/text attempt is NOT skipped |
+| 0b.2 | Unmatched email | Student record with an email that is not in GHL | Attempt fails with `UNREACHABLE:`; Rob gets ONE "Cannot reach" email |
+| 0b.3 | Nothing on file | Student with no email, Gmail or phone | Rob gets the alert on the first tick; every attempt skipped |
+| 0b.4 | Name check | Student whose phone matches a GHL contact with a different first name | Attempt fails with "different first name"; nothing is written |
+
 ## 1. Voice call (outbound agent)
 
 Command: `python execution/ghl_test_call.py --email <kes> --send` then `--readback`. One call per number per day.

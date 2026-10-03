@@ -166,6 +166,16 @@ first answer right after the agent's question "Can you confirm you got this info
 details were given ("would you like to hear the details?") never counts. Anything else goes to the normal reading (AI, shadow).
 The agent prompt must keep the phrase "confirm you got" (`CONFIRM_QUESTION_MARKER`).
 
+**Finding the student's GHL contact: email first (2026-10-03).** The interview notice identifies a student by email, so
+`notify_channels.find_ghl_contact()` looks the contact up by the student's personal email, then assigned Gmail, then (fallback) phone, and
+all identifiers must agree: two different contacts = refused, never guessed. A contact found ONLY by phone must have a first name that
+agrees with the student's (prefix match, blank GHL name allowed). Calls and texts use the phone GHL holds on the contact, so a student
+with no phone in our table can still be called if their GHL contact has one. When no contact is found, the contact has no phone (call/text)
+or no email (email), or the identifiers disagree, the attempt FAILS with a detail starting `UNREACHABLE:` and **Rob is emailed once**
+("Cannot reach <student>: their contact details need fixing", a student may have changed their email, update the record or GHL). A student
+with nothing on file at all gets that alert on the first tick. Known limit: the quiet-hours time zone is still worked out from OUR phone
+(Central fallback), not from the GHL contact's phone.
+
 **The app remembers STOP itself (2026-10-02).** A STOP text or a spoken stop writes a row in `notification_opt_outs` (phone last 10
 digits + channel: sms | call | email). `GhlChannel.send` checks it before every send, in addition to GHL Do-Not-Disturb and the
 opt-out tags, so the request holds even if GHL is never updated. Per channel: a stopped call does not stop texts. Clearing an

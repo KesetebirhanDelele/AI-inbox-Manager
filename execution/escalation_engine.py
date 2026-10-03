@@ -66,7 +66,10 @@ def start_sequence(db, draft, student, now: datetime, started_by: Optional[str] 
     db.flush()
 
     has_phone = len("".join(ch for ch in (phone or "") if ch.isdigit())) >= 10
-    has_email = bool((draft.recipient_email or "").strip())
+    # Our record may lack a phone while the student's GHL contact has one (the contact is found by email), so a
+    # student with ANY way to be found (phone, personal email or assigned Gmail) keeps their call and text attempts.
+    can_be_found = has_phone or bool((getattr(student, "personal_email", None) or "").strip())         or bool((getattr(student, "assigned_gmail", None) or "").strip())
+    has_email = bool((draft.recipient_email or "").strip()) or can_be_found
     for planned in sched.build_plan(now, tz_name):
         attempt = M.NotificationAttempt(
             sequence_id=seq.id,
@@ -76,10 +79,10 @@ def start_sequence(db, draft, student, now: datetime, started_by: Optional[str] 
             scheduled_for=sched.scheduled_time(planned, tz_name),
             status="pending",
         )
-        if planned.channel in PHONE_CHANNELS and not has_phone:
-            attempt.status, attempt.detail = "skipped", "student has no phone number"
+        if planned.channel in PHONE_CHANNELS and not can_be_found:
+            attempt.status, attempt.detail = "skipped", "student has no phone number, email or Gmail on file"
         elif planned.channel == "email" and not has_email:
-            attempt.status, attempt.detail = "skipped", "draft has no recipient email"
+            attempt.status, attempt.detail = "skipped", "student has no email address on file (the draft has no recipient email)"
         db.add(attempt)
     db.commit()
     return seq
@@ -168,6 +171,14 @@ class RobAlerts:
         return self._notify(
             f"Follow-ups ended: {student_name} never acknowledged",
             f"The automated sequence for {student_name} has ended with no acknowledgement. Please contact them directly.")
+
+    def cannot_reach(self, seq, student_name: str, reason: str) -> bool:
+        return self._notify(
+            f"Cannot reach {student_name}: their contact details need fixing",
+            f"The interview notice for {student_name} could not be delivered: {reason}. "
+            f"A student may have changed their email or phone number, so please check the student record and their "
+            f"GHL contact and fix whichever is out of date. Until then nothing reaches them automatically, so please "
+            f"contact them yourself.")
 
     def student_reply(self, seq, student_name: str, text: str, outcome: str) -> bool:
         return self._notify(
@@ -293,6 +304,17 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RobAlerts
             else:
                 report.failed += 1
                 report.details.append(f"seq {seq.id} {attempt.channel}/{attempt.step}: {result.detail}")
+                if (result.detail or "").startswith(nc.UNREACHABLE) and not any(
+                        o is not attempt and (o.detail or "").startswith(nc.UNREACHABLE) for o in seq.attempts):
+                    alerts.cannot_reach(seq, _student_name(db, seq), result.detail[len(nc.UNREACHABLE):])
+
+        if seq.rob_day1_alert_at is None and seq.attempts and all(
+                a.status == "skipped" and (a.detail or "").startswith("student has no") for a in seq.attempts):
+            # nothing can ever be sent: tell Rob now (once), do not wait days for the "ended" alert
+            alerts.cannot_reach(seq, _student_name(db, seq), "there is no email, phone number or Gmail on file")
+            seq.rob_day1_alert_at = now
+            db.commit()
+            report.rob_no_response += 1
 
         if seq.rob_day1_alert_at is None and now >= sched.rob_no_response_due(seq.started_at):
             alerts.no_response(seq, _student_name(db, seq))

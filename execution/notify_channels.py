@@ -54,6 +54,9 @@ class SendContext:
     db: Any = None          # session, used by the text budget
 
 
+UNREACHABLE = "UNREACHABLE: "     # prefix on a failed attempt's detail when only a human can fix it (tells Rob once)
+
+
 @dataclass
 class ChannelResult:
     status: str             # sent | dry_run | failed | skipped | deferred
@@ -276,11 +279,66 @@ def opted_out_in_app(db, phone_e164: str, channel: str) -> bool:
     return db.query(models.NotificationOptOut).filter_by(phone_tail=tail, channel=channel).first() is not None
 
 
+def _first_names_agree(student_name: Optional[str], ghl_first_name: Optional[str]) -> bool:
+    """True when either name is missing, or one first name starts with the other (Rob / Robert)."""
+    a = (student_name or "").strip().split()
+    b = (ghl_first_name or "").strip().split()
+    if not a or not b:
+        return True
+    x, y = a[0].lower(), b[0].lower()
+    return x.startswith(y) or y.startswith(x)
+
+
+def find_ghl_contact(client: "ghl_client.GhlClient", student: Any) -> tuple:
+    """
+    The student's GHL contact, as (contact, how, problem). Exactly one of contact / problem is set.
+
+    The interview notice identifies a student by email, so email is the normal way in: the student's personal email,
+    then their assigned Gmail, then (fallback) their phone number. Every identifier we hold is tried and they must all
+    agree: two different contacts is ambiguous and is refused, never guessed. A contact found ONLY by phone must also
+    have a first name that agrees with the student's, so details cannot reach someone who shares or inherited a number.
+    A problem means a human has to fix the data (a student may have changed their email and GHL needs updating).
+    """
+    emails = []
+    for attr in ("personal_email", "assigned_gmail"):
+        value = (getattr(student, attr, None) or "").strip()
+        if value and value.lower() not in emails:
+            emails.append(value.lower())
+    phone = to_e164(getattr(student, "phone_number", None))
+    if not emails and phone is None:
+        return None, "", "no email or phone number on file for this student"
+
+    found: Dict[str, Any] = {}      # contact id -> contact
+    how: Dict[str, list] = {}       # contact id -> [how it was found]
+    for email in emails:
+        contact = client.search_contact_by_email(email)
+        if contact:
+            found[contact["id"]] = contact
+            how.setdefault(contact["id"], []).append("email")
+    if phone is not None:
+        contact = client.search_contact_by_phone(phone)
+        if contact:
+            found[contact["id"]] = contact
+            how.setdefault(contact["id"], []).append("phone")
+
+    if not found:
+        tried = " and ".join(x for x in ("email" if emails else "", "phone" if phone else "") if x)
+        return None, "", (f"no GHL contact matches this student's {tried}; the student may have changed their "
+                          f"email or phone, so GHL or the student record needs updating")
+    if len(found) > 1:
+        return None, "", "this student's email and phone point to different GHL contacts; refusing to guess which"
+    contact_id, contact = next(iter(found.items()))
+    if how[contact_id] == ["phone"] and not _first_names_agree(getattr(student, "full_name", None), contact.get("firstName")):
+        return None, "", ("the GHL contact found by phone has a different first name than the student; "
+                          "please check it is the right person")
+    return contact, "+".join(how[contact_id]), ""
+
+
 class GhlChannel:
     """
     Hands one attempt to GHL by writing the right field on the student's contact.
 
-    Order of checks (nothing is written unless all pass): usable phone -> contact exists in GHL ->
+    Order of checks (nothing is written unless all pass): contact found in GHL by email, then phone (find_ghl_contact) ->
     not opted out (Do-Not-Disturb, tags) -> for texts, the content and daily-budget gate -> write.
     A student with no GHL contact is a FAILED attempt, not a quiet skip: that student cannot be
     reached, which is exactly the blind spot this system exists to remove.
@@ -303,10 +361,7 @@ class GhlChannel:
     def send(self, ctx: SendContext) -> ChannelResult:
         cfg = self.client.config
         phone = to_e164(getattr(ctx.student, "phone_number", None))
-        if phone is None:
-            return ChannelResult(FAILED, detail="student has no usable phone number to find the GHL contact")
-
-        if opted_out_in_app(ctx.db, phone, self.name):
+        if phone is not None and opted_out_in_app(ctx.db, phone, self.name):
             return ChannelResult(SKIPPED, detail=f"not contacted: the student asked us to stop ({self.name})")
 
         updates = self._updates(ctx)
@@ -326,16 +381,22 @@ class GhlChannel:
                                  segments=segments)
 
         try:
-            contact = self.client.search_contact_by_phone(phone)
+            contact, _how, problem = find_ghl_contact(self.client, ctx.student)
         except ghl_client.GhlError as exc:
             return ChannelResult(FAILED, detail=f"GHL contact lookup failed: {exc}")
-        if not contact:
-            return ChannelResult(FAILED, detail="no GHL contact found for this student's phone number")
-
+        if problem:
+            return ChannelResult(FAILED, detail=UNREACHABLE + problem)
         channel_key = {"email": "email", "sms": "sms", "call": "call"}[self.name]
         reason = ghl_client.block_reason(contact, channel_key, cfg.block_tags)
         if reason:
             return ChannelResult(SKIPPED, detail=f"not contacted: {reason}")
+        contact_phone = to_e164(contact.get("phone"))
+        if contact_phone is not None and opted_out_in_app(ctx.db, contact_phone, self.name):
+            return ChannelResult(SKIPPED, detail=f"not contacted: the student asked us to stop ({self.name})")
+        if self.name in ("call", "sms") and contact_phone is None:
+            return ChannelResult(FAILED, detail=UNREACHABLE + "the student's GHL contact has no usable phone number for a call or text")
+        if self.name == "email" and not str(contact.get("email") or "").strip():
+            return ChannelResult(FAILED, detail=UNREACHABLE + "the student's GHL contact has no email address")
 
         if self.name == "sms" and cfg.is_live:
             cap = sms_daily_cap(self._env)

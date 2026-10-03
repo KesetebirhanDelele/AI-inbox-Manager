@@ -18,19 +18,27 @@ NOW = datetime(2026, 10, 5, 20, 0)
 
 class FakeGhl:
     """Stands in for GhlClient: same config, scripted contact, records writes."""
-    def __init__(self, contact=None, live=False, creds=True, lookup_error=None, write_error=None):
+    def __init__(self, contact=None, live=False, creds=True, lookup_error=None, write_error=None, by_email=None):
         self.config = gc.GhlConfig(
             api_key="tok" if creds else "", location_id="loc" if creds else "",
             write_mode="live" if live else "shadow", shadow_log_only=not live, write_notify_fields=live)
-        self.contact = {"id": "contact-1"} if contact is None else contact
+        self.contact = ({"id": "contact-1", "phone": "+19725550100", "email": "s@example.com", "firstName": "Test"}
+                        if contact is None else contact)
+        self.by_email = by_email                      # {email: contact} for the email-first lookup
         self.lookup_error, self.write_error = lookup_error, write_error
-        self.lookups, self.writes = [], []
+        self.lookups, self.writes, self.email_lookups = [], [], []
 
     def search_contact_by_phone(self, phone):
         self.lookups.append(phone)
         if self.lookup_error:
             raise self.lookup_error
         return self.contact or None
+
+    def search_contact_by_email(self, email):
+        self.email_lookups.append(email)
+        if self.lookup_error:
+            raise self.lookup_error
+        return (self.by_email or {}).get(email.lower())
 
     def write_fields(self, contact_id, updates):
         if self.write_error:
@@ -153,7 +161,7 @@ def test_no_usable_phone_is_a_failure_that_can_be_seen():
 def test_a_student_with_no_ghl_contact_fails_loudly_instead_of_skipping_quietly():
     g = FakeGhl(contact={}, live=True)
     r = channel("call", g).send(ctx())
-    assert r.status == nc.FAILED and "no GHL contact" in r.detail and g.writes == []
+    assert r.status == nc.FAILED and "no GHL contact" in r.detail and r.detail.startswith(nc.UNREACHABLE) and g.writes == []
 
 
 @pytest.mark.parametrize("contact, kind, blocked", [
@@ -165,6 +173,7 @@ def test_a_student_with_no_ghl_contact_fails_loudly_instead_of_skipping_quietly(
     ({"id": "c", "dnd": True}, "email", True),
 ])
 def test_opted_out_contacts_are_skipped_and_nothing_is_written(contact, kind, blocked):
+    contact = {"phone": "+19725550100", "email": "s@example.com", "firstName": "Test", **contact}
     g = FakeGhl(contact=contact, live=True)
     r = channel(kind, g).send(ctx())
     assert (r.status == nc.SKIPPED) is blocked
@@ -193,7 +202,7 @@ def test_live_without_credentials_is_a_failure():
 def test_shadow_with_credentials_rehearses_the_lookup_and_checks_but_is_dry_run():
     g = FakeGhl(live=False)
     r = channel("call", g).send(ctx())
-    assert r.status == nc.DRY_RUN and g.lookups == ["+19725550100"]
+    assert r.status == nc.DRY_RUN and g.lookups == ["+19725550100"] and g.email_lookups == []
     assert channel("call", FakeGhl(contact={"id": "c", "tags": ["do not call"]}, live=False)).send(ctx()).status == nc.SKIPPED
 
 
@@ -338,3 +347,75 @@ def test_the_channel_skips_a_student_who_asked_us_to_stop_and_makes_no_ghl_call(
     assert r.status == nc.SKIPPED and "asked us to stop" in r.detail
     assert g.lookups == [] and g.writes == []
     assert channel("email", g).send(c).status == nc.SENT          # only the call channel was opted out
+
+
+# ── email-first contact lookup ────────────────────────────────────────────────────────────────
+def student(**kw):
+    base = dict(full_name="Test Student", phone_number=None, personal_email=None, assigned_gmail=None)
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def with_student(c, **kw):
+    c.student = student(**kw)
+    return c
+
+
+def test_a_student_is_found_by_email_first_even_with_no_phone_on_our_side():
+    contact = {"id": "e1", "phone": "+15551230000", "email": "t@example.com", "firstName": "Test"}
+    g = FakeGhl(live=True, by_email={"t@example.com": contact})
+    r = channel("call", g).send(with_student(ctx(), personal_email="T@Example.com"))
+    assert r.status == nc.SENT and g.writes[0][0] == "e1" and g.lookups == []      # no phone to search with
+
+
+def test_the_assigned_gmail_is_tried_when_the_personal_email_finds_nothing():
+    contact = {"id": "e2", "phone": "+15551230000", "email": "g@example.com", "firstName": "Test"}
+    g = FakeGhl(live=True, by_email={"g@example.com": contact})
+    r = channel("sms", g).send(with_student(ctx(), personal_email="old@example.com", assigned_gmail="g@example.com"))
+    assert r.status == nc.SENT and g.email_lookups == ["old@example.com", "g@example.com"]
+
+
+def test_email_and_phone_agreeing_on_one_contact_is_fine():
+    contact = {"id": "contact-1", "phone": "+19725550100", "email": "t@example.com", "firstName": "Test"}
+    g = FakeGhl(contact=contact, live=True, by_email={"t@example.com": contact})
+    assert channel("email", g).send(with_student(ctx(), personal_email="t@example.com", phone_number="(972) 555-0100")).status == nc.SENT
+
+
+def test_email_and_phone_pointing_at_different_contacts_is_refused_not_guessed():
+    other = {"id": "other", "phone": "+15559999999", "email": "t@example.com", "firstName": "Test"}
+    g = FakeGhl(live=True, by_email={"t@example.com": other})        # the phone search finds contact-1
+    r = channel("call", g).send(with_student(ctx(), personal_email="t@example.com", phone_number="(972) 555-0100"))
+    assert r.status == nc.FAILED and r.detail.startswith(nc.UNREACHABLE) and "different GHL contacts" in r.detail and g.writes == []
+
+
+def test_a_contact_found_only_by_phone_must_have_the_same_first_name():
+    c = {"id": "p1", "phone": "+19725550100", "email": "x@example.com", "firstName": "Someone"}
+    g = FakeGhl(contact=c, live=True)
+    r = channel("call", g).send(with_student(ctx(), full_name="Alisha Khan", phone_number="(972) 555-0100"))
+    assert r.status == nc.FAILED and "different first name" in r.detail and g.writes == []
+    # nickname-style prefix and a blank GHL name are accepted
+    assert channel("call", FakeGhl(contact=dict(c, firstName="Ali"), live=True)).send(
+        with_student(ctx(), full_name="Alisha Khan", phone_number="(972) 555-0100")).status == nc.SENT
+    assert channel("call", FakeGhl(contact=dict(c, firstName=""), live=True)).send(
+        with_student(ctx(), full_name="Alisha Khan", phone_number="(972) 555-0100")).status == nc.SENT
+
+
+def test_nothing_found_by_email_or_phone_tells_a_human_what_to_fix():
+    g = FakeGhl(contact={}, live=True)
+    r = channel("email", g).send(with_student(ctx(), personal_email="gone@example.com", phone_number="(972) 555-0100"))
+    assert r.status == nc.FAILED and r.detail.startswith(nc.UNREACHABLE) and "changed their email or phone" in r.detail
+
+
+def test_a_student_with_no_email_gmail_or_phone_is_unreachable_without_calling_ghl():
+    g = FakeGhl(live=True)
+    r = channel("call", g).send(with_student(ctx(), phone_number=None))
+    assert r.status == nc.FAILED and "no email or phone number on file" in r.detail
+    assert g.lookups == [] and g.email_lookups == [] and g.writes == []
+
+
+def test_a_found_contact_with_no_phone_cannot_take_a_call_or_text_but_can_take_an_email():
+    c = {"id": "e3", "email": "t@example.com", "firstName": "Test"}
+    g = FakeGhl(live=True, by_email={"t@example.com": c})
+    assert channel("call", g).send(with_student(ctx(), personal_email="t@example.com")).detail.startswith(nc.UNREACHABLE)
+    assert channel("sms", g).send(with_student(ctx(), personal_email="t@example.com")).status == nc.FAILED
+    assert channel("email", g).send(with_student(ctx(), personal_email="t@example.com")).status == nc.SENT

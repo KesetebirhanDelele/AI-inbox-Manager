@@ -382,3 +382,52 @@ def test_a_skipped_result_is_recorded_with_its_reason_and_not_retried(db):
     assert start_call.status == "skipped" and "Do-Not-Disturb" in start_call.detail
     eng.tick(db, T0, ch, alerts())
     assert call.calls == 1
+
+
+# -- students who can only be found by email, and Rob being told when nobody can be reached ----------------
+
+def recording_alerts():
+    sent = []
+    al = eng.RobAlerts(to="rob@example.com", send_fn=lambda **k: sent.append(k) or {"status": "sent"})
+    al.record = sent
+    return al
+
+
+def test_a_student_with_an_email_but_no_phone_keeps_their_call_and_text_attempts(db):
+    draft, student = make_draft(db, phone=None, email="s@example.com")
+    student.personal_email = "student.personal@example.com"
+    db.commit()
+    seq = eng.start_sequence(db, draft, student, T0)
+    assert all(a.status == "pending" for a in seq.attempts)            # the GHL contact may hold the phone
+
+
+def test_a_student_with_nothing_on_file_tells_rob_immediately_and_only_once(db):
+    draft, student = make_draft(db, phone=None, email="")
+    seq = eng.start_sequence(db, draft, student, T0)
+    al = recording_alerts()
+    eng.tick(db, T0, channels(), al)
+    eng.tick(db, T0 + timedelta(minutes=5), channels(), al)
+    assert len(al.record) == 1 and "Cannot reach" in al.record[0]["subject"]
+    assert "no email, phone number or Gmail" in al.record[0]["body"] and "changed their email" in al.record[0]["body"]
+
+
+def test_an_unreachable_failure_tells_rob_once_with_the_reason(db):
+    draft, student = make_draft(db)
+    eng.start_sequence(db, draft, student, T0)
+
+    class Unreachable:
+        def send(self, ctx):
+            return nc.ChannelResult(nc.FAILED, detail=nc.UNREACHABLE + "no GHL contact matches this student's email")
+
+    al = recording_alerts()
+    eng.tick(db, T0, channels(call=Unreachable(), sms=Unreachable(), email=Unreachable()), al)
+    eng.tick(db, T0 + timedelta(hours=2), channels(email=Unreachable()), al)
+    assert len(al.record) == 1 and "no GHL contact matches" in al.record[0]["body"]
+
+
+def test_an_ordinary_failure_does_not_page_rob_about_contact_details(db):
+    draft, student = make_draft(db)
+    eng.start_sequence(db, draft, student, T0)
+    al = recording_alerts()
+    eng.tick(db, T0, channels(call=Rec("call", status=nc.FAILED)), al)
+    assert not any("Cannot reach" in k["subject"] for k in al.record)
