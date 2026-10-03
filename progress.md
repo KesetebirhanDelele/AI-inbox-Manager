@@ -186,6 +186,16 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
   decide with Rob/Ali).
 - Tests: 766 root, 206 dashboard.
 
+### 2026-10-03 (late, 4): "Student not identified" although the email names the student's Gmail
+- **Kes' case:** a Synchrony email whose To header is the student's own Gmail was "Student not identified". Cause: (1) only forwarding headers (Delivered-To, X-Forwarded-To...) counted as an identity;
+  a Gmail in the To/CC field was deliberately ignored; (2) the roster (`config/students.py`, 24 people) did not contain this student, so the name lookup (body greeting "Hi,") found nothing;
+  (3) the pipeline then gave up even though the email was addressed to a real mailbox.
+- **Fix** (`process_inbox_auto._identify_student`): a Gmail in To/CC now identifies the recipient; the roster is searched by that email; and when nobody knows the student, the recipient Gmail
+  itself identifies them (`recipient_only_student`: username = Gmail local part, name guessed from it, e.g. "Priyan", notification goes to that Gmail; Rob sees the missing phone as a warning and
+  can correct the name). The old test that asserted "To-field is ignored" encoded that earlier decision and was replaced.
+- **Repair for existing events:** `execution/backfill_event_students.py` re-reads each student-less event's original email from Gmail (read-only, by Message-ID), applies the same identification,
+  attaches the student and creates the DRAFT (nothing is sent). Results below once run.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

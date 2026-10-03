@@ -530,7 +530,7 @@ def _resolve_assigned_gmail(email_data: Dict[str, Any]) -> Optional[str]:
     try:
         from resolve_student import resolve_student
         resolved = resolve_student(email_data)
-        if resolved.get("resolution_method") == "email_headers":
+        if resolved.get("resolution_method") in ("email_headers", "to_field"):
             return resolved.get("student_gmail")
     except Exception as e:
         logging.getLogger(__name__).warning(f"Header student resolution skipped: {e}")
@@ -558,6 +558,15 @@ def creates_interview_event(classification: Dict[str, Any]) -> bool:
     if is_genuine_interview_request(classification):
         return True
     return classification.get("category", "") in _CATEGORY_TO_SUB_TYPE
+
+
+def recipient_only_student(gmail: str) -> Dict[str, Any]:
+    """A student known only by the Gmail an interview email was delivered to (not in the roster)."""
+    local = gmail.split("@")[0].lower()
+    words = [w for w in re.split(r"[^a-z]+", local) if len(w) >= 3]
+    name = " ".join(w.capitalize() for w in words[:2]) or local
+    return {"name": name, "username": local, "personal_email": gmail.lower(), "phone": "",
+            "assigned_to": None, "assistant_email": None, "identified_by": "recipient_gmail"}
 
 
 def _name_matches_gmail(full_name: str, gmail: str) -> bool:
@@ -596,7 +605,18 @@ def _identify_student(db, email_data: Dict[str, Any], classification: Dict[str, 
                 return config, header_gmail
             log.warning(f"Header Gmail belongs to student id={owner.id} but they are not in config; using name lookup")
 
+    if header_gmail:
+        # The roster keys students by personal email; the forwarding Gmail is often the same address.
+        from fetch_students_sheet import find_student_by_email
+        known = find_student_by_email(header_gmail)
+        if known:
+            return known, header_gmail
+
     config = _get_student_info(classification, email_data)
+    if not config and header_gmail:
+        # Nobody in the roster, but the email was addressed to this Gmail: that mailbox belongs to the student,
+        # so identify them by it (name guessed from the address; Rob confirms in the approval screen).
+        return recipient_only_student(header_gmail), header_gmail
     if not config or not header_gmail:
         return config, None
 
@@ -653,7 +673,7 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
             student_config, assigned_gmail = _identify_student(db, email_data, classification)
             if student_config:
                 # Derive a stable username: "First Last" → "first.last"
-                username = student_config["name"].lower().replace(" ", ".")
+                username = student_config.get("username") or student_config["name"].lower().replace(" ", ".")
                 student_db = upsert_student(
                     db=db,
                     username=username,

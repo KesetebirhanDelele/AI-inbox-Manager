@@ -108,9 +108,12 @@ def test_parsed_email_resolves_student_gmail_from_headers():
     assert pia._resolve_assigned_gmail(parsed) == "student.one@gmail.com"
 
 
-def test_assigned_gmail_not_taken_from_weak_signals():
-    # a To-field match is "medium" confidence; only header matches are stored
-    assert pia._resolve_assigned_gmail(_email(to_addresses=["someone@gmail.com"])) is None
+def test_a_gmail_in_the_to_field_identifies_the_recipient():
+    # 2026-10-03: the To field is where the sender addressed the email, so it is a real identity (it used to be ignored,
+    # leaving interviews "student not identified" even though the email names the student's own Gmail)
+    assert pia._resolve_assigned_gmail(_email(to_addresses=["someone@gmail.com"])) == "someone@gmail.com"
+    assert pia._resolve_assigned_gmail(_email(to_addresses=["c_interviews@colaberry.com"])) is None
+    assert pia._resolve_assigned_gmail(_email(to_addresses=["person@yahoo.com"])) is None      # only Gmail accounts are students'
 
 
 def test_parse_email_without_recipient_headers():
@@ -329,3 +332,37 @@ def test_no_headers_falls_back_to_name_without_saving_a_gmail(monkeypatch, ident
 ])
 def test_sender_rules(sender, subject, expected):
     assert pia.pre_classify_by_sender({"sender_email": sender, "subject": subject, "body_content": ""}) == expected
+
+
+# ── 8. a recipient Gmail identifies the student even when the roster does not know them ──────────────────────
+
+def test_recipient_only_student_is_named_from_the_gmail_address():
+    cfg = pia.recipient_only_student("Priyan.NT24@Gmail.com")
+    assert cfg["name"] == "Priyan" and cfg["username"] == "priyan.nt24" and cfg["personal_email"] == "priyan.nt24@gmail.com"
+    assert pia.recipient_only_student("john.smith88@gmail.com")["name"] == "John Smith"
+    assert pia.recipient_only_student("xy12@gmail.com")["name"] == "xy12"        # nothing usable: keep the local part
+
+
+def test_nobody_in_the_roster_but_delivered_to_a_gmail_identifies_by_that_gmail(monkeypatch, identity_db):
+    db, _ = identity_db
+    _patch_lookup(monkeypatch, by_name=None)
+    import fetch_students_sheet
+    monkeypatch.setattr(fetch_students_sheet, "find_student_by_email", lambda e: None)
+    cfg, gmail = pia._identify_student(db, _email(to_addresses=["priyan.nt24@gmail.com"]), _cls())
+    assert gmail == "priyan.nt24@gmail.com" and cfg["name"] == "Priyan" and cfg["username"] == "priyan.nt24"
+
+
+def test_a_roster_student_whose_email_is_the_recipient_is_used_as_is(monkeypatch, identity_db):
+    db, _ = identity_db
+    _patch_lookup(monkeypatch, by_name=None)
+    import fetch_students_sheet
+    known = {"name": "Terri Mark", "personal_email": "terrlmark75@gmail.com", "phone": "936", "assigned_to": "Vivek"}
+    monkeypatch.setattr(fetch_students_sheet, "find_student_by_email", lambda e: known if e == "terrlmark75@gmail.com" else None)
+    cfg, gmail = pia._identify_student(db, _email(to_addresses=["terrlmark75@gmail.com"]), _cls())
+    assert cfg is known and gmail == "terrlmark75@gmail.com"
+
+
+def test_no_recipient_and_no_name_still_means_not_identified(monkeypatch, identity_db):
+    db, _ = identity_db
+    _patch_lookup(monkeypatch, by_name=None)
+    assert pia._identify_student(db, _email(), _cls()) == (None, None)
