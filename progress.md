@@ -179,6 +179,11 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
   real subject/sender with a placeholder; the email panel is collapsible (Hide/Show) and says plainly when the text was not stored.
 - **Repair:** `execution/backfill_email_bodies.py` looks each damaged email up in Gmail "All Mail" by Message-ID (read-only) and fills only the damaged fields; `--verify N` samples healthy
   rows against Gmail to see whether the sync also overwrote real emails with the wrong message. Results are recorded below once run.
+- **Repair results (production, 2026-10-03 22:2x UTC):** verify sample of 60 healthy rows vs Gmail: 54 found, 0 with a different subject (the sync did NOT overwrite real emails with the wrong message;
+  6 not found in All Mail). `--apply`: 81 damaged rows had a Message-ID; 31 repaired (body/sender filled), 12 not found in Gmail, the rest had nothing to fill. Including the email Kes opened (id 6238).
+  **Still damaged: 208 rows, none with an interview event**: 158 stubs created by the old sync (no Message-ID, sender Unknown, empty body, all in INBOX, 50 with a classification) that cannot be
+  matched by Message-ID, and 50 older rows (36 Job Alerts, 13 Spam Review, 1 Job Invite) no longer in Gmail All Mail. They inflate some counts slightly; deleting them was NOT done (destructive;
+  decide with Rob/Ali).
 - Tests: 766 root, 206 dashboard.
 
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
