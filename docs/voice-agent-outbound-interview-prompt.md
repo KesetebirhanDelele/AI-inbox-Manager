@@ -137,8 +137,8 @@ because GHL only re-triggers a workflow when the field CHANGES.
 ## 3. Setup checklist (in GHL)
 
 1. Create the new Voice AI agent with the prompt above and its own knowledge base (empty is fine at first).
-1a. In the agent's settings, set the WELCOME / GREETING MESSAGE (the line spoken before the prompt runs; the exact setting name in the GHL
-   screen is not verified, look for Welcome Message / Greeting / First Message) to:
+1a. In the agent's settings, field **Welcome Message** (set to "AI speaks first"; it has separate **Inbound** and **Outbound** tabs, use the
+   **Outbound** tab; verified on Kes's screen 2026-10-02, 190-character limit) set:
    `Hello, this is the Colaberry Interview Support assistant, an AI assistant. Am I speaking with {{contact.first_name}}?`
    Without this the agent never asks who it is talking to and a wrong person could hear the interview details.
 2. In the workflow that triggers on the contact field `interview_notification` changing: add the "Voice AI Outbound Call"

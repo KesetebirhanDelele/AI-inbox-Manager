@@ -41,6 +41,8 @@ The detail below is in the order the work happened; this block is the summary.
 - Deferred: text/email test writes, voicemail/wrong-person/STOP calls (Kes tests step by step per the plan); GHL `do not call` tag action;
   server shadow rehearsal; 5-minute cron; Rob/Ali items.
 
+- Kes set the agent's Welcome Message (Outbound tab, "AI speaks first", 117/190 chars) to the identity question; prompt doc now names the exact setting. Next: re-test call (stage 1.1 of the test plan).
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED
