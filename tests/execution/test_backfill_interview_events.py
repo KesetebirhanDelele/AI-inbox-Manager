@@ -32,3 +32,19 @@ def test_the_stored_rows_are_never_modified():
     e, c = rows({"extracted_data": {"company_name": "Acme Corp"}})
     bf.build_inputs(e, c)
     assert c.raw_response == {"extracted_data": {"company_name": "Acme Corp"}}
+
+
+def test_application_notices_filed_as_cancelled_interviews_are_skipped():
+    seen = set()
+    assert "mislabelled" in bf.skip_reason("Interview Cancelled", "Thank you for Applying", "no-reply@myworkday.com", seen)
+    assert "mislabelled" in bf.skip_reason("Interview Cancelled", "Peraton Application Update", "x@icims.com", seen)
+    assert bf.skip_reason("Interview Cancelled", "Your interview with Acme was cancelled", "hr@acme.com", seen) == ""
+    # the same subject under another category is not judged by this rule
+    assert bf.skip_reason("Assessment", "Thank you for Applying", "a@b.com", seen) == ""
+
+
+def test_older_repeats_of_the_same_message_are_skipped_but_other_senders_are_kept():
+    seen = set()
+    assert bf.skip_reason("Phone Screen", "Olukayode - Application Next Steps", "r@eliassen.com", seen) == ""
+    assert "older repeat" in bf.skip_reason("Phone Screen", "RE: Olukayode - Application Next Steps", "R@eliassen.com", seen)
+    assert bf.skip_reason("Phone Screen", "Olukayode - Application Next Steps", "other@eliassen.com", seen) == ""

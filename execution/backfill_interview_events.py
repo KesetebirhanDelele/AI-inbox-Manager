@@ -17,6 +17,7 @@ Usage (inside the api container on the server):
 
 import argparse
 import logging
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -28,6 +29,27 @@ for p in (_ROOT / "execution", _ROOT, _ROOT / "services" / "dashboard" / "api"):
         sys.path.insert(0, str(p))
 
 logger = logging.getLogger("backfill_interview_events")
+
+
+# Application acknowledgements the primary classifier sometimes files as "Interview Cancelled": they are not interviews.
+_NOT_AN_INTERVIEW_SUBJECT = re.compile(
+    r"thank you for appl|application update|your application for|we.re ready when you are|application received|application status",
+    re.I)
+
+
+def normalized_subject(subject: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"^(re|fw|fwd):\s*", "", (subject or "").strip(), flags=re.I)).lower()
+
+
+def skip_reason(category: str, subject: str, sender: str, seen: set) -> str:
+    """Why this old email should NOT get an event (empty string = create it). `seen` holds (sender, subject) already handled, newest first."""
+    if category == "Interview Cancelled" and _NOT_AN_INTERVIEW_SUBJECT.search(subject or ""):
+        return "application notice mislabelled as a cancelled interview"
+    key = ((sender or "").lower(), normalized_subject(subject))
+    if key in seen:
+        return "older repeat of the same message"
+    seen.add(key)
+    return ""
 
 
 def build_inputs(email: Any, classification: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -79,11 +101,17 @@ def run(apply: bool, limit: int = 0) -> Counter:
             .order_by(Email.received_date.desc()).all())
 
     result = Counter()
+    seen: set = set()
     for email, cls in rows:
         if not creates_interview_event({"category": cls.category, "confidence": float(cls.confidence or 0.0)}):
             continue
         if db.query(InterviewEvent.id).filter(InterviewEvent.email_id == email.id).first():
             result["already has an event"] += 1
+            continue
+        reason = skip_reason(cls.category, email.subject, email.from_address, seen)
+        if reason:
+            result[f"skipped: {reason}"] += 1
+            print(f"skip ({reason}): [{cls.category}] {(email.subject or '')[:50]}")
             continue
         if limit and result["to create"] + result["created"] >= limit:
             break
