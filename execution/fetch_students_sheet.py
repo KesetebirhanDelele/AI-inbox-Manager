@@ -110,6 +110,19 @@ def find_student_by_email(email: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+_NOT_A_NAME_WORDS = {
+    "lead", "business", "analyst", "engineer", "manager", "developer", "senior", "junior", "data", "team", "hiring", "recruiter",
+    "consultant", "specialist", "director", "associate", "intern", "software", "technical", "systems", "solutions", "services",
+    "inc", "llc", "corp", "company", "group", "support", "admin", "hr", "talent", "staffing", "department", "dept",
+}
+
+
+def _looks_like_a_job_title(name: str) -> bool:
+    """True when a word of the name is a job-title or company word ("Lead Business", "Data Engineer"): not a person."""
+    words = [w.strip(".,").lower() for w in (name or "").split()]
+    return any(w in _NOT_A_NAME_WORDS for w in words)
+
+
 def add_new_student(name: str, personal_email: str, phone: str = "") -> Optional[Dict[str, Any]]:
     """
     Add a new student to config/students.py and return their record.
@@ -132,6 +145,9 @@ def add_new_student(name: str, personal_email: str, phone: str = "") -> Optional
     # with no email at all, because this function had no validation. Refuse
     # anything that doesn't look like a real, contactable person rather than
     # writing garbage into the source of truth for notification routing.
+    if _looks_like_a_job_title(name):
+        logger.warning(f"Refusing to auto-add {name!r}: it reads like a job title or company, not a person")
+        return None
     if not name or len(name.strip()) < 2 or not personal_email or "@" not in personal_email:
         logger.warning(
             f"Refusing to auto-add student with insufficient info: "

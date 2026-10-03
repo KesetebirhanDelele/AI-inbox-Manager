@@ -277,11 +277,47 @@ def _patch_lookup(monkeypatch, by_name=None, by_config=None):
     monkeypatch.setattr(fetch_students_sheet, "find_student_by_name", lambda n: by_config)
 
 
-def test_identity_conflict_does_not_save_the_gmail(monkeypatch, identity_db):
+def test_a_body_name_that_does_not_fit_the_delivery_gmail_is_ignored(monkeypatch, identity_db):
+    # 2026-10-03: the Gmail the email was delivered to is the stronger identity. A body name that does not appear in it
+    # ("Alisha", "Lead Business") must not become the student; the Gmail identifies them instead.
     db, _ = identity_db
     _patch_lookup(monkeypatch, by_name={"name": "Alisha", "personal_email": "a@x.com"})
+    import fetch_students_sheet
+    monkeypatch.setattr(fetch_students_sheet, "find_student_by_email", lambda e: None)
+    monkeypatch.setattr(fetch_students_sheet, "get_all_students", lambda force_refresh=False: [])
     cfg, gmail = pia._identify_student(db, _fwd("sehrishkhan.hjim@gmail.com"), _cls())
-    assert cfg["name"] == "Alisha" and gmail is None
+    assert cfg["name"] != "Alisha" and gmail == "sehrishkhan.hjim@gmail.com"
+    assert cfg["identified_by"] == "recipient_gmail"
+
+
+def test_the_one_known_student_named_in_the_gmail_is_used(monkeypatch, identity_db):
+    db, models = identity_db
+    db.add(models.Student(username="sehrish.khan", full_name="Sehrish Khan", personal_email="sehrish.personal@example.com", is_active=True))
+    db.commit()
+    _patch_lookup(monkeypatch, by_name=None)
+    import fetch_students_sheet
+    monkeypatch.setattr(fetch_students_sheet, "find_student_by_email", lambda e: None)
+    monkeypatch.setattr(fetch_students_sheet, "get_all_students", lambda force_refresh=False: [])
+    cfg, gmail = pia._identify_student(db, _fwd("sehrishkhan.hjim@gmail.com"), _cls())
+    assert cfg["name"] == "Sehrish Khan" and cfg["username"] == "sehrish.khan" and gmail == "sehrishkhan.hjim@gmail.com"
+
+
+def test_a_student_whose_personal_email_is_the_delivery_gmail_is_used(monkeypatch, identity_db):
+    db, models = identity_db
+    db.add(models.Student(username="t.mark", full_name="Terri Mark", personal_email="terrlmark75@gmail.com", is_active=True))
+    db.commit()
+    _patch_lookup(monkeypatch, by_name={"name": "Someone Else"})
+    cfg, gmail = pia._identify_student(db, _fwd("terrlmark75@gmail.com"), _cls())
+    assert cfg["name"] == "Terri Mark" and gmail == "terrlmark75@gmail.com"
+
+
+@pytest.mark.parametrize("name, junk", [("Lead Business", True), ("Data Engineer", True), ("Senior Analyst", True),
+                                       ("Priyan", False), ("Olukayode", False), ("Sehrish Khan", False)])
+def test_job_titles_are_never_added_as_students(name, junk):
+    import fetch_students_sheet as fs
+    assert fs._looks_like_a_job_title(name) is junk
+    if junk:
+        assert fs.add_new_student(name, "x@gmail.com") is None
 
 
 def test_identity_saves_gmail_when_name_plausibly_matches(monkeypatch, identity_db):

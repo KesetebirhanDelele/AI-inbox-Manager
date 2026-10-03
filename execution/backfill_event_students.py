@@ -52,6 +52,11 @@ def run(apply: bool, limit: int = 0) -> Counter:
     from models import Classification, Email, InterviewEvent, NotificationDraft
     from sqlalchemy import func
 
+    # The pipeline's name lookup can AUTO-ADD students by rewriting config/students.py. A backfill (and above all a dry run)
+    # must never edit the roster file, so that step is switched off here.
+    import fetch_students_sheet
+    fetch_students_sheet.add_new_student = lambda *args, **kwargs: None
+
     db = get_db_session()
     if db is None:
         raise SystemExit("No database session")

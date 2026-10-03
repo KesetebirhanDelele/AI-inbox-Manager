@@ -576,16 +576,37 @@ def _name_matches_gmail(full_name: str, gmail: str) -> bool:
     return any(w in local for w in words)
 
 
+def _config_from_student(row) -> Dict[str, Any]:
+    """A student config (the shape the pipeline expects) built from a students-table row."""
+    return {"name": row.full_name or row.username, "username": row.username,
+            "personal_email": row.personal_email or row.assigned_gmail or "", "phone": row.phone_number or "",
+            "assigned_to": None, "assistant_email": None, "identified_by": "known student"}
+
+
+def _student_named_in_gmail(db, gmail: str) -> Optional[Dict[str, Any]]:
+    """The ONE known student (roster or database) whose name appears in the Gmail's local part, else None."""
+    from models import Student
+    from fetch_students_sheet import get_all_students
+    found: Dict[str, Dict[str, Any]] = {}
+    for cfg in get_all_students():
+        if len((cfg["name"] or "").split()) >= 2 and _name_matches_gmail(cfg["name"], gmail):
+            found[cfg["name"].lower()] = cfg
+    for row in db.query(Student).all():
+        if row.full_name and len(row.full_name.split()) >= 2 and _name_matches_gmail(row.full_name, gmail):
+            found.setdefault(row.full_name.lower(), _config_from_student(row))
+    return next(iter(found.values())) if len(found) == 1 else None
+
+
 def _identify_student(db, email_data: Dict[str, Any], classification: Dict[str, Any]):
     """
     Work out which student an interview email is for.
 
-    Forwarding headers win: if the header Gmail is already recorded as a
-    student's assigned Gmail, that student is used even when the body names
-    someone else. Otherwise the student comes from the name lookup, and the
-    header Gmail is only saved onto that student when it plausibly belongs to
-    them (name appears in the Gmail) and does not overwrite a different Gmail.
-    A disagreement is logged and nothing is guessed.
+    The mailbox an email was delivered to (a forwarding header, or a Gmail in To/CC) is the strongest identity, so when
+    there is one it decides, in this order: a student whose assigned Gmail it is; a student (database or roster) whose
+    email it is; the body's name hint, only if that name appears in the Gmail; the one known student whose name appears in
+    the Gmail; otherwise the Gmail itself identifies a new student (name guessed from the address, Rob confirms). A body
+    name that does NOT fit the Gmail is ignored: it was how "Lead Business" became a student.
+    With no recipient Gmail, the name lookup is all there is.
 
     Returns:
         (student_config or None, assigned_gmail_to_store or None)
@@ -593,46 +614,38 @@ def _identify_student(db, email_data: Dict[str, Any], classification: Dict[str, 
     log = logging.getLogger(__name__)
     from models import Student
     from notify_student import _get_student_info
+    from fetch_students_sheet import find_student_by_name, find_student_by_email
 
     header_gmail = _resolve_assigned_gmail(email_data)
+    if not header_gmail:
+        return _get_student_info(classification, email_data), None
 
-    if header_gmail:
-        owner = db.query(Student).filter(Student.assigned_gmail == header_gmail).first()
-        if owner:
-            from fetch_students_sheet import find_student_by_name
-            config = find_student_by_name(owner.full_name or "")
-            if config:
-                return config, header_gmail
-            log.warning(f"Header Gmail belongs to student id={owner.id} but they are not in config; using name lookup")
+    owner = db.query(Student).filter(Student.assigned_gmail == header_gmail).first()
+    if owner:
+        return (find_student_by_name(owner.full_name or "") or _config_from_student(owner)), header_gmail
 
-    if header_gmail:
-        # The roster keys students by personal email; the forwarding Gmail is often the same address.
-        from fetch_students_sheet import find_student_by_email
-        known = find_student_by_email(header_gmail)
-        if known:
-            return known, header_gmail
+    by_email = db.query(Student).filter(Student.personal_email == header_gmail).first()
+    if by_email:
+        return (find_student_by_name(by_email.full_name or "") or _config_from_student(by_email)), header_gmail
+    known = find_student_by_email(header_gmail)
+    if known:
+        return known, header_gmail
 
     config = _get_student_info(classification, email_data)
-    if not config and header_gmail:
-        # Nobody in the roster, but the email was addressed to this Gmail: that mailbox belongs to the student,
-        # so identify them by it (name guessed from the address; Rob confirms in the approval screen).
-        return recipient_only_student(header_gmail), header_gmail
-    if not config or not header_gmail:
-        return config, None
+    if config and _name_matches_gmail(config["name"], header_gmail):
+        username = config.get("username") or config["name"].lower().replace(" ", ".")
+        existing = db.query(Student).filter(Student.username == username).first()
+        if existing and existing.assigned_gmail and existing.assigned_gmail != header_gmail:
+            log.warning(f"Student '{config['name']}' already has a different assigned Gmail; not overwriting")
+            return config, None
+        return config, header_gmail
+    if config:
+        log.warning(f"Body names '{config['name']}' but the email was delivered to {header_gmail}; using the Gmail's identity")
 
-    if not _name_matches_gmail(config["name"], header_gmail):
-        log.warning(
-            f"Student identity unconfirmed: body names '{config['name']}' but the forwarding "
-            f"header Gmail does not match; assigned Gmail not saved"
-        )
-        return config, None
-
-    username = config["name"].lower().replace(" ", ".")
-    existing = db.query(Student).filter(Student.username == username).first()
-    if existing and existing.assigned_gmail and existing.assigned_gmail != header_gmail:
-        log.warning(f"Student '{config['name']}' already has a different assigned Gmail; not overwriting")
-        return config, None
-    return config, header_gmail
+    named = _student_named_in_gmail(db, header_gmail)
+    if named:
+        return named, header_gmail
+    return recipient_only_student(header_gmail), header_gmail
 
 
 def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classification: Dict[str, Any]) -> bool:
