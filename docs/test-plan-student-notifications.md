@@ -19,8 +19,8 @@ Legend: **Who** = Kes does it by hand / Claude runs it. **Evidence** = what to p
 | # | Check | How | Pass |
 |---|---|---|---|
 | 0b.1 | Email-first lookup | Test student record with Kes's personal email only (no phone) | `[GHL shadow]` log shows the contact found by email; a call/text attempt is NOT skipped |
-| 0b.2 | Unmatched email | Student record with an email that is not in GHL | Attempt fails with `UNREACHABLE:`; Rob gets ONE "Cannot reach" email |
-| 0b.3 | Nothing on file | Student with no email, Gmail or phone | Rob gets the alert on the first tick; every attempt skipped |
+| 0b.2 | Unmatched email | Student record with an email that is not in GHL | Attempt fails with `UNREACHABLE:`; the approver gets ONE "Cannot reach" email |
+| 0b.3 | Nothing on file | Student with no email, Gmail or phone | the approver gets the alert on the first tick; every attempt skipped |
 | 0b.4 | Name check | Student whose phone matches a GHL contact with a different first name | Attempt fails with "different first name"; nothing is written |
 
 ## 1. Voice call (outbound agent)
@@ -72,7 +72,7 @@ Preconditions: GHL credentials added to the server `.env` (Kes does this; never 
 
 | # | Step | Expected |
 |---|---|---|
-| 5.1 | Create a test interview event + draft for the test student; Rob (or Kes) clicks Approve | A sequence with 15 planned attempts appears; the first three attempts show `dry_run` |
+| 5.1 | Create a test interview event + draft for the test student; the approver (or Kes) clicks Approve | A sequence with 15 planned attempts appears; the first three attempts show `dry_run` |
 | 5.2 | Run `python execution/notification_tick.py` by hand inside the api container | Log lines `[GHL shadow] would write fields [...]`; NO field changed in GHL; no message or call reaches Kes |
 | 5.3 | Quiet hours | Rehearse at a time outside 8 AM-8 PM student-local: calls/texts are held, email still goes (dry run) |
 | 5.4 | Poller | Real replies/calls on the test contact are read; a "yes" call (stage 1.3 call) acknowledges the sequence; STOP closes it and writes a `notification_opt_outs` row |
@@ -86,9 +86,9 @@ Only after sections 1-5 pass and Ali approves. Switch on `GHL_WRITE_MODE=live`, 
 | # | Step | Expected |
 |---|---|---|
 | 6.1 | Approve the test notice | Call + text + email reach Kes within minutes (daytime) |
-| 6.2 | Do nothing | The 4-hour reminder (text + email) arrives; Rob gets the "no response" alert about 6 hours in |
+| 6.2 | Do nothing | The 4-hour reminder (text + email) arrives; the approver gets the "no response" alert about 6 hours in |
 | 6.3 | Reply YES | Follow-ups stop; sequence shows acknowledged by text |
-| 6.4 | Repeat with a call "yes", an email "I got this" link, and Rob's Close | Each stops the sequence |
+| 6.4 | Repeat with a call "yes", an email "I got this" link, and the approver's Close | Each stops the sequence |
 | 6.5 | Turn the switches back OFF until Ali says go for real students | `.deployed_commit` == `master`, server env as agreed |
 
 ## 7. Go-live gate (all must be ticked)
@@ -96,7 +96,7 @@ Only after sections 1-5 pass and Ali approves. Switch on `GHL_WRITE_MODE=live`, 
 - [ ] 1.1-1.9, 2.1-2.3, 3.1-3.3 passed and logged in `progress.md`
 - [ ] `do not call` tag action works in GHL (1.6)
 - [ ] Server rehearsal 5.x passed
-- [ ] Rob confirmed what he does today and gave `ROB_ALERT_EMAIL`
+- [ ] the approver confirmed what he does today and gave the approver role (Settings page; `APPROVER_ALERT_EMAIL` fallback)
 - [ ] Students' opt-in to texts/calls confirmed
 - [ ] Ali approves (shared Cora text budget: `NOTIFY_SMS_DAILY_SEGMENT_CAP` set)
 - [ ] AI reading still in shadow until 2026-10-16

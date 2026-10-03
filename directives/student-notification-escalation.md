@@ -2,7 +2,7 @@
 
 **Status (2026-10-02): the core is BUILT and DEPLOYED but SWITCHED OFF, and every channel is a dry run.**
 Approved by Ali (email 2026-10-02) and Kes. Kes told Claude to "build it for now", ahead of Ali's condition
-that Kes confirm with Rob first, so nothing real is sent: the escalation is off unless
+that Kes confirm with the approver first, so nothing real is sent: the escalation is off unless
 `NOTIFY_ESCALATION_ENABLED` is set, and each channel defaults to `dry_run` (logs what it would send).
 Turning it on for real students needs the "Before turning it on" checklist at the bottom.
 
@@ -16,7 +16,7 @@ Turning it on for real students needs the "Before turning it on" checklist at th
 | Reply reading: rules (YES/STOP) + AI in shadow mode | `execution/reply_analysis.py` |
 | Scheduler pass (does nothing unless enabled) | `execution/notification_tick.py` |
 | New tables only (existing tables untouched) | `notification_sequences`, `notification_attempts`, `reply_analyses`; migration `003` |
-| Approve starts it (when enabled); email "I got this" link; Rob's status/close; secret-protected reply endpoint | `services/dashboard/api/routers/notifications.py` |
+| Approve starts it (when enabled); email "I got this" link; the approver's status/close; secret-protected reply endpoint | `services/dashboard/api/routers/notifications.py` |
 | Reading replies and calls from GHL Conversations (polling, idempotent, echo filter, student-only call words) | `execution/ghl_conversations.py`, `escalation_engine.poll_replies()`, table `notification_inbound` |
 | Tests | `tests/execution/test_escalation_*.py`, `test_reply_analysis.py`, `services/dashboard/tests/test_notification_escalation.py` |
 
@@ -112,19 +112,19 @@ Earlier research, kept for reference (Cora's own code, not the GHL dashboard):
 ## Goal
 When a student has a new interview, make sure they actually know, today. Send the notice over
 three channels (phone call, text, email), track whether the student acknowledged it, and keep
-following up until they do. A person (Rob) approves the first send; nothing is auto-sent before that.
+following up until they do. A person (the approver) approves the first send; nothing is auto-sent before that.
 
 ## Inputs
-- An approved `NotificationDraft` (Rob clicked Approve) for a student with a phone number and email
+- An approved `NotificationDraft` (the approver clicked Approve) for a student with a phone number and email
 - Student replies: SMS replies, email replies, keypad presses, email-button clicks
 
 ## Outputs
 - Attempt log (every call/text/email, with status and Twilio SID)
 - Acknowledgement record (which channel, when, explicit or AI-inferred)
-- Alerts to Rob (no response after day 1; sequence ended)
+- Alerts to the approver (no response after day 1; sequence ended)
 
-## Schedule (T0 = Rob approves)
-| When | Call | Text | Email | Rob |
+## Schedule (T0 = the approver approves)
+| When | Call | Text | Email | the approver |
 |---|---|---|---|---|
 | T0 | yes | yes | yes | |
 | T0 + 2h | | | yes | |
@@ -134,7 +134,7 @@ following up until they do. A person (Rob) approves the first send; nothing is a
 | After day 4, no acknowledgement | stops | stops | stops | told "sequence ended, no acknowledgement" |
 
 There is no second call on day 1: GHL Voice AI allows **one call per phone number per day** (and 14 in 14 days; our
-plan makes 4 in total). Telling Rob does **not** stop the sequence. Only an acknowledgement, or Rob closing it, does.
+plan makes 4 in total). Telling the approver does **not** stop the sequence. Only an acknowledgement, or the approver closing it, does.
 "Up to three days" = days 2, 3 and 4 after day 1 (Kes, 2026-10-02).
 
 ## Quiet hours (Ali)
@@ -151,12 +151,12 @@ plan makes 4 in total). Telling Rob does **not** stop the sequence. Only an ackn
 1. Pressing 1 on the call
 2. Replying YES (also Y, yes, yep, ok, received) to the text; rule-based, no AI
 3. Tapping "I got this" in the email
-4. Rob marking it confirmed / closing it in the dashboard
+4. the approver marking it confirmed / closing it in the dashboard
 5. AI judges the student's own reply shows they understood. **Shadow mode for 2 weeks**: it records
    its judgement and stops nothing; Ali wants the measured hit rate before it may stop anything.
    It reads only the student's replies, never our messages or Cora's. It picks from a fixed list
    (understood / needs help or cannot attend / confused / unsure); only "understood" can stop
-   follow-ups, the others alert Rob. Student text is data, never instructions.
+   follow-ups, the others alert the approver. Student text is data, never instructions.
 A STOP reply ends all contact. A voicemail does not count.
 
 **Calls are read by rule first (2026-10-02, from the first live test call).** `ghl_conversations.call_outcome()` reads the transcript
@@ -171,7 +171,7 @@ The agent prompt must keep the phrase "confirm you got" (`CONFIRM_QUESTION_MARKE
 all identifiers must agree: two different contacts = refused, never guessed. A contact found ONLY by phone must have a first name that
 agrees with the student's (prefix match, blank GHL name allowed). Calls and texts use the phone GHL holds on the contact, so a student
 with no phone in our table can still be called if their GHL contact has one. When no contact is found, the contact has no phone (call/text)
-or no email (email), or the identifiers disagree, the attempt FAILS with a detail starting `UNREACHABLE:` and **Rob is emailed once**
+or no email (email), or the identifiers disagree, the attempt FAILS with a detail starting `UNREACHABLE:` and **the approver is emailed once**
 ("Cannot reach <student>: their contact details need fixing", a student may have changed their email, update the record or GHL). A student
 with nothing on file at all gets that alert on the first tick. Known limit: the quiet-hours time zone is still worked out from OUR phone
 (Central fallback), not from the GHL contact's phone.
@@ -179,7 +179,7 @@ with nothing on file at all gets that alert on the first tick. Known limit: the 
 **The app remembers STOP itself (2026-10-02).** A STOP text or a spoken stop writes a row in `notification_opt_outs` (phone last 10
 digits + channel: sms | call | email). `GhlChannel.send` checks it before every send, in addition to GHL Do-Not-Disturb and the
 opt-out tags, so the request holds even if GHL is never updated. Per channel: a stopped call does not stop texts. Clearing an
-opt-out is a manual database change (decide with Rob/Ali who may do it).
+opt-out is a manual database change (decide with the approver/Ali who may do it).
 
 Test plan with the exact steps and pass criteria: `docs/test-plan-student-notifications.md`.
 
@@ -195,8 +195,8 @@ number must be voice-enabled.
 - Time-zone column on students
 
 ## Before turning it on for real students (Ali's condition, now applied to switching on, not to building)
-- [ ] Kes confirms with Rob what Rob does today (WhatsApp / own email) so nothing he relies on disappears
-- [ ] Rob's address in `ROB_ALERT_EMAIL` (without it Rob's alerts are only written to the log)
+- [ ] Kes confirms with the approver what the approver does today (WhatsApp / own email) so nothing he relies on disappears
+- [ ] the approver's address in the approver role (Settings page; `APPROVER_ALERT_EMAIL` fallback) (without it the approver's alerts are only written to the log)
 - [x] SMS adapter built: GHL field write with our own daily budget (default 150 of the shared 999, set
       `NOTIFY_SMS_DAILY_SEGMENT_CAP`), content gate, quiet hours (risk 1, 4). Cora's own texts are still not
       counted: lower the cap by Cora's real usage.
@@ -210,7 +210,7 @@ number must be voice-enabled.
 - [x] Inbound replies: read by polling GHL Conversations (needs `GHL_CONVERSATIONS_API_KEY`); no forwarding workflow needed
 - [x] `GHL_CONVERSATIONS_API_KEY`, `GHL_API_KEY` (with the call-log scope) and `GHL_LOCATION_ID` exist in the local `.env`; NOT yet on the server
 - [ ] `GHL_VOICE_AGENT_ID` set to the new outbound agent once it exists
-- [ ] Decide: alert Rob when a draft is waiting (proposed by Claude, not requested by Ali); alert Ali
+- [ ] Decide: alert the approver when a draft is waiting (proposed by Claude, not requested by Ali); alert Ali
       if a draft sits unapproved (proposed, Ali has not said yes). Neither is built.
 - [ ] Host cron for `execution/notification_tick.py` every 5 minutes (not installed)
 - [ ] Shadow mode ends 2026-10-16; `REPLY_AI_MODE=live` is also required before the AI may stop anything
@@ -225,7 +225,7 @@ to the repo root), so put the settings there once; restart the API after changin
 |---|---|---|
 | `NOTIFY_ESCALATION_ENABLED` | off | Approve starts the escalation instead of sending one email |
 | `NOTIFY_CHANNEL_EMAIL` / `_SMS` / `_CALL` | `dry_run` | `dry_run` logs only; `ghl` writes the GHL field (shadow-gated); email can also be `smtp` |
-| `ROB_ALERT_EMAIL` | unset | Where Rob's alerts go; unset = logged only |
+| the approver role (Settings page; `APPROVER_ALERT_EMAIL` fallback) | unset | Where the approver's alerts go; unset = logged only |
 | `NOTIFY_ACK_BASE_URL` | `https://2-29-47-89.nip.io/api/notifications/ack` | Base of the email "I got this" link |
 | `NOTIFY_INBOUND_SECRET` | unset | Secret for the inbound-reply endpoint; unset = endpoint closed |
 | `REPLY_AI_MODE` / `REPLY_AI_SHADOW_UNTIL` | shadow / 2026-10-16 | Live needs both the setting and the date to have passed |
@@ -233,3 +233,21 @@ to the repo root), so put the settings there once; restart the API after changin
 ## Related
 `directives/interview-processing.md`, `execution/send_notification.py`, `execution/alert.py`,
 `directives/pipeline-health-check.md` (add checks for stuck/unacknowledged notices when built).
+
+
+## Roles, not people (Ali, 2026-10-04)
+
+Nobody is written into the code. Three ROLES are assigned on the dashboard's Settings page (table `role_assignments`; `execution/roles.py`):
+
+| Role | Gets | Today (a setting, not code) |
+|---|---|---|
+| `approver` | approves notifications; follow-ups on a student (no response, a reply needing help, STOP, cannot be reached) | assigned in Settings |
+| `callback_owner` | interview callbacks from students, within ONE business hour during working hours | assigned in Settings |
+| `escalation_target` | one email per stale draft (unapproved after 2 business hours); also copied on emailed notices | assigned in Settings |
+
+- Stale-draft alert: `execution/stale_draft_alerts.py`, host cron every 15 minutes (`execution/crontab.stale`); goes to the escalation role and NEVER to the approver (the approver is the one who has not acted); each
+  draft once; the first run records existing drafts silently (no flood from a backlog); nothing is marked while nobody holds the role.
+- Business hours (`execution/business_hours.py`): default Mon-Fri 09:00-17:00 America/Chicago, settable by environment; no holidays modelled.
+- Pilot gate: until lifted on the Settings page only 3 approved notices may start a sequence (`notify_pilot_limit`, 0 = no limit); enforced when escalation is enabled.
+- When recruiters take over, each person's role assignment changes; the code does not. `scope` on a role assignment is reserved for per-recruiter routing (the roster already carries an assigned assistant per student).
+- Not built yet: the callback SLA timer (needs inbound call reading from GHL), a second escalation holder (Ali: escalation is only the one person; if they are away nobody is told).

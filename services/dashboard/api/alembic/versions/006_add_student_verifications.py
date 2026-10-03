@@ -1,4 +1,4 @@
-"""Add student_verifications (Rob confirms students the pipeline had to guess)
+"""Add student_verifications (the approver confirms students the pipeline had to guess)
 
 Revision ID: 006_student_verifications
 Revises: 005_notification_opt_outs

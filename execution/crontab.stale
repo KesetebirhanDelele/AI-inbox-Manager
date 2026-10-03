@@ -1,0 +1,5 @@
+# Host crontab for the stale-draft alert (Hetzner). Install on the SERVER (no image rebuild):
+#   scp execution/crontab.stale root@2.29.47.89:/etc/cron.d/inboxgenius-stale
+# Every 15 minutes. The script itself does nothing outside business hours and emails the escalation role once per stale draft.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/15 * * * * root docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/stale_draft_alerts.py >> /opt/ai-inbox-manager/logs/stale.log 2>&1

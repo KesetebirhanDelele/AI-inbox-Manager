@@ -1,12 +1,12 @@
 """
 Does this "interview" email look like a real interview invitation, or a job board / lead-generation mailer?
 
-A deterministic CHECK for Rob to read before he approves a student notification. It never decides and never blocks:
+A deterministic CHECK for the approver to read before he approves a student notification. It never decides and never blocks:
 it lists what it saw (signals for and against) and gives one of three advisory verdicts. Pure function, no I/O,
 no AI, so the same email always gets the same answer and every reason can be tested.
 
   looks_genuine      real-looking sender and concrete interview details
-  needs_check        mixed or too little to tell; Rob should read the email
+  needs_check        mixed or too little to tell; the approver should read the email
   likely_job_board   generic mailer language, tracked links, or a jobs-site sender and nothing concrete
 """
 
@@ -64,7 +64,7 @@ def _company_tokens(company: Optional[str]) -> List[str]:
 
 def assess(subject: str, from_address: str, body: str, company: Optional[str] = None) -> Dict[str, Any]:
     """
-    Returns {"verdict", "against": [...], "for": [...], "note"}: plain-language reasons Rob can read.
+    Returns {"verdict", "against": [...], "for": [...], "note"}: plain-language reasons the approver can read.
     `body` may be raw HTML or text; only the text is read. A short body (a preview) is allowed: the note says so.
     """
     text = _plain(body)

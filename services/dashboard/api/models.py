@@ -306,8 +306,8 @@ class NotificationSequence(Base):
     One escalation run for an approved NotificationDraft (see
     directives/student-notification-escalation.md).
 
-    Starts when Rob approves; keeps contacting the student until they acknowledge
-    or Rob closes it. New table on purpose: create_all() cannot add columns to
+    Starts when the approver approves; keeps contacting the student until they acknowledge
+    or the approver closes it. New table on purpose: create_all() cannot add columns to
     the existing notification_drafts table in production.
     """
     __tablename__ = "notification_sequences"
@@ -316,17 +316,17 @@ class NotificationSequence(Base):
     draft_id = Column(Integer, ForeignKey("notification_drafts.id"), nullable=False, unique=True, index=True)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
 
-    # active | acknowledged | closed (by Rob) | exhausted (4 days, no ack) | opted_out
+    # active | acknowledged | closed (by the approver) | exhausted (4 days, no ack) | opted_out
     status = Column(String(30), default="active", nullable=False, index=True)
     timezone = Column(String(64), nullable=False)          # student's own zone (Ali: quiet hours use it)
     timezone_source = Column(String(30))                   # stored | area_code | fallback
-    started_at = Column(DateTime, nullable=False)          # naive UTC, = Rob's approval time
+    started_at = Column(DateTime, nullable=False)          # naive UTC, = the approver's approval time
     started_by = Column(String(100))
 
     ack_token = Column(String(64), unique=True, index=True)  # email "I got this" link
     ack_at = Column(DateTime)
-    ack_channel = Column(String(20))                       # call | sms | email | rob | ai
-    ack_kind = Column(String(20))                          # explicit | rob | ai_inferred
+    ack_channel = Column(String(20))                       # call | sms | email | approver | ai
+    ack_kind = Column(String(20))                          # explicit | approver | ai_inferred
     closed_by = Column(String(100))
     closed_at = Column(DateTime)
 
@@ -379,7 +379,7 @@ class ReplyAnalysis(Base):
     reason = Column(Text)
     shadow = Column(Boolean, default=True, nullable=False)
     acted = Column(Boolean, default=False, nullable=False)   # did this analysis stop the sequence?
-    human_verdict = Column(String(20))                    # right | wrong, set by Rob/Ali later
+    human_verdict = Column(String(20))                    # right | wrong, set by the approver/Ali later
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
@@ -418,9 +418,39 @@ class NotificationOptOut(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class RoleAssignment(Base):
+    """
+    Who holds a role (approver, callback_owner, escalation_target). Roles are assigned on the Settings page, never written into the code,
+    so moving the work to recruiters is a settings change. `scope` is reserved for per-recruiter routing later (unused).
+    """
+    __tablename__ = "role_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    role = Column(String(40), nullable=False, index=True)
+    email = Column(String(255))
+    display_name = Column(String(255))
+    scope = Column(String(100))
+    active = Column(Boolean, default=True, nullable=False)
+    updated_by = Column(String(100))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AlertLog(Base):
+    """One row per alert already sent, so an alert (for example "this draft is stale") is sent once. kind + key is unique."""
+    __tablename__ = "alert_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(40), nullable=False, index=True)
+    key = Column(String(100), nullable=False)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+    detail = Column(Text)
+
+    __table_args__ = (Index("uq_alert_kind_key", "kind", "key", unique=True),)
+
+
 class StudentVerification(Base):
     """
-    Whether Rob has confirmed who a student is. A student the pipeline had to create from an email's delivery Gmail (not in the
+    Whether the approver has confirmed who a student is. A student the pipeline had to create from an email's delivery Gmail (not in the
     roster or database) starts "unverified": the Gmail is only an address and the name is a guess (the greeting's name, or the Gmail).
     Students with no row here (the roster, earlier students) count as verified. Approving a notification for an unverified student is refused.
     """

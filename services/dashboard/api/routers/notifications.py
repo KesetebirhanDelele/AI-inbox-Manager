@@ -340,7 +340,7 @@ async def get_review_queue(
     user: UserSession = Depends(get_current_user),
 ):
     """
-    Everything Rob needs to approve or reject a student notification on ONE screen.
+    Everything the approver needs to approve or reject a student notification on ONE screen.
 
     One item per interview event: the student and how to reach them, the interview facts, the source email with an
     advisory authenticity check (genuine interview or job-board mailer), the draft, a preview of what the student will
@@ -474,7 +474,7 @@ async def verify_student(
     db: Session = Depends(get_db),
     user: UserSession = Depends(get_current_user),
 ):
-    """Rob confirms who a pipeline-created student is, correcting the guessed name, phone and personal email."""
+    """the approver confirms who a pipeline-created student is, correcting the guessed name, phone and personal email."""
     student = db.query(Student).filter(Student.id == student_id).first()
     if student is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
@@ -567,6 +567,17 @@ async def approve_notification(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="This student has not been verified yet. Confirm who they are first.")
 
+    if _escalation_enabled():
+        # Pilot gate (Ali): until the limit is lifted on the Settings page, only that many notices may start a sequence.
+        from routers.role_settings import pilot_limit
+        limit = pilot_limit(db)
+        started = db.query(NotificationSequence).count()
+        already = db.query(NotificationSequence).filter(NotificationSequence.draft_id == draft.id).first() is not None
+        if limit and started >= limit and not already:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Pilot limit reached: {started} of {limit} notices have already been started. "
+                                       "Lift the limit on the Settings page once the pilot has run clean.")
+
     # Update status to approved
     draft.email_status = "approved"
     draft.reviewed_by = user.username
@@ -575,14 +586,14 @@ async def approve_notification(
     _tick_approve_step(db, event_for_guard, user.username)
 
     if _escalation_enabled():
-        # Rob's approval starts the escalation: call + text + email now, then follow-ups until
-        # the student acknowledges (or Rob closes it). Nothing is sent before this click.
+        # the approver's approval starts the escalation: call + text + email now, then follow-ups until
+        # the student acknowledges (or the approver closes it). Nothing is sent before this click.
         engine, channels_mod = _engine()
         event = db.query(InterviewEvent).filter(InterviewEvent.id == draft.interview_event_id).first()
         student = db.query(Student).filter(Student.id == event.student_id).first() if event and event.student_id else None
         now = datetime.utcnow()
         seq = engine.start_sequence(db, draft, student, now, started_by=user.username)
-        report = engine.tick(db, now, channels_mod.channels_from_env(), engine.RobAlerts(), _ack_base_url())
+        report = engine.tick(db, now, channels_mod.channels_from_env(), engine.RoleAlerts(db=db), _ack_base_url())
         db.refresh(draft)
         return {
             "id": draft.id,
@@ -830,7 +841,7 @@ async def get_sequence(notification_id: int, db: Session = Depends(get_db),
 @router.post("/{notification_id}/sequence/close")
 async def close_sequence(notification_id: int, db: Session = Depends(get_db),
                          user: UserSession = Depends(get_current_user)):
-    """Rob closes the follow-ups himself (for example the student told him directly)."""
+    """the approver closes the follow-ups (for example the student told them directly)."""
     from models import NotificationSequence
     engine, _ = _engine()
     seq = db.query(NotificationSequence).filter(NotificationSequence.draft_id == notification_id).first()
@@ -859,4 +870,4 @@ async def inbound_reply(body: InboundReply, db: Session = Depends(get_db),
     if body.channel not in ("sms", "call"):
         raise HTTPException(status_code=422, detail="channel must be sms or call")
     engine, _ = _engine()
-    return engine.handle_inbound_reply(db, body.phone, body.text, body.channel, datetime.utcnow(), engine.RobAlerts())
+    return engine.handle_inbound_reply(db, body.phone, body.text, body.channel, datetime.utcnow(), engine.RoleAlerts(db=db))

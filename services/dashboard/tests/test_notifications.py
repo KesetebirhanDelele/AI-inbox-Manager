@@ -329,7 +329,7 @@ class TestGetNotificationByEmail:
         assert resp.status_code == 401
 
 
-# ── the review queue: one screen for Rob ──────────────────────────────────────────────────────
+# ── the review queue: one screen for the approver ──────────────────────────────────────────────────────
 
 class TestReviewQueue:
     def _queue(self, client, auth_cookies, **params):
@@ -389,7 +389,7 @@ class TestReviewQueue:
         make_notification_draft(db, event)
         item = self._queue(client, auth_cookies)["items"][0]
         assert item["authenticity"]["verdict"] == "likely_job_board" and "job-board mailer" in item["warnings"][0]
-        assert item["can_approve"] is True                      # advisory only: Rob decides
+        assert item["can_approve"] is True                      # advisory only: the approver decides
 
     def test_done_notices_are_hidden_unless_asked_for(self, client, db, auth_cookies):
         from conftest import make_email, make_student, make_interview_event, make_notification_draft

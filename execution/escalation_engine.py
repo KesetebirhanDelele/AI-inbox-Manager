@@ -1,14 +1,14 @@
 """
 Student notification escalation engine.
 
-Starts when Rob approves a draft, then keeps contacting the student until they acknowledge or
-Rob closes it. The schedule and quiet-hours rules live in escalation_schedule.py, message
+Starts when the approver approves a draft, then keeps contacting the student until they acknowledge or
+the approver closes it. The schedule and quiet-hours rules live in escalation_schedule.py, message
 delivery in notify_channels.py, and the reading of free-text replies in reply_analysis.py.
 Design and decisions: directives/student-notification-escalation.md.
 
 Rules worth knowing:
-  * Telling Rob and stopping are different things. Rob is told when day 1 goes unanswered and
-    when the sequence ends; neither of those stops anything. Only an acknowledgement or Rob
+  * Telling the approver and stopping are different things. the approver is told when day 1 goes unanswered and
+    when the sequence ends; neither of those stops anything. Only an acknowledgement or the approver
     closing it does.
   * A failed attempt is recorded, never silently retried, and never blocks later attempts.
   * Nothing here sends to a student unless the chosen channel is a real one. The default is dry_run.
@@ -111,7 +111,7 @@ def acknowledge(db, seq, channel: str, kind: str, now: datetime) -> bool:
 
 
 def close_sequence(db, seq, by: str, now: datetime) -> bool:
-    """Rob closes the sequence himself (for example the student told him directly)."""
+    """the approver closes the sequence (for example the student told them directly)."""
     if seq.status != "active":
         return False
     seq.status, seq.closed_by, seq.closed_at = "closed", by, now
@@ -135,30 +135,45 @@ def acknowledge_by_token(db, token: str, now: datetime) -> str:
     return "already"
 
 
-# ── alerts to Rob ────────────────────────────────────────────────────────────
+# ── alerts to whoever holds a role (execution/roles.py) ──────────────────────
 
-class RobAlerts:
+class RoleAlerts:
     """
-    Messages to Rob. With ROB_ALERT_EMAIL set they are emailed; without it they are only logged,
-    so nothing is lost or silently dropped. Rob's preferred channel is still to be confirmed.
+    Messages to the person who holds a ROLE (approver for follow-ups on a student, callback_owner, escalation_target for stale drafts).
+    The address comes from the role assignment in the database (Settings page) at send time, so no person is written into the code.
+    With nobody assigned the alert is only logged, never silently dropped. `to` forces one address for every role (tests).
     """
 
-    def __init__(self, to: Optional[str] = None, send_fn=None):
-        self.to = to if to is not None else os.getenv("ROB_ALERT_EMAIL", "").strip()
+    def __init__(self, to: Optional[str] = None, send_fn=None, db=None):
+        self.to = to
+        self.db = db
         self._send_fn = send_fn
         self.sent: List[str] = []
 
-    def _notify(self, subject: str, body: str) -> bool:
+    def address_for(self, role: str) -> str:
+        if self.to is not None:
+            return self.to
+        import roles
+        return roles.role_email(self.db, role)
+
+    def _notify(self, subject: str, body: str, role: str = "approver") -> bool:
         self.sent.append(subject)
-        if not self.to:
-            logger.warning(f"[Rob alert, ROB_ALERT_EMAIL not set] {subject}: {body}")
+        to = self.address_for(role)
+        if not to:
+            logger.warning(f"[alert for role {role}, nobody assigned] {subject}: {body}")
             return False
         send = self._send_fn
         if send is None:
             from send_notification import send_email
             send = send_email
-        result = send(recipient_email=self.to, subject=f"[InboxGenius] {subject}", body=body)
+        result = send(recipient_email=to, subject=f"[InboxGenius] {subject}", body=body)
         return result.get("status") == "sent"
+
+    def stale_drafts(self, subject: str, body: str) -> bool:
+        return self._notify(subject, body, role="escalation_target")
+
+    def callback_needed(self, subject: str, body: str) -> bool:
+        return self._notify(subject, body, role="callback_owner")
 
     def no_response(self, seq, student_name: str) -> bool:
         return self._notify(
@@ -201,7 +216,7 @@ class TickReport:
     failed: int = 0
     skipped: int = 0
     deferred: int = 0
-    rob_no_response: int = 0
+    no_response_alerts: int = 0
     ended: int = 0
     details: List[str] = field(default_factory=list)
 
@@ -252,11 +267,11 @@ def _held_attempt_collides(attempt, siblings) -> bool:
     return sched.collides_with_neighbour(attempt.scheduled_for, others)
 
 
-def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RobAlerts] = None,
+def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RoleAlerts] = None,
          ack_base_url: str = "") -> TickReport:
-    """Send every attempt that is due, send Rob's alerts, and end sequences that have run out."""
+    """Send every attempt that is due, send the approver's alerts, and end sequences that have run out."""
     M = _m()
-    alerts = alerts or RobAlerts()
+    alerts = alerts or RoleAlerts(db=db)
     report = TickReport()
     sequences = db.query(M.NotificationSequence).filter(M.NotificationSequence.status == "active").all()
     for seq in sequences:
@@ -310,17 +325,17 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RobAlerts
 
         if seq.rob_day1_alert_at is None and seq.attempts and all(
                 a.status == "skipped" and (a.detail or "").startswith("student has no") for a in seq.attempts):
-            # nothing can ever be sent: tell Rob now (once), do not wait days for the "ended" alert
+            # nothing can ever be sent: tell the approver now (once), do not wait days for the "ended" alert
             alerts.cannot_reach(seq, _student_name(db, seq), "there is no email, phone number or Gmail on file")
             seq.rob_day1_alert_at = now
             db.commit()
-            report.rob_no_response += 1
+            report.no_response_alerts += 1
 
-        if seq.rob_day1_alert_at is None and now >= sched.rob_no_response_due(seq.started_at):
+        if seq.rob_day1_alert_at is None and now >= sched.no_response_due(seq.started_at):
             alerts.no_response(seq, _student_name(db, seq))
             seq.rob_day1_alert_at = now
             db.commit()
-            report.rob_no_response += 1
+            report.no_response_alerts += 1
 
         still_pending = any(a.status == "pending" for a in seq.attempts)
         last = max((a.scheduled_for for a in seq.attempts), default=seq.started_at)
@@ -366,14 +381,14 @@ def _interview_summary(db, seq) -> str:
 
 
 def handle_inbound_reply(db, phone: str, text: str, channel: str, now: datetime,
-                         alerts: Optional[RobAlerts] = None, completion_fn=None,
+                         alerts: Optional[RoleAlerts] = None, completion_fn=None,
                          env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """
     A student replied by text (or a call transcript was posted back). Plain rules first (YES, STOP),
     then the AI reading. Returns what happened, for the caller to log.
     """
     M = _m()
-    alerts = alerts or RobAlerts()
+    alerts = alerts or RoleAlerts(db=db)
     sequences = _active_sequences_for_phone(db, phone)
     if not sequences:
         return {"handled": False, "reason": "no active notification for this number"}
@@ -382,14 +397,14 @@ def handle_inbound_reply(db, phone: str, text: str, channel: str, now: datetime,
 
 
 def handle_reply_for_sequences(db, sequences, text: str, channel: str, now: datetime,
-                               alerts: Optional[RobAlerts] = None, completion_fn=None,
+                               alerts: Optional[RoleAlerts] = None, completion_fn=None,
                                env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """
     Decide what one student reply means for these (active) sequences: plain rules first (YES, STOP),
     then the AI reading, which only ever stops a sequence in live mode. Shared by the webhook and the poller.
     """
     M = _m()
-    alerts = alerts or RobAlerts()
+    alerts = alerts or RoleAlerts(db=db)
     rule = ra.classify_by_rule(text)
     if rule == "stop":
         for seq in sequences:
@@ -455,7 +470,7 @@ def _handled_as(result: Dict[str, Any]) -> str:
     return "ai"
 
 
-def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, completion_fn=None,
+def poll_replies(db, now: datetime, client, alerts: Optional[RoleAlerts] = None, completion_fn=None,
                  env: Optional[Dict[str, str]] = None) -> PollReport:
     """
     Read each active sequence's GHL Conversations (texts, emails) and Voice AI call logs for the student's
@@ -476,7 +491,7 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RobAlerts] = None, 
         call_min_seconds = int(env.get("NOTIFY_CALL_MIN_SECONDS") or gcv.DEFAULT_MIN_CALL_SECONDS)
     except ValueError:
         call_min_seconds = gcv.DEFAULT_MIN_CALL_SECONDS
-    alerts = alerts or RobAlerts()
+    alerts = alerts or RoleAlerts(db=db)
     report = PollReport()
 
     # One student can have several open notices (two interviews). Their conversation is the same, so group the

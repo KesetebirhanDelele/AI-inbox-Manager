@@ -2,7 +2,7 @@
 Turn an HTML email body into readable text.
 
 The old conversion only removed tags, so the CSS and <head> of marketing emails (fonts, media queries) ended up in the stored
-preview and in what Rob reads ("<!DOCTYPE html> <html ... @import url(...) body{font-size:14px..."). This drops head, style, script and
+preview and in what the approver reads ("<!DOCTYPE html> <html ... @import url(...) body{font-size:14px..."). This drops head, style, script and
 comment blocks, keeps line breaks where the layout had them, decodes entities and collapses whitespace.
 """
 import html

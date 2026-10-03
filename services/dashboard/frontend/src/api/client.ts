@@ -235,6 +235,27 @@ class ApiClient {
     return response.data;
   }
 
+  // Roles and pilot limit (Settings)
+  async getRoles(): Promise<{
+    roles: { role: string; label: string; help: string; email: string; active: boolean; source: string }[];
+    pilot_limit: number;
+    pilot_used: number;
+    business_hours: string;
+  }> {
+    const response = await this.client.get('/api/roles');
+    return response.data;
+  }
+
+  async assignRole(role: string, email: string): Promise<any> {
+    const response = await this.client.put(`/api/roles/${role}`, { email });
+    return response.data;
+  }
+
+  async setPilotLimit(limit: number): Promise<any> {
+    const response = await this.client.put('/api/roles/pilot-limit', { limit });
+    return response.data;
+  }
+
   // Whitelist
   async getWhitelist(): Promise<WhitelistCompany[]> {
     const response = await this.client.get('/api/whitelist');

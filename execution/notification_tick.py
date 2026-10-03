@@ -1,5 +1,5 @@
 """
-Run one pass of the student notification escalation: send what is due, alert Rob, end finished sequences.
+Run one pass of the student notification escalation: send what is due, alert the approver, end finished sequences.
 
 Does nothing unless NOTIFY_ESCALATION_ENABLED is 1/true/yes, so deploying this is safe. Channels
 default to dry_run (nothing delivered); see notify_channels.py.
@@ -39,10 +39,10 @@ def run(now: datetime = None):
         raise SystemExit("No database session")
     base = os.getenv("NOTIFY_ACK_BASE_URL", "https://2-29-47-89.nip.io/api/notifications/ack")
     now = now or datetime.utcnow()
-    alerts = engine.RobAlerts()
+    alerts = engine.RoleAlerts(db=db)
     report = engine.tick(db, now, notify_channels.channels_from_env(), alerts, base)
     print(f"tick: sent={report.sent} dry_run={report.dry_run} failed={report.failed} skipped={report.skipped} "
-          f"deferred={report.deferred} rob_no_response={report.rob_no_response} ended={report.ended}")
+          f"deferred={report.deferred} no_response_alerts={report.no_response_alerts} ended={report.ended}")
     for line in report.details:
         print(f"  problem: {line}")
 

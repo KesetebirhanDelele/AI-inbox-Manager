@@ -215,6 +215,19 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
   Students with no verification record (roster, earlier students) count as verified. Verified in a real browser against local Docker (form -> confirm -> Approve appears).
 - Production: `backfill_event_students.py --refresh-names` flags the 12 students the backfill created and improves their names from each one's latest email greeting (results below).
 
+### 2026-10-04: Ali's answers -> roles instead of people, stale-draft alert, pilot gate, Shemika removed
+- **Ali (2026-10-03):** pilot = 3 notices the approver approves by hand, then everyone; callbacks: Rob for now, answered within one business hour in working hours; DO NOT write her name into the system:
+  approver, callback owner and escalation target are ROLES that get assigned (the work will move to recruiters, with Rob or Jackie as the approval step until trusted); stale drafts go to Jackie as the
+  ESCALATION role (not to the approver, who is the one who has not acted); test phone/email = Kes's own. **Kes:** Jackie's address, 2 business hours is enough, escalation role = only Jackie, remove Shemika's
+  email everywhere, call test Monday 2026-10-05 09:00 EDT with his phone, students have consented.
+- **Built:** `execution/roles.py` + tables `role_assignments`, `alert_log` (migration 007); `RobAlerts` -> `RoleAlerts(db)` (each alert resolves its role's address at send time; nobody assigned = logged, never lost);
+  every person's name removed from code, comments and tests (a test now fails if a person is named in execution/, the API or config/students.py); the hardcoded CC list (Shemika + Jackie) is gone: copies go
+  to the escalation role; `execution/business_hours.py` (Mon-Fri 09-17 America/Chicago by default, an ASSUMPTION Kes/Ali should confirm); `execution/stale_draft_alerts.py` + host cron `execution/crontab.stale`
+  (every 15 min; once per draft; silent baseline on first run); Settings page "Roles and alerts" card (3 roles + pilot limit); pilot gate on approve (limit 3 while escalation is enabled).
+- Renamed `rob_no_response*` identifiers; the DB columns `rob_day1_alert_at` / `rob_ended_alert_at` keep their names (create_all cannot rename columns).
+- Production assignment of the escalation role (Jackie) is DATA set after deploy, not code. Approver and callback owner are unassigned until Kes enters them (alerts are logged until then).
+- **Test calendar (GHL: ONE call per number per day):** Mon 5 Oct 09:00 EDT greeting + confirmation; text and email tests the same day; wrong person, voicemail and STOP on three separate days (or a second number).
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

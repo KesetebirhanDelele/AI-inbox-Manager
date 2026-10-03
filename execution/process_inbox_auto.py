@@ -593,7 +593,7 @@ def recipient_only_student(gmail: str, name_hint: Optional[str] = None) -> Dict[
 
     The Gmail is the identity KEY (the mailbox the email reached; the username of the student record) and the greeting's name is
     the DISPLAY name even when the Gmail does not contain it ("Hi OMOLOLA" for opcrowne@): a Gmail address is just a username the
-    person chose. With no usable greeting the name is guessed from the address. Either way the student is UNVERIFIED until Rob confirms.
+    person chose. With no usable greeting the name is guessed from the address. Either way the student is UNVERIFIED until the approver confirms.
     """
     local = gmail.split("@")[0].lower()
     words = [w for w in re.split(r"[^a-z]+", local) if len(w) >= 3]
@@ -642,7 +642,7 @@ def _identify_student(db, email_data: Dict[str, Any], classification: Dict[str, 
     The mailbox an email was delivered to (a forwarding header, or a Gmail in To/CC) is the strongest identity, so when
     there is one it decides, in this order: a student whose assigned Gmail it is; a student (database or roster) whose
     email it is; the body's name hint, only if that name appears in the Gmail; the one known student whose name appears in
-    the Gmail; otherwise the Gmail itself identifies a new student (name guessed from the address, Rob confirms). A body
+    the Gmail; otherwise the Gmail itself identifies a new student (name guessed from the address, the approver confirms). A body
     name that does NOT fit the Gmail is ignored: it was how "Lead Business" became a student.
     With no recipient Gmail, the name lookup is all there is.
 

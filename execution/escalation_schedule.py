@@ -7,7 +7,7 @@ directives/student-notification-escalation.md.
 Times passed in and out are NAIVE UTC datetimes, the same convention the rest of the
 database uses. Time zones are only applied to decide local hours.
 
-Schedule (T0 = the moment Rob approves):
+Schedule (T0 = the moment the approver approves):
     T0        call + text + email
     T0 + 2h   email                (no second call: GHL Voice AI allows ONE call per phone number per day)
     T0 + 4h   text + email
@@ -137,13 +137,13 @@ def scheduled_time(planned: Planned, tz_name: str) -> datetime:
     return release_time(planned.planned_for, tz_name, planned.channel)
 
 
-def rob_no_response_due(start_utc: datetime) -> datetime:
-    """Rob is told the student has not responded after day 1's rounds. This does NOT end the sequence."""
+def no_response_due(start_utc: datetime) -> datetime:
+    """the approver is told the student has not responded after day 1's rounds. This does NOT end the sequence."""
     return start_utc + ROB_NO_RESPONSE_AFTER
 
 
 def sequence_ended_due(plan: List[Planned], tz_name: str) -> datetime:
-    """After the final day's attempts have had time to land, the sequence ends and Rob is told."""
+    """After the final day's attempts have had time to land, the sequence ends and the approver is told."""
     last = max(scheduled_time(p, tz_name) for p in plan)
     return last + ENDED_ALERT_AFTER_LAST_ATTEMPT
 

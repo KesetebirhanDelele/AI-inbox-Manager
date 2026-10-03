@@ -252,7 +252,7 @@ async def root():
 
 
 # Import routers
-from routers import approvals, inbox, stats, whitelist, emails, interviews, notifications, checklist, schedule
+from routers import approvals, inbox, stats, whitelist, emails, interviews, notifications, checklist, schedule, role_settings
 
 # Register routers
 app.include_router(approvals.router, prefix="/api/approvals", tags=["approvals"])
@@ -261,6 +261,7 @@ app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
 app.include_router(whitelist.router, prefix="/api/whitelist", tags=["whitelist"])
 app.include_router(emails.router, prefix="/api/emails", tags=["emails"])
 app.include_router(interviews.router, prefix="/api/interviews", tags=["interviews"])
+app.include_router(role_settings.router, prefix="/api/roles", tags=["roles"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(checklist.router, prefix="/api/checklist", tags=["checklist"])
 app.include_router(schedule.router, prefix="/api/schedule", tags=["schedule"])

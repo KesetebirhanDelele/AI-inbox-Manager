@@ -14,7 +14,7 @@ model, decides what happens.
 
 Shadow mode (Ali, 2026-10-02): for the first two weeks the AI's reading is recorded but is never
 allowed to stop a sequence. After that it can, only when the mode is switched to live, the outcome
-is "understood" and the confidence is high. Anything else goes to Rob.
+is "understood" and the confidence is high. Anything else goes to the approver.
 """
 
 import json
@@ -138,7 +138,7 @@ def analyze_reply(
     interview_summary: str,
     completion_fn: Optional[Callable[[List[Dict[str, str]]], str]] = None,
 ) -> Analysis:
-    """Read one reply. A failed AI call is 'unsure' so it falls to Rob instead of stopping anything."""
+    """Read one reply. A failed AI call is 'unsure' so it falls to the approver instead of stopping anything."""
     try:
         raw = (completion_fn or _openai_completion)(build_messages(student_text, interview_summary))
         return parse_response(raw)

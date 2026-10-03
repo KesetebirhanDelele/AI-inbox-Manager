@@ -5,7 +5,7 @@ When an interview request is detected, this script:
 1. Looks up the student in the Google Sheet by name
 2. Drafts the notification email using the existing template system
 3. Sends the email from c_interviews@colaberry.com signed by the assigned assistant
-4. CC's Shemika (mika@colaberry.com) and Jackie (jackie@colaberry.com)
+4. Copies whoever holds the escalation role (execution/roles.py); nobody is written into the code
 
 Design principles:
 - Deterministic orchestration (no AI)
@@ -25,8 +25,10 @@ load_dotenv(project_root / ".env")
 
 logger = logging.getLogger(__name__)
 
-# CC always included on every notification
-ALWAYS_CC = ["mika@colaberry.com", "jackie@colaberry.com"]
+def copy_list(db=None) -> list:
+    """Who is copied on a notification: the escalation role's address (Settings page), no hardcoded people."""
+    from roles import notice_copy_emails
+    return notice_copy_emails(db)
 
 # Sender display name (emails come FROM c_interviews but signed by assistant)
 FROM_EMAIL = os.getenv("EMAIL_ADDRESS", "c_interviews@colaberry.com")
@@ -187,10 +189,11 @@ def send_interview_notification(
         from send_notification import send_email
 
         to_email = student["personal_email"]
-        cc_list = list(set(ALWAYS_CC + student.get("cc_emails", [])))
+        copies = copy_list()
+        cc_list = list(set(copies + student.get("cc_emails", [])))
 
-        # BCC Shemika and Jackie on every notification
-        bcc_str = ", ".join(ALWAYS_CC)
+        # BCC the escalation role on every notification
+        bcc_str = ", ".join(copies)
 
         send_result = send_email(
             recipient_email=to_email,

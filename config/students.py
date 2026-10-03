@@ -8,7 +8,7 @@ Each student has:
 - assigned_to: Assistant name (Karthik or Vivek)
 - assistant_email: Assistant's Colaberry email
 
-CC on every notification: mika@colaberry.com, jackie@colaberry.com
+Who is copied on notifications is a ROLE assigned on the dashboard's Settings page, not a list in this file.
 """
 
 STUDENTS = [
@@ -38,5 +38,5 @@ STUDENTS = [
     {"name": "Pandey", "personal_email": "", "phone": "", "assigned_to": "Karthik", "assistant_email": "karthik@colaberry.com"},
 ]
 
-# Always CC on every notification
-CC_EMAILS = ["mika@colaberry.com", "jackie@colaberry.com"]
+# (copy recipients are assigned as a role in the dashboard, see execution/roles.py)
+CC_EMAILS: list = []

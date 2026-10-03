@@ -347,7 +347,7 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
 };
 
 /**
- * Rob's approval screen: every interview that needs a decision or a fix, with the student's contact details, an
+ * The approver's screen: every interview that needs a decision or a fix, with the student's contact details, an
  * advisory "is this a real interview?" check, a preview of what the student will receive, and Approve / Reject.
  */
 const NotificationQueue = () => {

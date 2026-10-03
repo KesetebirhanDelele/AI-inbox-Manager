@@ -143,7 +143,7 @@ def test_cancelled_draft_does_not_use_first_interview_template():
     cls = notify_student._build_classification_for_draft(_cls(), _email(), sub)
     student = {"full_name": "Test Student", "personal_email": "t@example.com",
                "phone_number": "1", "assigned_gmail": None, "student_gmail": None}
-    draft = draft_notification(classification=cls, student_info=student, assistant_name="Rob")
+    draft = draft_notification(classification=cls, student_info=student, assistant_name="the approver")
     assert draft["template_id"] != "interview_request_first"
 
 
@@ -411,7 +411,7 @@ def test_the_greeting_name_is_used_when_it_appears_in_the_delivery_gmail():
     assert pia.recipient_only_student("priyan.nt24@gmail.com", None)["name"] == "Priyan"
 
 
-# ── 9. greeting name = display name; the Gmail = identity key; guesses are flagged for Rob ─────────────────────
+# ── 9. greeting name = display name; the Gmail = identity key; guesses are flagged for the approver ─────────────────────
 
 def test_the_greeting_name_wins_even_when_the_gmail_does_not_contain_it():
     cfg = pia.recipient_only_student("opcrowne@gmail.com", "Omolola")

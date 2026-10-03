@@ -54,7 +54,7 @@ class SendContext:
     db: Any = None          # session, used by the text budget
 
 
-UNREACHABLE = "UNREACHABLE: "     # prefix on a failed attempt's detail when only a human can fix it (tells Rob once)
+UNREACHABLE = "UNREACHABLE: "     # prefix on a failed attempt's detail when only a human can fix it (tells the approver once)
 
 
 @dataclass

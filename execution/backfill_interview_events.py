@@ -6,7 +6,7 @@ Schedule, Assessment and similar emails were filed in folders with no event, so 
 interviews or the student notifications. The pipeline now creates them for new mail; this script does the same for the old mail.
 
 It reuses the real pipeline step (`process_interview_email`: sub-classifier, student lookup, event, notification DRAFT), fed from what is
-stored in the database (full body, classification). No email is sent: a draft only waits for Rob's approval.
+stored in the database (full body, classification). No email is sent: a draft only waits for the approver's approval.
 
 Safe to rerun: an email that already has an event is skipped. Dry-run by default; nothing is written without --apply.
 

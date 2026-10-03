@@ -71,7 +71,7 @@ def channels(**over):
 
 
 def alerts():
-    return eng.RobAlerts(to="rob@example.com", send_fn=lambda **k: {"status": "sent"})
+    return eng.RoleAlerts(to="rob@example.com", send_fn=lambda **k: {"status": "sent"})
 
 
 def steps(ch):
@@ -115,11 +115,11 @@ def test_day_one_ladder_then_rob_is_told_but_the_sequence_keeps_going(db):
 
     assert al.sent == []                                         # not yet
     r = eng.tick(db, T0 + timedelta(hours=6), ch, al)
-    assert r.rob_no_response == 1 and len(al.sent) == 1 and "has not responded" in al.sent[0]
+    assert r.no_response_alerts == 1 and len(al.sent) == 1 and "has not responded" in al.sent[0]
     eng.tick(db, T0 + timedelta(hours=7), ch, al)
     assert len(al.sent) == 1                                     # told once
     db.refresh(seq)
-    assert seq.status == "active"                                # telling Rob does NOT stop it
+    assert seq.status == "active"                                # telling the approver does NOT stop it
 
 
 def test_three_more_days_of_one_call_one_text_one_email_then_it_ends_and_rob_is_told(db):
@@ -324,8 +324,8 @@ def test_replies_that_are_not_understood_go_to_rob_and_do_not_stop_the_sequence(
     assert any("may need help" in s for s in al.sent)
 
 
-def test_rob_alerts_are_logged_not_lost_when_no_address_is_configured(db):
-    quiet = eng.RobAlerts(to="", send_fn=lambda **k: pytest.fail("must not send without an address"))
+def test_role_alerts_are_logged_not_lost_when_no_address_is_configured(db):
+    quiet = eng.RoleAlerts(to="", send_fn=lambda **k: pytest.fail("must not send without an address"))
     assert quiet.no_response(None, "Test Student") is False and quiet.sent
 
 
@@ -384,11 +384,11 @@ def test_a_skipped_result_is_recorded_with_its_reason_and_not_retried(db):
     assert call.calls == 1
 
 
-# -- students who can only be found by email, and Rob being told when nobody can be reached ----------------
+# -- students who can only be found by email, and the approver being told when nobody can be reached ----------------
 
 def recording_alerts():
     sent = []
-    al = eng.RobAlerts(to="rob@example.com", send_fn=lambda **k: sent.append(k) or {"status": "sent"})
+    al = eng.RoleAlerts(to="rob@example.com", send_fn=lambda **k: sent.append(k) or {"status": "sent"})
     al.record = sent
     return al
 

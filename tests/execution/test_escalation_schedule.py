@@ -126,7 +126,7 @@ def test_follow_up_time_stays_9am_across_the_clocks_going_back():
 
 
 def test_rob_is_told_after_day_one_and_the_end_comes_after_the_last_attempt():
-    assert es.rob_no_response_due(START) == START + timedelta(hours=6)
+    assert es.no_response_due(START) == START + timedelta(hours=6)
     plan = es.build_plan(START, CHI)
     last = max(es.scheduled_time(p, CHI) for p in plan)
     assert es.sequence_ended_due(plan, CHI) == last + timedelta(hours=3)

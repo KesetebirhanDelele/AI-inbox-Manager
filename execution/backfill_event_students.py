@@ -5,7 +5,7 @@ The recipient headers (To / Delivered-To) are not stored with an email, so older
 ("Student not identified") even though the email was addressed to the student's own Gmail. This script looks each such event's
 email up in Gmail by Message-ID (read-only), runs the same student identification the pipeline now uses
 (`process_inbox_auto._identify_student`: roster by email, then the recipient Gmail itself), attaches the student to the event, and
-creates the notification DRAFT if the event has none. Nothing is sent: a draft only waits for Rob's approval.
+creates the notification DRAFT if the event has none. Nothing is sent: a draft only waits for the approver's approval.
 
 Dry-run by default; nothing is written without --apply. Safe to rerun (an event that already has a student is skipped).
 
@@ -46,7 +46,7 @@ def email_data_from_gmail(parsed: Dict[str, Any], email_row: Any) -> Dict[str, A
 
 def refresh_names(apply: bool) -> Counter:
     """
-    Flag, for Rob's verification, every student that was created from a delivery Gmail alone (username == the Gmail's local part, no
+    Flag, for the approver's verification, every student that was created from a delivery Gmail alone (username == the Gmail's local part, no
     verification record yet), and improve the guessed name from the greeting of their latest email ("Hi OMOLOLA" for opcrowne@).
     Students from the roster or with another username are left alone.
     """
