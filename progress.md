@@ -195,6 +195,14 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
   can correct the name). The old test that asserted "To-field is ignored" encoded that earlier decision and was replaced.
 - **Repair for existing events:** `execution/backfill_event_students.py` re-reads each student-less event's original email from Gmail (read-only, by Message-ID), applies the same identification,
   attaches the student and creates the DRAFT (nothing is sent). Results below once run.
+- **Later the same night (precedence fix):** a first dry run showed a body name that does not fit the delivery Gmail ("Lead Business", a job title that the roster auto-add had turned into a
+  student) winning over the Gmail. New order when a delivery Gmail exists: its assigned-Gmail owner, a student whose personal email it is, roster by email, the body name ONLY if it appears in the
+  Gmail, the one known student whose name appears in the Gmail, else the Gmail itself (greeting name used when it fits, e.g. "Kenya" in kenyasbogans@). `add_new_student` now refuses job-title
+  words. The first dry run had also appended students to `config/students.py` on the server (the pipeline's name lookup auto-adds by REWRITING that file); the backfill now disables that step.
+  NOTE: every deploy overwrites the server's `config/students.py` with the repo copy (auto-added roster entries vanish at each deploy and come back at the next pipeline run): the roster should
+  live in the database; not changed here.
+- **Backfill applied (production):** 43 student-less events were identified (30 by an existing student, 11 by the delivery Gmail alone, 2 by the roster), 5 emails are no longer in Gmail; 43 drafts
+  created, none sent. Students: 7 -> 19 (named from the Gmail or greeting, no phone for most; Rob corrects names/phones). Production now has 52 of 57 events with a student.
 
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
