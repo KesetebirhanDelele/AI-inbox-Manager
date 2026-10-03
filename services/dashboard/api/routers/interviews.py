@@ -60,6 +60,12 @@ class InterviewEventRecord(BaseModel):
     notified_at: Optional[datetime]
     recipient_email: Optional[str]
     created_at: datetime
+    # added when the Events Report was merged into the Interviews page (all optional)
+    draft_id: Optional[int] = None
+    subject: Optional[str] = None
+    from_address: Optional[str] = None
+    received_date: Optional[datetime] = None
+    confidence: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -249,8 +255,9 @@ async def get_interview_events(
     )
 
     results = (
-        db.query(InterviewEvent, Student, NotificationDraft)
+        db.query(InterviewEvent, Student, NotificationDraft, Email)
         .outerjoin(Student, InterviewEvent.student_id == Student.id)
+        .outerjoin(Email, InterviewEvent.email_id == Email.id)
         .outerjoin(
             latest_notif_subq,
             InterviewEvent.id == latest_notif_subq.c.interview_event_id
@@ -264,7 +271,7 @@ async def get_interview_events(
     )
 
     records = []
-    for event, student, notif in results:
+    for event, student, notif, email in results:
         records.append(InterviewEventRecord(
             event_id=event.id,
             student_name=student.full_name if student else "Unknown",
@@ -281,6 +288,11 @@ async def get_interview_events(
             notified_at=notif.sent_at if notif else None,
             recipient_email=notif.recipient_email if notif else None,
             created_at=event.created_at,
+            draft_id=notif.id if notif else None,
+            subject=email.subject if email else None,
+            from_address=email.from_address if email else None,
+            received_date=email.received_date if email else None,
+            confidence=event.confidence,
         ))
 
     return records

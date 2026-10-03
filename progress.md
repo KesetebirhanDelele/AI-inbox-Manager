@@ -113,6 +113,19 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
   updates the API but the browser keeps the old screens. Any change under `services/dashboard/frontend/` must be deployed with `--build-web`
   (outside the :00-:11 window of even UTC hours), then check the bundle on the server. Added to RUNBOOK.
 
+### 2026-10-03 (evening): Events Report merged into Interviews; Upcoming and Offers fixes
+- **Merged (Kes: "one of them"):** the Interviews page is now event-based (one row per interview event, from `/api/interviews/events`, which now also returns
+  `draft_id`, email `subject`/`from_address`/`received_date` and `confidence`). Columns: student (+ email), type, company, position, interview date ("Not scheduled
+  yet" when none), received, notification (Notified / Needs your decision + a "Decide" link to Review / Student not identified / No draft). Tabs: All / Needs your
+  decision / Notified / Not notified yet, with counts; search and type filter; the process checklist still opens per row. The Events Report page is deleted;
+  `/interview-events` redirects to `/interviews`; its nav item is gone; the Dashboard link now points to Interviews.
+- **Upcoming interviews:** on both the Dashboard and Interviews, always shown, a real 7-day window ("N more later" counts the rest), and an empty message that says why.
+- **Offers tile:** relabelled "Offers Today"; today and this-month are now compared in Central time (the UTC date slice was a day off in the evening). Only ONE Offer email
+  exists in production (2026-09-29), so 0 today and 0/10 this month are correct.
+- **Found, not fixed:** 20 emails in interview categories (Phone Screen 7, Interview Cancelled 6, Confirmation 3, Schedule 3, Instant Interview 1) have NO interview
+  event, so they cannot reach Interviews, Upcoming or notifications. Needs a dry-run backfill that re-reads the mailbox (not started; ask Kes first).
+- Deployed WITH `--build-web`. Tests: 746 root, 201 dashboard.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

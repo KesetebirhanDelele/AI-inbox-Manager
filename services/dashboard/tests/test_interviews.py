@@ -157,3 +157,28 @@ class TestGetInterviewDetail:
         resp = client.get(f"/api/interviews/{email.id}", cookies=auth_cookies)
         assert resp.status_code == 200
         assert "error" in resp.json()
+
+
+class TestInterviewEventsList:
+    """/api/interviews/events feeds the merged Interviews page (the Events Report was retired)."""
+
+    def test_each_event_carries_student_email_draft_and_status(self, client, db, auth_cookies):
+        from conftest import make_notification_draft
+        student = make_student(db)
+        email = make_email(db, subject="Phone screen - Acme", from_address="rohit.s@acme.com")
+        event = make_interview_event(db, email, student=student, company="Acme Corp")
+        draft = make_notification_draft(db, event)
+
+        rows = client.get("/api/interviews/events", cookies=auth_cookies).json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["event_id"] == event.id and row["student_name"] == student.full_name
+        assert row["subject"] == "Phone screen - Acme" and row["from_address"] == "rohit.s@acme.com"
+        assert row["draft_id"] == draft.id and row["notification_status"] == "draft"
+        assert row["received_date"] is not None and "confidence" in row
+
+    def test_an_event_with_no_student_or_draft_still_appears(self, client, db, auth_cookies):
+        event = make_interview_event(db, make_email(db), student=None)
+        row = client.get("/api/interviews/events", cookies=auth_cookies).json()[0]
+        assert row["event_id"] == event.id and row["student_name"] == "Unknown"
+        assert row["draft_id"] is None and row["notification_status"] is None

@@ -326,6 +326,11 @@ export interface InterviewEventRecord {
   notified_at?: string;
   recipient_email?: string;
   created_at: string;
+  draft_id?: number | null;
+  subject?: string;
+  from_address?: string;
+  received_date?: string;
+  confidence?: number;
 }
 
 export interface StudentInfo {

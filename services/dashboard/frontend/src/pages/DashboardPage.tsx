@@ -163,6 +163,11 @@ const DashboardPage = () => {
     staleTime: 0,
     refetchOnMount: 'always',
   });
+  const upcomingWindowMs = 7 * 24 * 60 * 60 * 1000;
+  const upcomingThisWeek = (upcomingInterviews ?? []).filter(
+    (iv) => !!iv.interview_date && new Date(`${iv.interview_date}T23:59:59`).getTime() - Date.now() <= upcomingWindowMs,
+  );
+  const upcomingLater = (upcomingInterviews ?? []).length - upcomingThisWeek.length;
   const queueReady = reviewQueue ? reviewQueue.items.filter((i) => i.state === 'ready').length : 0;
   const queueFix = reviewQueue
     ? reviewQueue.items.filter((i) => ['blocked', 'needs_student', 'no_draft'].includes(i.state)).length
@@ -171,8 +176,10 @@ const DashboardPage = () => {
 
 
   const todayCST = format(toZonedTime(new Date(), 'America/Chicago'), 'yyyy-MM-dd');
+  // Compare in Central time: received_date is UTC, so slicing it was a day off in the evening.
+  const cstDay = (iso: string) => format(toZonedTime(new Date(iso), 'America/Chicago'), 'yyyy-MM-dd');
   const todayOffers = (offers ?? []).filter((offer: any) =>
-    offer.received_date && offer.received_date.slice(0, 10) === todayCST
+    offer.received_date && cstDay(offer.received_date) === todayCST
   );
 
   // Trend arrow: today vs yesterday
@@ -186,9 +193,7 @@ const DashboardPage = () => {
   const OFFER_GOAL = 10;
   const currentMonthOffers = (offers ?? []).filter((o: any) => {
     if (!o.received_date) return false;
-    const d = new Date(o.received_date);
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    return cstDay(o.received_date).slice(0, 7) === todayCST.slice(0, 7);
   }).length;
 
   // Sparkline data for This Week card
@@ -350,7 +355,7 @@ const DashboardPage = () => {
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-bold text-gray-800 truncate">Offers Received</dt>
+                  <dt className="text-sm font-bold text-gray-800 truncate">Offers Today</dt>
                   <dd className="mt-1 text-xs text-gray-500">{currentMonthOffers}/{OFFER_GOAL} this month</dd>
                 </dl>
               </div>
@@ -437,7 +442,7 @@ const DashboardPage = () => {
 
       {/* Quick Reports — full width */}
       <Link
-        to="/interview-events"
+        to="/interviews"
         className="block w-full overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow group"
         style={{ backgroundColor: 'rgba(209,213,219,0.4)' }}
       >
@@ -450,10 +455,10 @@ const DashboardPage = () => {
           </div>
           <div>
             <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-700 transition-colors">
-              Interview Events Report
+              Interviews
             </p>
             <p className="text-xs text-gray-500 mt-0.5">
-              View all interview events with student notification status
+              Every interview with its student, date and notification status
             </p>
           </div>
           <svg className="h-5 w-5 text-gray-300 group-hover:text-indigo-400 ml-auto transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -701,18 +706,18 @@ const DashboardPage = () => {
         </div>
       )}
 
-      {/* Upcoming Interviews This Week — hidden when empty */}
-      {(upcomingLoading || (upcomingInterviews && upcomingInterviews.length > 0)) && (
+      {/* Upcoming Interviews: next 7 days, always shown so an empty list is explained */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="bg-gray-200 px-6 py-3 text-center">
-          <h2 className="text-base font-bold text-gray-800">Upcoming Interviews This Week</h2>
+          <h2 className="text-base font-bold text-gray-800">Upcoming Interviews (next 7 days)</h2>
+          {upcomingLater > 0 && <p className="text-xs text-gray-500 mt-0.5">{upcomingLater} more later</p>}
         </div>
         <div className="px-4 py-5 sm:p-6">
           {upcomingLoading ? (
             <div className="space-y-2 py-2">
               {[...Array(3)].map((_, i) => <Skel key={i} w="w-full" h="h-8" />)}
             </div>
-          ) : upcomingInterviews && upcomingInterviews.length > 0 ? (
+          ) : upcomingThisWeek.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead>
@@ -727,7 +732,7 @@ const DashboardPage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {upcomingInterviews.map((iv, idx) => {
+                  {upcomingThisWeek.map((iv, idx) => {
                     const isToday = iv.interview_date === todayCST;
                     const isTomorrow = iv.interview_date === format(toZonedTime(new Date(Date.now() + 86400000), 'America/Chicago'), 'yyyy-MM-dd');
                     return (
@@ -761,11 +766,12 @@ const DashboardPage = () => {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-gray-500 text-center py-8">No upcoming interviews scheduled</p>
+            <p className="text-sm text-gray-500 text-center py-8">
+              No interview has a confirmed date in the next 7 days. Requests that do not state a date yet are on the Interviews page.
+            </p>
           )}
         </div>
       </div>
-      )}
 
       {/* Needs your decision: replaces the old "Students Not Yet Notified" table; the details live in Review */}
       <Link

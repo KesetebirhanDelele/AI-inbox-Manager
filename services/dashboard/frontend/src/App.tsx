@@ -9,7 +9,6 @@ import LoginPage from './pages/LoginPage';
 // Lazy load page components for better initial load performance
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const InterviewsPage = lazy(() => import('./pages/InterviewsPage'));
-const InterviewEventsReportPage = lazy(() => import('./pages/InterviewEventsReportPage'));
 const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
@@ -67,11 +66,8 @@ const AppRoutes = () => {
             <InterviewsPage />
           </Suspense>
         } />
-        <Route path="interview-events" element={
-          <Suspense fallback={<PageLoader />}>
-            <InterviewEventsReportPage />
-          </Suspense>
-        } />
+        {/* the Events Report was merged into Interviews; keep old links working */}
+        <Route path="interview-events" element={<Navigate to="/interviews" replace />} />
         <Route path="reports" element={
           <Suspense fallback={<PageLoader />}>
             <ReportsPage />
