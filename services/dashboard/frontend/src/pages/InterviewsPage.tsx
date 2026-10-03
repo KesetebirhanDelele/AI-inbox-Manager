@@ -418,7 +418,7 @@ const InterviewsPage = () => {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-gray-500 text-center py-8">No upcoming interviews scheduled</p>
+            <p className="text-sm text-gray-500 text-center py-8">No interviews with a confirmed date yet. Requests that do not state a date stay in the list above until a date is known.</p>
           )}
         </div>
       </div>

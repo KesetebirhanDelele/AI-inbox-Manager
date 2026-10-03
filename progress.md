@@ -78,6 +78,17 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
 - **Open:** reconcile student emails/phones between our table and GHL (Rob/Kes); student matching of interview events (3 of 5 no student);
   time zone should come from the GHL contact's phone when ours is missing.
 
+### 2026-10-03: "Interview Requests" page was empty (35 in the count card, none in the list)
+- **Cause:** the page calls `/api/interviews` (no trailing slash); the route was `/`, so FastAPI answered 307 with `Location: http://...` (the https scheme
+  is lost behind Caddy) and the browser dropped it, leaving an empty list. Unit tests passed because they all used the slash. Proven with `curl -I`.
+- **Fix:** route registered for both `""` and `"/"` (`routers/interviews.py`), the client now calls `/api/interviews/`, new test
+  `test_the_list_answers_without_a_trailing_slash_and_never_redirects`. Empty "Upcoming" text now explains why it is empty.
+- **Backfill checked, nothing to backfill:** all 40 events have NO interview date/time in the extraction (0 of 40 ever had one; 4 have a format), because they
+  are recruiter "interview request" emails with no scheduled date. The Events Report "-" and the empty Upcoming section are correct, not bugs.
+  32 of 40 events have no student (the open matching issue); 8 drafts exist (all status `draft`).
+- **Where Rob approves:** Review > Inbox tab (draft subject/body, "Approve & Send", "Edit"/"Save & Send"). The Approvals tab is the separate low-confidence
+  classification review. Note: until escalation is enabled, "Approve & Send" sends ONE real email to the student.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

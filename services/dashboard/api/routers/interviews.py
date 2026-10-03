@@ -125,6 +125,9 @@ async def get_upcoming_interviews(
     return upcoming
 
 
+# Both spellings are registered: behind the Caddy proxy FastAPI's slash redirect pointed at http://, which the
+# browser dropped, so the page showed "No interview requests" while the count card said 35.
+@router.get("", response_model=List[InterviewRequest], include_in_schema=False)
 @router.get("/", response_model=List[InterviewRequest])
 async def get_interview_requests(
     limit: int = Query(50, ge=1, le=200),

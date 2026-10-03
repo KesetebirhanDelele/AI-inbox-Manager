@@ -208,7 +208,7 @@ class ApiClient {
 
   // Interview Requests
   async getInterviewRequests(limit = 50, offset = 0): Promise<InterviewRequest[]> {
-    const response = await this.client.get('/api/interviews', {
+    const response = await this.client.get('/api/interviews/', {
       params: { limit, offset },
     });
     return response.data;

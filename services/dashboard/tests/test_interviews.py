@@ -9,6 +9,13 @@ class TestGetInterviewRequests:
         assert resp.status_code == 200
         assert resp.json() == []
 
+    def test_the_list_answers_without_a_trailing_slash_and_never_redirects(self, client, db, auth_cookies):
+        # behind the Caddy proxy a 307 pointed at http:// and the browser showed an empty page
+        email = make_email(db, subject="Interview - Data Analyst")
+        make_classification(db, email, category="Interview Request", confidence=0.9)
+        resp = client.get("/api/interviews?limit=200&offset=0", cookies=auth_cookies, follow_redirects=False)
+        assert resp.status_code == 200 and len(resp.json()) == 1
+
     def test_returns_interview_requests(self, client, db, auth_cookies):
         email = make_email(db, subject="Phone Screen - Data Analyst at Acme")
         make_classification(db, email, category="Interview Request", confidence=0.95)
