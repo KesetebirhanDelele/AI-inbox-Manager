@@ -402,3 +402,10 @@ def test_no_recipient_and_no_name_still_means_not_identified(monkeypatch, identi
     db, _ = identity_db
     _patch_lookup(monkeypatch, by_name=None)
     assert pia._identify_student(db, _email(), _cls()) == (None, None)
+
+
+def test_the_greeting_name_is_used_when_it_appears_in_the_delivery_gmail():
+    assert pia.recipient_only_student("kenyasbogans@gmail.com", "Kenya")["name"] == "Kenya"
+    assert pia.recipient_only_student("kenyasbogans@gmail.com", "Lead Business")["name"] == "Kenyasbogans"     # not in the Gmail
+    assert pia.recipient_only_student("sehrishkhan.hjim@gmail.com", "Data Engineer")["name"] == "Sehrishkhan Hjim"
+    assert pia.recipient_only_student("priyan.nt24@gmail.com", None)["name"] == "Priyan"

@@ -560,11 +560,33 @@ def creates_interview_event(classification: Dict[str, Any]) -> bool:
     return classification.get("category", "") in _CATEGORY_TO_SUB_TYPE
 
 
-def recipient_only_student(gmail: str) -> Dict[str, Any]:
-    """A student known only by the Gmail an interview email was delivered to (not in the roster)."""
+def _name_hint(classification: Dict[str, Any], email_data: Dict[str, Any]) -> Optional[str]:
+    """A person's name the classifier or the email's greeting offers (may be wrong; the caller checks it against the Gmail)."""
+    extracted = classification.get("extracted_data", {}) or {}
+    hint = extracted.get("candidate_name") or extracted.get("student_name") or classification.get("candidate_name")
+    if hint:
+        return str(hint)
+    try:
+        from resolve_student import find_student_name_in_body
+        body = email_data.get("body", "") or email_data.get("body_content", "") or ""
+        return find_student_name_in_body(body) or find_student_name_in_body(email_data.get("subject", "") or "")
+    except Exception:
+        return None
+
+
+def recipient_only_student(gmail: str, name_hint: Optional[str] = None) -> Dict[str, Any]:
+    """
+    A student known only by the Gmail an interview email was delivered to (not in the roster). The name is the greeting's name
+    when it appears in the Gmail ("Kenya" in kenyasbogans@), otherwise guessed from the address.
+    """
     local = gmail.split("@")[0].lower()
     words = [w for w in re.split(r"[^a-z]+", local) if len(w) >= 3]
     name = " ".join(w.capitalize() for w in words[:2]) or local
+    hint = (name_hint or "").strip()
+    if hint and 2 <= len(hint) <= 40 and _name_matches_gmail(hint, gmail):
+        from fetch_students_sheet import _looks_like_a_job_title
+        if not _looks_like_a_job_title(hint):
+            name = hint
     return {"name": name, "username": local, "personal_email": gmail.lower(), "phone": "",
             "assigned_to": None, "assistant_email": None, "identified_by": "recipient_gmail"}
 
@@ -645,7 +667,7 @@ def _identify_student(db, email_data: Dict[str, Any], classification: Dict[str, 
     named = _student_named_in_gmail(db, header_gmail)
     if named:
         return named, header_gmail
-    return recipient_only_student(header_gmail), header_gmail
+    return recipient_only_student(header_gmail, _name_hint(classification, email_data)), header_gmail
 
 
 def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classification: Dict[str, Any]) -> bool:
