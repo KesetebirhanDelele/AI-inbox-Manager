@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
 import { format } from 'date-fns';
@@ -100,21 +101,11 @@ const InterviewDetailPanel = ({ emailId }: { emailId: number }) => {
   const [editBody, setEditBody] = useState('');
   const [editRecipient, setEditRecipient] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [showRejectInput, setShowRejectInput] = useState(false);
 
   const { data: notification, isLoading, error } = useQuery({
     queryKey: ['notificationByEmail', emailId],
     queryFn: () => apiClient.getNotificationByEmail(emailId),
     retry: false,
-  });
-
-  const approveMutation = useMutation({
-    mutationFn: (notificationId: number) => apiClient.approveNotification(notificationId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notificationByEmail', emailId] });
-      queryClient.invalidateQueries({ queryKey: ['pendingNotifications'] });
-    },
   });
 
   const editMutation = useMutation({
@@ -124,17 +115,6 @@ const InterviewDetailPanel = ({ emailId }: { emailId: number }) => {
       queryClient.invalidateQueries({ queryKey: ['notificationByEmail', emailId] });
       queryClient.invalidateQueries({ queryKey: ['pendingNotifications'] });
       setIsEditing(false);
-    },
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: (params: { id: number; reason?: string }) =>
-      apiClient.rejectNotification(params.id, params.reason),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notificationByEmail', emailId] });
-      queryClient.invalidateQueries({ queryKey: ['pendingNotifications'] });
-      setShowRejectInput(false);
-      setRejectReason('');
     },
   });
 
@@ -350,18 +330,11 @@ const InterviewDetailPanel = ({ emailId }: { emailId: number }) => {
             </div>
             <div className="flex space-x-2">
               <button
-                onClick={() => handleSaveAndSend(true)}
-                disabled={editMutation.isPending}
-                className="px-3 py-1.5 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-              >
-                {editMutation.isPending ? 'Saving...' : 'Save & Send'}
-              </button>
-              <button
                 onClick={() => handleSaveAndSend(false)}
                 disabled={editMutation.isPending}
                 className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
               >
-                Save Draft
+                Save draft
               </button>
               <button
                 onClick={() => setIsEditing(false)}
@@ -394,25 +367,15 @@ const InterviewDetailPanel = ({ emailId }: { emailId: number }) => {
             )}
 
             {isPending && (
-              <div className="flex space-x-2 pt-2 border-t border-gray-100">
-                <button
-                  onClick={() => approveMutation.mutate(notification.id)}
-                  disabled={approveMutation.isPending}
-                  className="px-3 py-1.5 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                >
-                  {approveMutation.isPending ? 'Sending...' : 'Approve & Send'}
-                </button>
+              <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
+                <Link to="/review" className="px-3 py-1.5 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700">
+                  Approve or reject in Student notifications
+                </Link>
                 <button
                   onClick={() => startEditing(notification)}
                   className="px-3 py-1.5 bg-primary-600 text-white rounded-md text-sm font-medium hover:bg-primary-700"
                 >
-                  Edit
-                </button>
-                <button
-                  onClick={() => setShowRejectInput(!showRejectInput)}
-                  className="px-3 py-1.5 bg-red-100 text-red-700 rounded-md text-sm font-medium hover:bg-red-200"
-                >
-                  Reject
+                  Edit draft
                 </button>
               </div>
             )}
@@ -423,24 +386,6 @@ const InterviewDetailPanel = ({ emailId }: { emailId: number }) => {
               </div>
             )}
 
-            {showRejectInput && (
-              <div className="flex items-center space-x-2 pt-2">
-                <input
-                  type="text"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="Reason for rejection (optional)"
-                  className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-                />
-                <button
-                  onClick={() => rejectMutation.mutate({ id: notification.id, reason: rejectReason || undefined })}
-                  disabled={rejectMutation.isPending}
-                  className="px-3 py-1.5 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-                >
-                  {rejectMutation.isPending ? 'Rejecting...' : 'Confirm'}
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>

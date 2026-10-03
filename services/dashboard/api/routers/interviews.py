@@ -12,6 +12,7 @@ from typing import List, Optional
 from datetime import datetime, date
 
 from database import get_db
+from utils_text import clean_preview, clean_email_text
 from auth import get_current_user
 from models import Email, Classification, UserSession, InterviewEvent, Student, NotificationDraft
 from checklist_steps import normalize_sub_type
@@ -193,7 +194,7 @@ async def get_interview_requests(
                 position=classification.position or (interview_event.position_title if interview_event else None),
                 confidence=classification.confidence,
                 classification_timestamp=classification.classification_timestamp,
-                body_preview=email.body_preview or "",
+                body_preview=clean_preview(email.body_preview, email.full_body),
                 current_folder=email.current_folder,
                 student_name=student.full_name if student else "Unknown",
                 interview_type=normalize_sub_type(interview_event.sub_type) if interview_event else None,
@@ -333,7 +334,7 @@ async def get_interview_detail(
         "subject": email.subject,
         "from_address": email.from_address,
         "received_date": email.received_date.isoformat(),
-        "full_body": email.full_body,
+        "full_body": clean_email_text(email.full_body) if email.full_body else email.full_body,
         "company_name": classification.company_name,
         "position": classification.position,
         "confidence": classification.confidence,

@@ -126,6 +126,26 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
   event, so they cannot reach Interviews, Upcoming or notifications. Needs a dry-run backfill that re-reads the mailbox (not started; ask Kes first).
 - Deployed WITH `--build-web`. Tests: 746 root, 201 dashboard.
 
+### 2026-10-03 (night): full UI audit in a real browser (local Docker + Playwright), outdated features fixed
+- **How:** ran the dashboard locally (docker compose: postgres, api, frontend), seeded synthetic data, drove every page with Playwright (real Chrome), read the screenshots,
+  and ran an end-to-end flow (approve one notification, reject one, open the checklist). No console errors or failed requests on any page. Scripts live in the session scratchpad only.
+- **Found and fixed:**
+  | Problem | Fix |
+  |---|---|
+  | Process checklist said "Notify the student via personal email" (all 7 types), had no step for judging the email or confirming the student, and 5 interview types (schedule, confirmed, assessment, final round, other) had NO checklist (404 text under the row) | New three-step checklist for every type (Check the email / Notify the student (call, text and email) / Make sure the student knows); unknown types get a generic one; "Approve the notification" ticks itself on approval (`approve_step_key`); old keys had 1 uncompleted tick in production so nothing is lost |
+  | Inbox list and email bodies showed raw HTML/CSS ("<!DOCTYPE html>... @import url(...)") because the HTML-to-text step only removed tags; this also starved the authenticity check | `execution/text_cleaning.py` (drops head/style/script/comments, keeps line breaks, decodes entities); used at ingestion (`fetch_emails.extract_email_body`) AND on read in the API (old rows are rebuilt from `full_body`) |
+  | Authenticity check said "Looks like a real interview" for resume-marketing mail (two WEAK signals added up) | "looks_genuine" now needs a strong signal (a date/time, a meeting link or a named sender); weak phrases removed |
+  | Approve & Reject existed in two places (Inbox panel and the new queue); Inbox "Save & Send" could send around the queue's checks | Inbox panel is read-only for decisions (link to Review > Student notifications) and keeps "Edit draft" (save only); the queue is the only place to approve/reject |
+  | API let a draft be approved with no student or no contact details | server-side guard returns 400 with the reason |
+  | Reports > "Missed Interviews" duplicated the approval queue | tab removed |
+  | Dashboard "emails waiting for approval" banner opened the wrong tab | now opens Review > Classification review (`?tab=approvals`) |
+  | Interview types shown as raw "other"/"confirmed"; Interviews list sorted by created time | shared labels (`constants/interviewTypes.ts`); newest received first |
+- **Found, NOT fixed (needs Kes or a decision):** (1) 20 interview-category emails have no event (Phone Screen, Cancelled, Confirmation, Schedule, Instant Interview); (2) some emails store the
+  sender as "Unknown"; (3) "Run Now" / "Run Email Processing" run the whole pipeline inside the API container and share the lock with the cron container only through the mounted repo:
+  configuration checked, NOT exercised on production; (4) the Dashboard "Recent Interview Requests" panel overlaps the Interviews page; (5) the old local development database holds fake
+  students ("Ok", "Pandey") from an earlier name-matching bug, production shows 5 of 7 students with single-word names (to be reviewed with Rob).
+- Tests: 752 root, 205 dashboard. Deployed WITH `--build-web`.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

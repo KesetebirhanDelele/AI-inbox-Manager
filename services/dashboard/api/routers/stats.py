@@ -24,6 +24,7 @@ def _today_start_utc() -> datetime:
     return midnight_central.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
 from database import get_db
+from utils_text import clean_preview
 from auth import get_current_user
 from models import ProcessRun, Classification, Approval, Email, UserSession, InterviewEvent, Student, NotificationDraft
 from integration.process_runner import run_email_processing, get_run_lock_status
@@ -407,7 +408,7 @@ async def get_offers(
             "subject": email.subject,
             "from_address": email.from_address,
             "received_date": email.received_date.isoformat() + "Z",
-            "body_preview": email.body_preview or "",
+            "body_preview": clean_preview(email.body_preview, email.full_body),
             "company_name": cls.company_name,
             "position": cls.position,
             "confidence": cls.confidence,

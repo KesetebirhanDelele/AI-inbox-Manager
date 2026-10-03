@@ -19,6 +19,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from database import get_db
+from utils_text import clean_email_text
 from auth import get_current_user
 from types import SimpleNamespace
 
@@ -306,6 +307,23 @@ async def get_sent_notifications(
     ]
 
 
+def _tick_approve_step(db, event, username: str) -> None:
+    """Tick the checklist sub-step "Approve the notification" so the checklist and the real state agree."""
+    if event is None:
+        return
+    from checklist_steps import approve_step_key
+    from models import ChecklistCompletion
+    key = approve_step_key(event.sub_type)
+    row = (db.query(ChecklistCompletion)
+           .filter(ChecklistCompletion.interview_event_id == event.id, ChecklistCompletion.step_key == key).first())
+    if row is None:
+        db.add(ChecklistCompletion(interview_event_id=event.id, step_key=key, is_completed=True,
+                                   completed_by=username, completed_at=datetime.utcnow()))
+    else:
+        row.is_completed, row.completed_by, row.completed_at = True, username, datetime.utcnow()
+    db.commit()
+
+
 def _execution_module(name: str):
     exec_dir = str(Path(__file__).resolve().parents[4] / "execution")
     if exec_dir not in sys.path:
@@ -360,9 +378,9 @@ async def get_review_queue(
         if draft is not None and not (draft.recipient_email or "").strip():
             warnings.append("The draft has no recipient email.")
 
+        text = clean_email_text((email.full_body or email.body_preview) if email else "")
         check = authenticity.assess(
-            email.subject if email else "", email.from_address if email else "",
-            (email.body_preview if email else "") or "", event.company_name)
+            email.subject if email else "", email.from_address if email else "", text[:6000], event.company_name)
         if check["verdict"] == "likely_job_board":
             warnings.insert(0, "This looks like a job-board mailer, not a real interview invitation. Please read the email before approving.")
 
@@ -414,7 +432,7 @@ async def get_review_queue(
             },
             "email": None if email is None else {
                 "id": email.id, "subject": email.subject, "from_address": email.from_address,
-                "received_date": email.received_date, "excerpt": email.body_preview or "",
+                "received_date": email.received_date, "excerpt": text[:1500],
             },
             "authenticity": check,
             "draft": None if draft is None else {
@@ -483,11 +501,23 @@ async def approve_notification(
             detail="Notification already sent",
         )
 
+    # Server-side guard (the screen also disables Approve): nobody to notify, or no way to reach them
+    event_for_guard = db.query(InterviewEvent).filter(InterviewEvent.id == draft.interview_event_id).first()
+    student_for_guard = (db.query(Student).filter(Student.id == event_for_guard.student_id).first()
+                         if event_for_guard and event_for_guard.student_id else None)
+    if student_for_guard is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No student is identified for this interview, so there is nobody to notify.")
+    if not (student_for_guard.phone_number or student_for_guard.personal_email or student_for_guard.assigned_gmail):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="This student has no phone, email or Gmail on file. Add their contact details first.")
+
     # Update status to approved
     draft.email_status = "approved"
     draft.reviewed_by = user.username
     draft.reviewed_at = datetime.utcnow()
     db.commit()
+    _tick_approve_step(db, event_for_guard, user.username)
 
     if _escalation_enabled():
         # Rob's approval starts the escalation: call + text + email now, then follow-ups until

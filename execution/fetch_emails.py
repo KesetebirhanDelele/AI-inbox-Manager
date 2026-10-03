@@ -599,12 +599,15 @@ def extract_email_body(msg: Message) -> str:
                     charset = part.get_content_charset() or "utf-8"
                     html_body = part.get_payload(decode=True).decode(charset, errors="ignore")
                     # Simple HTML to text conversion (strip tags)
-                    import re
-                    body = re.sub('<[^<]+?>', '', html_body)
+                    from text_cleaning import clean_email_text
+                    body = clean_email_text(html_body)
         else:
             # Single part message
             charset = msg.get_content_charset() or "utf-8"
             body = msg.get_payload(decode=True).decode(charset, errors="ignore")
+            if msg.get_content_type() == "text/html":
+                from text_cleaning import clean_email_text
+                body = clean_email_text(body)
 
         return body.strip()
 

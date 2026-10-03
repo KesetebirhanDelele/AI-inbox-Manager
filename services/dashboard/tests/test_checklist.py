@@ -30,12 +30,23 @@ class TestGetChecklist:
         resp = client.get("/api/checklist/99999", cookies=auth_cookies)
         assert resp.status_code == 404
 
-    def test_unsupported_sub_type(self, client, db, auth_cookies):
+    def test_unknown_sub_type_gets_the_generic_three_step_checklist(self, client, db, auth_cookies):
         email = make_email(db)
         event = make_interview_event(db, email, sub_type="Unknown Type")
 
         resp = client.get(f"/api/checklist/{event.id}", cookies=auth_cookies)
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["sub_type"] == "other" and [s["label"] for s in data["steps"]] == [
+            "Check the email", "Notify the student (call, text and email)", "Make sure the student knows"]
+
+    def test_every_interview_type_uses_the_current_wording(self):
+        from checklist_steps import CHECKLIST_DEFINITIONS
+        for name, defn in CHECKLIST_DEFINITIONS.items():
+            labels = " ".join(s["label"] for s in defn["steps"]) + " " + " ".join(
+                sub["label"] for s in defn["steps"] for sub in s["sub_steps"])
+            assert "personal email" not in labels and "Notify the student (call, text and email)" in labels, name
+            assert [s["key"] for s in defn["steps"]] == [f"{name}.1", f"{name}.2", f"{name}.3"]
 
     def test_requires_auth(self, client, db):
         resp = client.get("/api/checklist/1")

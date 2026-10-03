@@ -2,30 +2,11 @@ import { useState, Fragment, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
+import { TYPE_LABELS, TYPE_STYLES } from '../constants/interviewTypes';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import InterviewChecklist from '../components/InterviewChecklist';
 import type { InterviewEventRecord, UpcomingInterview } from '../types';
-
-const TYPE_STYLES: Record<string, string> = {
-  'interview_request': 'bg-blue-100 text-blue-800',
-  'phone_screen': 'bg-green-100 text-green-800',
-  'client_screen': 'bg-purple-100 text-purple-800',
-  'technical_interview': 'bg-yellow-100 text-yellow-800',
-  'cancelled': 'bg-red-100 text-red-800',
-  'rescheduled': 'bg-orange-100 text-orange-800',
-  'job_machine': 'bg-indigo-100 text-indigo-800',
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  'interview_request': 'Interview Request',
-  'phone_screen': 'Phone Screen',
-  'client_screen': 'Client Screen',
-  'technical_interview': 'Technical Interview',
-  'cancelled': 'Cancelled',
-  'rescheduled': 'Rescheduled',
-  'job_machine': 'Job Machine',
-};
 
 const NOTIF_STYLES: Record<string, string> = {
   sent: 'bg-green-100 text-green-800',
@@ -106,7 +87,8 @@ const InterviewsPage = () => {
 
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return (events ?? []).filter((e: InterviewEventRecord) => {
+    const byReceived = (x: InterviewEventRecord) => new Date(x.received_date || x.created_at).getTime();
+    return [...(events ?? [])].sort((x, y) => byReceived(y) - byReceived(x)).filter((e: InterviewEventRecord) => {
       if (activeTab === 'decision' && e.notification_status !== 'draft') return false;
       if (activeTab === 'notified' && e.notification_status !== 'sent') return false;
       if (activeTab === 'cannot' && e.notification_status) return false;

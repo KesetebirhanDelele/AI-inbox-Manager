@@ -12,13 +12,7 @@ const TABS = [
   { id: 'pipeline', label: 'Interview Pipeline' },
   { id: 'students', label: 'Student Activity' },
   { id: 'companies', label: 'Company Tracker' },
-  { id: 'missed', label: 'Missed Interviews' },
 ];
-
-const formatCST = (iso: string) => {
-  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
-  return format(toZonedTime(d, 'America/Chicago'), 'MMM d, yyyy h:mm a');
-};
 
 const formatDate = (iso: string) => {
   const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
@@ -270,66 +264,6 @@ const CompanyTracker = () => {
   );
 };
 
-// ── Missed Interviews ───────────────────────────────────────────────────────
-
-const MissedInterviews = () => {
-  const { data, isLoading } = useQuery({
-    queryKey: ['missedInterviews'],
-    queryFn: () => apiClient.getMissedInterviews(),
-  });
-
-  if (isLoading) return <Spinner />;
-  if (!data || data.length === 0) return (
-    <div className="bg-white shadow rounded-lg overflow-hidden">
-      <div className="bg-gray-200 px-6 py-3 text-center">
-        <h2 className="text-base font-bold text-gray-800">Missed Interviews Alert</h2>
-      </div>
-      <div className="p-12 text-center">
-        <div className="text-green-500 text-5xl mb-3">✓</div>
-        <p className="text-gray-600 font-medium">All interview requests have been handled!</p>
-        <p className="text-gray-400 text-sm mt-1">No students are missing notifications.</p>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="bg-white shadow rounded-lg overflow-hidden">
-      <div className="bg-gray-200 px-6 py-3 flex items-center justify-center gap-3">
-        <h2 className="text-base font-bold text-gray-800">Missed Interviews Alert</h2>
-        <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{data.length} unhandled</span>
-      </div>
-      <div className="p-4 overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Received</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Company</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Position</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Student</th>
-              <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Notification</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {data.map((item: any, idx: number) => (
-              <tr key={item.email_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-red-50'}>
-                <td className="px-3 py-2 whitespace-nowrap text-gray-700 text-xs">{formatCST(item.received_date)}</td>
-                <td className="px-3 py-2 font-medium text-gray-900">{item.company_name || '—'}</td>
-                <td className="px-3 py-2 text-gray-600 max-w-[160px] truncate">{item.position || '—'}</td>
-                <td className="px-3 py-2 text-gray-700">{item.student_name || '—'}</td>
-                <td className="px-3 py-2 text-center">
-                  <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700">
-                    {item.notification_status === 'not_created' ? 'Not Created' : item.notification_status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const Spinner = () => (
@@ -378,7 +312,6 @@ const ReportsPage = () => {
       {activeTab === 'pipeline' && <InterviewPipeline />}
       {activeTab === 'students' && <StudentActivity />}
       {activeTab === 'companies' && <CompanyTracker />}
-      {activeTab === 'missed' && <MissedInterviews />}
     </div>
   );
 };

@@ -11,6 +11,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from database import get_db
+from utils_text import clean_preview, clean_email_text
 from auth import get_current_user
 from models import Email, Classification, UserSession
 from integration.email_fetcher import get_current_inbox_state, get_unread_emails
@@ -111,7 +112,7 @@ async def get_current_inbox(
             subject=email.subject,
             from_address=email.from_address,
             received_date=email.received_date,
-            body_preview=email.body_preview or "",
+            body_preview=clean_preview(email.body_preview, email.full_body),
             current_folder=email.current_folder,
             is_read=email.is_read,
             latest_category=latest_classification.category if latest_classification else None,
@@ -162,7 +163,7 @@ async def get_unread_inbox_emails(
             subject=email.subject,
             from_address=email.from_address,
             received_date=email.received_date,
-            body_preview=email.body_preview or "",
+            body_preview=clean_preview(email.body_preview, email.full_body),
             current_folder=email.current_folder,
             is_read=email.is_read,
             latest_category=latest_classification.category if latest_classification else None,
@@ -216,7 +217,7 @@ async def get_inbox_history(
             subject=email.subject,
             from_address=email.from_address,
             received_date=email.received_date,
-            body_preview=email.body_preview or "",
+            body_preview=clean_preview(email.body_preview, email.full_body),
             current_folder=email.current_folder,
             is_read=email.is_read,
             latest_category=latest_classification.category if latest_classification else None,
@@ -264,7 +265,7 @@ async def get_email_detail(
             "subject": email.subject,
             "from_address": email.from_address,
             "received_date": email.received_date.isoformat(),
-            "full_body": email.full_body,
+            "full_body": clean_email_text(email.full_body) if email.full_body else email.full_body,
             "current_folder": email.current_folder,
             "is_read": email.is_read,
             "fetch_timestamp": email.fetch_timestamp.isoformat(),

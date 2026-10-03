@@ -39,7 +39,7 @@ REFERENCE_CODE = re.compile(r"\b(?:ref(?:erence)?(?:\s*id)?\s*[:#]?\s*[A-Z0-9]{5
 URL = re.compile(r"https?://([^\s/)>\"']+)([^\s)>\"']*)", re.I)
 TAG = re.compile(r"<[^>]+>")
 SCHEDULING_PHRASES = ("schedule an interview", "schedule a call", "interview with", "phone screen", "technical interview",
-                      "hiring manager", "next steps", "your resume", "your application for", "we reviewed your")
+                      "hiring manager", "next steps")
 
 
 def _plain(text: str) -> str:
@@ -73,6 +73,7 @@ def assess(subject: str, from_address: str, body: str, company: Optional[str] = 
     against: List[str] = []
     support: List[str] = []
     bad = good = 0
+    strong = False          # a date/time, a meeting link or a named person: weak signals alone never make "looks genuine"
 
     # -- signs of a job board or lead-generation mailer
     tracked = []
@@ -103,13 +104,16 @@ def assess(subject: str, from_address: str, body: str, company: Optional[str] = 
     if SPECIFIC_DATE.search(text) or SPECIFIC_TIME.search(text):
         support.append("States a specific date or time.")
         good += 2
+        strong = True
     if MEETING_LINK.search(body or ""):
         support.append("Contains a meeting link (Zoom, Teams, Meet, Calendly...).")
         good += 2
+        strong = True
     named_person = bool(re.fullmatch(r"[a-z]+(?:[._-][a-z]+)+|[a-z]+\d*", local)) and local not in GENERIC_MAILBOXES and "." in local
     if domain and domain not in FREE_MAIL and named_person and not any(w in domain for w in JOBSITE_WORDS):
         support.append(f"Sent by a named person at their own company domain ({local}@{domain}).")
         good += 1
+        strong = True
     tokens = _company_tokens(company)
     if domain and tokens and not any(w in domain for w in JOBSITE_WORDS) and any(t in domain.replace("-", "") for t in tokens):
         support.append(f"The sender's domain matches the company name ({domain}).")
@@ -119,7 +123,7 @@ def assess(subject: str, from_address: str, body: str, company: Optional[str] = 
         support.append(f'Talks about the actual process ("{sched[0]}").')
         good += 1
 
-    if good >= 2 and bad <= 2:
+    if good >= 2 and strong and bad <= 2:
         verdict = "looks_genuine"
     elif bad >= 4 and good <= 1:
         verdict = "likely_job_board"

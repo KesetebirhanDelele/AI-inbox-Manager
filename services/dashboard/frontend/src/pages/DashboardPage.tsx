@@ -2,6 +2,7 @@ import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
+import { TYPE_LABELS, TYPE_STYLES } from '../constants/interviewTypes';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
@@ -12,26 +13,6 @@ import type { InterviewRequest } from '../types';
 const Skel = ({ w = 'w-16', h = 'h-8' }: { w?: string; h?: string }) => (
   <div className={`animate-pulse bg-gray-300 rounded ${w} ${h}`} />
 );
-
-const TYPE_STYLES: Record<string, string> = {
-  'interview_request': 'bg-blue-100 text-blue-800',
-  'phone_screen': 'bg-green-100 text-green-800',
-  'client_screen': 'bg-purple-100 text-purple-800',
-  'technical_interview': 'bg-yellow-100 text-yellow-800',
-  'cancelled': 'bg-red-100 text-red-800',
-  'rescheduled': 'bg-orange-100 text-orange-800',
-  'job_machine': 'bg-indigo-100 text-indigo-800',
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  'interview_request': 'Interview Request',
-  'phone_screen': 'Phone Screen',
-  'client_screen': 'Client Screen',
-  'technical_interview': 'Technical Interview',
-  'cancelled': 'Cancelled',
-  'rescheduled': 'Rescheduled',
-  'job_machine': 'Job Machine',
-};
 
 // Sizes under 1 GB stay in MB (the Neon-era 512 MB cap); larger caps (e.g. the
 // Hetzner disk budget set via DB_STORAGE_CAP_MB) read better in GB.
@@ -695,7 +676,7 @@ const DashboardPage = () => {
                 You have <strong>{stats.pending_approvals}</strong> emails
                 waiting for approval.{' '}
                 <Link
-                  to="/review"
+                  to="/review?tab=approvals"
                   className="font-medium underline hover:text-orange-600"
                 >
                   Review now

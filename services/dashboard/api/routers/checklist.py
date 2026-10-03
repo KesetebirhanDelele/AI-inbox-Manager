@@ -14,7 +14,7 @@ from datetime import datetime
 from database import get_db
 from auth import get_current_user
 from models import InterviewEvent, ChecklistCompletion, UserSession
-from checklist_steps import CHECKLIST_DEFINITIONS, get_all_step_keys, normalize_sub_type
+from checklist_steps import CHECKLIST_DEFINITIONS, get_all_step_keys, definition_key
 
 router = APIRouter()
 
@@ -68,13 +68,8 @@ async def get_checklist(
     if not event:
         raise HTTPException(status_code=404, detail="Interview event not found")
 
-    normalized = normalize_sub_type(event.sub_type)
-    defn = CHECKLIST_DEFINITIONS.get(normalized)
-    if not defn:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No checklist defined for sub_type: {event.sub_type}"
-        )
+    normalized = definition_key(event.sub_type)
+    defn = CHECKLIST_DEFINITIONS[normalized]
 
     # Load all completions for this event
     completions = (

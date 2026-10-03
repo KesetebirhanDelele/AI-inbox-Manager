@@ -327,10 +327,10 @@ class TestGetAllStepKeys:
         assert "phone_screen.1" in keys
         assert "phone_screen.1.1" in keys
 
-    def test_returns_empty_for_unknown_type(self):
-        """Returns empty list for unknown sub_type."""
+    def test_unknown_type_uses_the_generic_checklist(self):
+        """An unknown sub_type gets the generic "other" checklist instead of none."""
         keys = get_all_step_keys("nonexistent_type")
-        assert keys == []
+        assert keys == get_all_step_keys("other") and "other.2.3" in keys
 
     def test_key_count_matches_definitions(self):
         """Total keys equals main steps + sub-steps for each type."""

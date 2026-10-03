@@ -60,3 +60,10 @@ def test_the_verdict_is_always_one_of_the_three_and_deterministic():
     a = ea.assess("s", "info@jobs-now.com", JOB_BOARD_A, None)
     assert a == ea.assess("s", "info@jobs-now.com", JOB_BOARD_A, None) and a["verdict"] in ea.VERDICTS
     assert ea.assess("", "", "", None)["verdict"] == "needs_check"
+
+
+def test_weak_signals_alone_never_make_an_email_look_genuine():
+    # a resume-marketing mail from the company's own generic mailbox: domain matches the company and it mentions the process
+    r = ea.assess("Rutendo, Refresh Your Resume. Refocus Your Career.", "onboarding@threepds.com",
+                  "Your next steps: update your profile and schedule a call with our team.", "ThreePDS Recruiting, Staffing & Consulting")
+    assert r["verdict"] == "needs_check" and r["for"]

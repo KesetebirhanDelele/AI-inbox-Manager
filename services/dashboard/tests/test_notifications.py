@@ -100,10 +100,37 @@ class TestGetNotificationDetail:
         assert resp.status_code == 401
 
 
+class TestApproveGuardsAndChecklist:
+    def test_approving_with_no_student_is_refused_and_nothing_changes(self, client, db, auth_cookies):
+        event = make_interview_event(db, make_email(db), student=None)
+        draft = make_notification_draft(db, event)
+        resp = client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies)
+        assert resp.status_code == 400 and "nobody to notify" in resp.json()["detail"]
+        db.refresh(draft)
+        assert draft.email_status == "draft"
+
+    def test_approving_a_student_with_no_contact_details_is_refused(self, client, db, auth_cookies):
+        student = make_student(db, username="x", personal_email=None)
+        student.assigned_gmail = None
+        db.commit()
+        draft = make_notification_draft(db, make_interview_event(db, make_email(db), student=student))
+        resp = client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies)
+        assert resp.status_code == 400 and "no phone, email or Gmail" in resp.json()["detail"]
+
+    def test_approving_ticks_the_checklist_step_automatically(self, client, db, auth_cookies):
+        from models import ChecklistCompletion
+        event = make_interview_event(db, make_email(db), student=make_student(db), sub_type="Phone Screen")
+        draft = make_notification_draft(db, event)
+        with patch(_SEND_EMAIL, return_value={"status": "sent"}):
+            assert client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies).status_code == 200
+        row = db.query(ChecklistCompletion).filter_by(interview_event_id=event.id, step_key="phone_screen.2.3").one()
+        assert row.is_completed is True and row.completed_by
+
+
 class TestApproveNotification:
     def test_approve_sends_email(self, client, db, auth_cookies):
         email = make_email(db)
-        event = make_interview_event(db, email)
+        event = make_interview_event(db, email, student=make_student(db))
         draft = make_notification_draft(db, event, email_status="draft")
 
         with patch(_SEND_EMAIL, return_value={"status": "sent"}):
@@ -118,7 +145,7 @@ class TestApproveNotification:
 
     def test_approve_handles_send_failure(self, client, db, auth_cookies):
         email = make_email(db)
-        event = make_interview_event(db, email)
+        event = make_interview_event(db, email, student=make_student(db))
         draft = make_notification_draft(db, event)
 
         with patch(_SEND_EMAIL, return_value={"status": "failed", "error": "SMTP error"}):

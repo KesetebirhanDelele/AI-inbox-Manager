@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import InboxContent from '../components/InboxContent';
 import ApprovalsContent from '../components/ApprovalsContent';
 import NotificationQueue from '../components/NotificationQueue';
@@ -6,7 +7,11 @@ import NotificationQueue from '../components/NotificationQueue';
 type TabType = 'notifications' | 'inbox' | 'approvals';
 
 const ReviewPage = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('notifications');
+  const [searchParams] = useSearchParams();
+  const requested = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<TabType>(
+    requested === 'approvals' || requested === 'inbox' ? requested : 'notifications',
+  );
 
   const tabs: { id: TabType; name: string }[] = [
     { id: 'notifications', name: 'Student notifications' },
