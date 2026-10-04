@@ -17,6 +17,57 @@ Newest first.
 
 ---
 
+## RESUME HERE (state at the end of 2026-10-04; read this first after a compact)
+
+**One-line state:** InboxGenius is live on Hetzner (`master` == `origin` == server). The student-notification feature (call + text + email, follow-ups until the student
+acknowledges) is BUILT and DEPLOYED but still SWITCHED OFF for real students: escalation disabled, every channel a dry run, GHL writes in shadow. The voice call path is
+PROVEN on one live call to Kes's own contact. What remains is mostly testing, a few GHL settings, and people tasks. Older detail is in the dated entries below
+(newest first) and in `directives/student-notification-escalation.md`, `docs/test-plan-student-notifications.md`, `docs/voice-agent-outbound-interview-prompt.md`,
+`docs/ghl-conversations-and-calls.md`, `docs/use-cases.html`.
+
+### Done and live (production)
+| Area | State |
+|---|---|
+| Pipeline fixes | Interview events for every interview-related email (+ backfill of 16); email bodies repaired (31); the faulty dashboard IMAP sync deleted; student identified from the delivery Gmail (greeting name = display name) |
+| Approval screen | Review > Student notifications: contact details, real-interview check, previews, verify-the-student step, Approve/Reject/Edit; Interviews page merged with the old Events Report; Reports/Dashboard/Settings cleaned of redundant tiles/tabs |
+| Roles (Settings page, database) | escalation = jackie@colaberry.com; approver AND callback owner = robelyn@colaberry.com; no person is named in the code (a test enforces it); pilot limit 3 |
+| Alerts | stale drafts (2 business hours) -> escalation role, host cron every 15 min (`/etc/cron.d/inboxgenius-stale`); callbacks -> callback owner, overdue after 1 business hour -> escalation role (cron every 5 min, `/etc/cron.d/inboxgenius-callbacks`) |
+| Run Now | works in production (request file + one-minute host watcher `/etc/cron.d/inboxgenius-runnow`), proven live |
+| Server GHL settings | `GHL_API_KEY`, `GHL_LOCATION_ID`, `GHL_RECEPTIONIST_AGENT_ID` in the server `.env` (read use; `GHL_WRITE_MODE` unset = shadow, so nothing can be written or sent) |
+| Business hours | Mon-Fri 09:00-17:00 America/Chicago (confirmed by Kes) |
+
+### What remains (in order)
+1. **Kes, GHL (outbound agent):** confirm the saved prompt, custom AI disclosure ("Hi <first>, this is Colaberry's AI assistant calling about your interview. You can say "stop calling" at any time.") and one-line welcome
+   message ("Am I speaking with <first>?"); add an action so a STOP request tags the contact `do not call` (not built; our own app already remembers a STOP per channel).
+2. **Kes, GHL (AI Receptionist):** paste the NEW callbacks wording (take name + best number, "within one business hour during working hours", never offer to call back; the screenshot still showed the old "shortly"
+   text). The optional "Update contact field" action is NOT needed (the app reads the call time from the call log); remove it or its field if unused.
+3. **Callback test (Kes):** one callback from his phone ("I'm returning a call about an interview"). It emails the callback owner (Rob) a REAL alert: tell her first, or temporarily put Kes's own email on the callback
+   owner role in Settings and restore it after. Then check with Claude how the call reads in the log (detection is UNPROVEN: 0 of 153 earlier receptionist calls mentioned an interview).
+4. **Call tests with Kes's phone (GHL: ONE call per number per day):** Mon 2026-10-05 09:00 EDT greeting + a "yes" (check the app reads it as confirmed: `python execution/ghl_test_call.py --email <kes> --send` then `--readback`);
+   text test and email test the same day (`--channel sms|email --send`); wrong person, voicemail, STOP on three separate days or with a second number. Plan: `docs/test-plan-student-notifications.md`.
+5. **Server shadow rehearsal:** `NOTIFY_CHANNEL_EMAIL/SMS/CALL=ghl`, `GHL_WRITE_MODE=shadow`, `NOTIFY_ESCALATION_ENABLED=true`; install the 5-minute host cron for `execution/notification_tick.py` (NOT installed);
+   read the `[GHL shadow]` log lines; then a human approves the three `GHL_WRITE_*` switches. Nothing is written until then.
+6. **Pilot (live):** the approver approves 3 notices by hand; candidates with a phone number and no verification step: Rutendo Bwerazuva, Senayit Berhane, Aisha Hobbs (only 4 of 19 students have a phone). Then lift the pilot limit
+   on Settings if it runs clean. Ali agreed to this order. Students have consented (Kes, 2026-10-04): note where that is recorded.
+7. **Rob's tasks:** verify the 11 students the pipeline created from a Gmail (orange "Verify who this student is" box; trace them in the roster sheet/Drive, correct name/phone/email); trace candidates who may have changed email.
+8. **Data left behind:** 208 stub emails (no body/sender/event; 158 with no Message-ID) from the old sync were NOT deleted (decide with Rob/Ali); the roster file `config/students.py` is overwritten by every deploy
+   (the pipeline auto-adds students into it): the roster should live in the database.
+9. **Not built:** the GHL `do not call` tag action; a Google-Sheet roster lookup (Kes to say where the roster sheet lives and share it with the service account); the primary classifier mislabels application notices
+   ("Thank you for applying") as "Interview Cancelled" (6 seen); "In Inbox"-style sync is gone for good; a backup escalation holder (Ali: escalation is only one person).
+10. **Parked:** who may undo a STOP request (Ali has not answered; Kes: leave for now); AI reading of replies stays in SHADOW until 2026-10-16 and needs `REPLY_AI_MODE=live`; use-case HTML/artifact not yet updated for roles,
+    callbacks, verification and the merged pages (artifact https://claude.ai/artifact/FRzyZVP1uBnsvMPEViEZiw, tracked copy `docs/use-cases.html`).
+
+### How to work here (hard-won)
+- Branch from `master` -> tests (`python -m pytest tests -q --no-cov`, `python -m pytest services/dashboard/tests -q --no-cov`) -> fast-forward merge -> `git push origin master` -> delete branch -> deploy -> sync check
+  (tree clean, master == origin, `.deployed_commit` == master). **Frontend changes need `scripts/deploy_hetzner.sh --build-web`** (a plain deploy leaves the old screens); the deploy refuses minutes 00-11 of an even UTC hour.
+- Prove things yourself: run the stack locally (`docker compose up -d --build api frontend` in `services/dashboard`; login admin/admin123) and drive it with Playwright; query production with aggregates only (no student data
+  in output); never print secrets. Long shell heredocs with quotes break: write files with the Write tool and run patch scripts.
+- A health-check run EMAILS Kes unless `ALERT_EMAIL_TO=` is blanked. A dry run must never edit `config/students.py` (the pipeline's name lookup can auto-add students by rewriting it).
+- Roles, not people: addresses come from the Settings page (`execution/roles.py`); never write a person's name or address into code.
+
+---
+
+
 ## 2026-10-01 — Interview sub-classifier wired in; spam pass quarantines instead of deleting
 
 **Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
@@ -237,7 +288,7 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
   the outbound agent is `6ac01cf1c3f750053ed53d60`. None of the 153 receptionist calls mentioned an interview, so detection is UNPROVEN until Kes makes a test callback.
 - Kes' GHL action ("Update contact field" on the receptionist): the call's date/time is NOT something the agent can extract (the caller never says it); the call log already has it. See the guidance given to Kes.
 
-### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
+### (older) RESUME HERE as of the end of the 2026-10-02 session (superseded by the block at the top of this file)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED
 and DEPLOYED but SWITCHED OFF. `master` == `origin/master` == server (`.deployed_commit`). No GHL credentials are on the server.
