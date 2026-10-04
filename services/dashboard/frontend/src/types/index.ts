@@ -311,10 +311,26 @@ export interface ReviewQueueItem {
   sequence: { status: string; started_at?: string; ack_channel?: string } | null;
 }
 
+export interface CallbackItem {
+  id: number;
+  status: string;
+  received_at: string;
+  due_at: string;
+  overdue: boolean;
+  caller_number?: string | null;
+  said?: string | null;
+  student_id?: number | null;
+  student_name?: string | null;
+  student_email?: string | null;
+  interviews: string[];
+  done_by?: string | null;
+}
+
 export interface ReviewQueue {
   escalation_enabled: boolean;
   count: number;
   items: ReviewQueueItem[];
+  callbacks: CallbackItem[];
 }
 
 export interface InterviewEventRecord {
@@ -336,6 +352,7 @@ export interface InterviewEventRecord {
   draft_id?: number | null;
   email_id?: number | null;
   student_verification?: string | null;
+  callback_open?: boolean;
   subject?: string;
   from_address?: string;
   received_date?: string;

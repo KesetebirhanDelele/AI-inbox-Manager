@@ -236,6 +236,11 @@ class ApiClient {
   }
 
   // Roles and pilot limit (Settings)
+  async markCalledBack(callbackId: number): Promise<any> {
+    const response = await this.client.post(`/api/callbacks/${callbackId}/done`);
+    return response.data;
+  }
+
   async getRoles(): Promise<{
     roles: { role: string; label: string; help: string; email: string; active: boolean; source: string }[];
     pilot_limit: number;

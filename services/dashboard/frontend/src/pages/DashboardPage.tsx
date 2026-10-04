@@ -652,7 +652,7 @@ const DashboardPage = () => {
             <p className="text-sm text-gray-600 mt-1">
               {queueLoading || !reviewQueue
                 ? 'Loading...'
-                : `${queueReady} ready to approve or reject, ${queueFix} need fixing first (no student matched, or no way to reach them).`}
+                : `${queueReady} ready to approve or reject, ${queueFix} need fixing first (no student matched, or no way to reach them).${(reviewQueue.callbacks ?? []).length ? ` ${reviewQueue.callbacks.length} student(s) called back and are waiting for a callback.` : ''}`}
             </p>
           </div>
           <span className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium">Open the approval screen</span>

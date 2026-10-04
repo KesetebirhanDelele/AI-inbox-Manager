@@ -1,0 +1,7 @@
+# Host crontab for student callbacks (Hetzner). Install on the SERVER (no image rebuild):
+#   scp execution/crontab.callbacks root@2.29.47.89:/etc/cron.d/inboxgenius-callbacks
+# Every 5 minutes: read the AI receptionist's newest calls from GHL (read-only), store interview callbacks, email the callback_owner role,
+# and tell the escalation role about callbacks still open after one business hour. Does nothing until GHL_RECEPTIONIST_AGENT_ID,
+# GHL_API_KEY and GHL_LOCATION_ID are set in the server .env.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/5 * * * * root docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/callbacks.py >> /opt/ai-inbox-manager/logs/callbacks.log 2>&1

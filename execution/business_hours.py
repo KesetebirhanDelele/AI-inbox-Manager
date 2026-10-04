@@ -48,6 +48,25 @@ def is_business_time(moment: datetime, hours: BusinessHours) -> bool:
     return local.weekday() in hours.days and hours.start_hour <= local.hour < hours.end_hour
 
 
+def add_business_minutes(start: datetime, minutes: float, hours: BusinessHours) -> datetime:
+    """The moment `minutes` working minutes after `start` (naive UTC in, naive UTC out). Skips nights and weekends."""
+    remaining = float(minutes)
+    cur = _local(start, hours.tz)
+    for _ in range(30):
+        if cur.weekday() in hours.days:
+            open_at = cur.replace(hour=hours.start_hour, minute=0, second=0, microsecond=0)
+            midnight = cur.replace(hour=0, minute=0, second=0, microsecond=0)
+            close_at = midnight + timedelta(days=1) if hours.end_hour >= 24 else cur.replace(hour=hours.end_hour, minute=0, second=0, microsecond=0)
+            lo = max(cur, open_at)
+            if lo < close_at:
+                room = (close_at - lo).total_seconds() / 60.0
+                if remaining <= room:
+                    return (lo + timedelta(minutes=remaining)).astimezone(timezone.utc).replace(tzinfo=None)
+                remaining -= room
+        cur = cur.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    return start + timedelta(minutes=minutes)
+
+
 def business_minutes_between(start: datetime, end: datetime, hours: BusinessHours) -> float:
     """Working minutes between two moments (0 when end <= start). Walks day by day, so it is exact across weekends and nights."""
     if end <= start:

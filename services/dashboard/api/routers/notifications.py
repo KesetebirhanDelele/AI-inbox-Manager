@@ -458,7 +458,11 @@ async def get_review_queue(
 
     order = {"ready": 0, "needs_verification": 1, "blocked": 2, "needs_student": 3, "no_draft": 4}
     items.sort(key=lambda i: order.get(i["state"], 4))
-    return {"escalation_enabled": escalation_on, "count": len(items), "items": items}
+    from routers.callback_requests import callback_item
+    from models import CallbackRequest
+    callbacks = [callback_item(db, r).model_dump() for r in
+                 db.query(CallbackRequest).filter(CallbackRequest.status == "open").order_by(CallbackRequest.received_at).limit(50).all()]
+    return {"escalation_enabled": escalation_on, "count": len(items), "items": items, "callbacks": callbacks}
 
 
 class VerifyStudentRequest(BaseModel):

@@ -228,6 +228,15 @@ Also to confirm with Ali: the wording of the custom AI disclosure on the outboun
 - Production assignment of the escalation role (Jackie) is DATA set after deploy, not code. Approver and callback owner are unassigned until Kes enters them (alerts are logged until then).
 - **Test calendar (GHL: ONE call per number per day):** Mon 5 Oct 09:00 EDT greeting + confirmation; text and email tests the same day; wrong person, voicemail and STOP on three separate days (or a second number).
 
+### 2026-10-04 (2): callback flow built; roles assigned
+- Roles in production (settings data): escalation = jackie@colaberry.com; approver AND callback owner = robelyn@colaberry.com (Kes). Business hours confirmed Mon-Fri 9-17 Central. A callback not made
+  within one business hour alerts the escalation role (Kes confirmed). Kes: callback is made by a person (no AI call back); the callback owner is emailed and the interview shows it under review.
+- **Built:** `GhlClient.voice_ai_agent_calls`, `execution/callbacks.py`, table `callback_requests` (migration 008), API `/api/callbacks` (+ `/{id}/done`), the review-queue's `callbacks`, a "Callbacks waiting"
+  section and a red banner on the student's cards in the approval screen, "Callback needed" on Interviews, a dashboard banner count, host cron `execution/crontab.callbacks`, `add_business_minutes`.
+- **Found in GHL (read-only):** the inbound AI Receptionist agent is `6a97318a65c4b663f8b154a1` (153 calls, actions CALL_TRANSFER and KNOWLEDGE_BASE, extractedData keys name/email/address/otherDetails);
+  the outbound agent is `6ac01cf1c3f750053ed53d60`. None of the 153 receptionist calls mentioned an interview, so detection is UNPROVEN until Kes makes a test callback.
+- Kes' GHL action ("Update contact field" on the receptionist): the call's date/time is NOT something the agent can extract (the caller never says it); the call log already has it. See the guidance given to Kes.
+
 ### RESUME HERE (state at the end of the 2026-10-02 session; read this first after a compact)
 
 **One-line state:** the student-notification escalation (call + text + email, follow-ups until acknowledged) is BUILT, TESTED

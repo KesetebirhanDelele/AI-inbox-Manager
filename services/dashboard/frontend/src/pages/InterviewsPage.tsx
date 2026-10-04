@@ -293,6 +293,9 @@ const InterviewsPage = () => {
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">
                               <span className={`px-2 py-1 text-xs font-medium rounded ${notif.cls}`}>{notif.label}</span>
+                              {e.callback_open && (
+                                <span className="ml-2 px-2 py-1 text-xs font-medium rounded bg-red-600 text-white">Callback needed</span>
+                              )}
                               {notif.decide && (
                                 <Link
                                   to="/review"

@@ -418,6 +418,29 @@ class NotificationOptOut(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class CallbackRequest(Base):
+    """
+    A student called the AI receptionist back about an interview. The callback owner (a ROLE) must call them back within one business hour.
+    One row per receptionist call (ghl_call_id is unique, so a call is handled once). status: open | done. The AI never calls back.
+    """
+    __tablename__ = "callback_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ghl_call_id = Column(String(100), nullable=False, unique=True, index=True)
+    contact_id = Column(String(100))
+    student_id = Column(Integer, ForeignKey("students.id"), index=True)         # null = caller not matched to a student
+    caller_number = Column(String(40))
+    received_at = Column(DateTime, nullable=False, index=True)                   # naive UTC
+    duration_seconds = Column(Integer)
+    said = Column(Text)                                                         # the caller's own words (excerpt)
+    status = Column(String(10), nullable=False, default="open", index=True)
+    done_by = Column(String(100))
+    done_at = Column(DateTime)
+    alerted_at = Column(DateTime)                                               # callback owner emailed
+    sla_alerted_at = Column(DateTime)                                           # escalation role emailed (not called back in time)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class RoleAssignment(Base):
     """
     Who holds a role (approver, callback_owner, escalation_target). Roles are assigned on the Settings page, never written into the code,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
-import type { ReviewQueueItem } from '../types';
+import type { CallbackItem, ReviewQueueItem } from '../types';
 
 const VERDICT_STYLE: Record<string, { label: string; cls: string }> = {
   looks_genuine: { label: 'Looks like a real interview', cls: 'bg-green-100 text-green-800' },
@@ -22,7 +22,50 @@ const STATE_LABEL: Record<string, { label: string; cls: string }> = {
 
 const digits = (value?: string) => (value || '').replace(/\D/g, '');
 
-const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn: boolean }) => {
+const fmtWhen = (iso: string) => {
+  const d = new Date(iso.endsWith('Z') ? iso : `${iso}Z`);
+  return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' }) + ' CT';
+};
+
+/** One student who called back about an interview: the callback owner calls them and clicks "Called back". */
+const CallbackRow = ({ cb }: { cb: CallbackItem }) => {
+  const queryClient = useQueryClient();
+  const done = useMutation({
+    mutationFn: () => apiClient.markCalledBack(cb.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reviewQueue'] });
+      queryClient.invalidateQueries({ queryKey: ['interviewEvents'] });
+    },
+  });
+  return (
+    <li className={`p-3 rounded border text-sm flex flex-wrap items-start justify-between gap-3 ${cb.overdue ? 'bg-red-50 border-red-300' : 'bg-white border-red-200'}`}>
+      <div className="space-y-1">
+        <div className="font-semibold text-gray-900">
+          {cb.student_name || 'Unknown caller'}
+          {cb.overdue && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-600 text-white">Overdue</span>}
+        </div>
+        <div className="text-gray-700">
+          Called {fmtWhen(cb.received_at)} &middot; call back by <strong>{fmtWhen(cb.due_at)}</strong>
+          {cb.caller_number && (
+            <> &middot; <a className="text-primary-600 hover:underline" href={`tel:${digits(cb.caller_number)}`}>{cb.caller_number}</a></>
+          )}
+        </div>
+        {cb.interviews.length > 0 && <div className="text-xs text-gray-600">Their interviews: {cb.interviews.join(' | ')}</div>}
+        {cb.said && <div className="text-xs text-gray-500">They said: &ldquo;{cb.said.slice(0, 200)}&rdquo;</div>}
+      </div>
+      <button
+        type="button"
+        disabled={done.isPending}
+        onClick={() => done.mutate()}
+        className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+      >
+        {done.isPending ? 'Saving...' : 'Called back'}
+      </button>
+    </li>
+  );
+};
+
+const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; escalationOn: boolean; callbacks: CallbackItem[] }) => {
   const queryClient = useQueryClient();
   const [showEmail, setShowEmail] = useState(false);
   const [showWhy, setShowWhy] = useState(item.authenticity.verdict !== 'looks_genuine');
@@ -69,6 +112,7 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
   });
 
   const s = item.student;
+  const myCallbacks = callbacks.filter((c) => s && c.student_id === s.id);
   const verdict = VERDICT_STYLE[item.authenticity.verdict] || VERDICT_STYLE.needs_check;
   const state = STATE_LABEL[item.state] || { label: item.state, cls: 'bg-gray-100 text-gray-700' };
   const iv = item.interview;
@@ -107,6 +151,13 @@ const QueueCard = ({ item, escalationOn }: { item: ReviewQueueItem; escalationOn
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${verdict.cls}`}>{verdict.label}</span>
           </div>
         </div>
+
+        {myCallbacks.length > 0 && (
+          <div className="p-2 bg-red-50 border border-red-300 rounded text-sm text-red-900">
+            <strong>Callback needed:</strong> this student called back about an interview ({myCallbacks.map((c) => fmtWhen(c.received_at)).join(', ')}).
+            Call them back, then click &ldquo;Called back&rdquo; in the Callbacks section at the top.
+          </div>
+        )}
 
         {/* Interview facts */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -393,6 +444,18 @@ const NotificationQueue = () => {
           </button>
         </div>
       </div>
+      {(data.callbacks ?? []).length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-base font-bold text-red-800">Callbacks waiting ({data.callbacks.length})</h2>
+          <p className="text-xs text-gray-600">
+            These students called back about an interview. The AI receptionist only took the message: please call them back within one
+            business hour, then click &ldquo;Called back&rdquo;.
+          </p>
+          <ul className="space-y-2">
+            {data.callbacks.map((c) => <CallbackRow key={c.id} cb={c} />)}
+          </ul>
+        </div>
+      )}
       {!data.escalation_enabled && (
         <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-900">
           Approving sends <strong>one email</strong> to the student. The call and text are not switched on yet.
@@ -403,7 +466,7 @@ const NotificationQueue = () => {
       ) : (
         <ul className="space-y-4">
           {shown.map((item) => (
-            <QueueCard key={`${item.event_id}-${item.draft_id}`} item={item} escalationOn={data.escalation_enabled} />
+            <QueueCard key={`${item.event_id}-${item.draft_id}`} item={item} escalationOn={data.escalation_enabled} callbacks={data.callbacks ?? []} />
           ))}
         </ul>
       )}

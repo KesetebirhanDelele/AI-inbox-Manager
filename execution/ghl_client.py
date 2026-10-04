@@ -254,6 +254,22 @@ class GhlClient:
         result = self._request("GET", "/voice-ai/dashboard/call-logs", params=params)
         return result.get("callLogs", []) if isinstance(result, dict) else []
 
+    def voice_ai_agent_calls(self, agent_id: str, pages: int = 2, page_size: int = 50) -> List[dict]:
+        """
+        The newest Voice AI calls handled by ONE agent across the whole location (for example the inbound receptionist), newest
+        first. Read-only. TRIAL calls are excluded. Used to notice students who call back.
+        """
+        found: List[dict] = []
+        for page in range(1, max(1, pages) + 1):
+            params: Dict[str, Any] = {"locationId": self.config.location_id, "agentId": agent_id, "callType": "LIVE",
+                                      "pageSize": min(page_size, 50), "page": page, "sortBy": "createdAt", "sort": "descend"}
+            result = self._request("GET", "/voice-ai/dashboard/call-logs", params=params)
+            batch = result.get("callLogs", []) if isinstance(result, dict) else []
+            found += batch
+            if len(batch) < min(page_size, 50):
+                break
+        return found
+
     # -- writes (shadow-gated) -----------------------------------------------
 
     def write_fields(self, contact_id: str, updates: Dict[str, str]) -> Dict[str, Any]:
