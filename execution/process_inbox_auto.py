@@ -1725,7 +1725,7 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
         # Seen as Job Alert on every one of 800+ mails in 2026-10 (Gmail sample); sent from subdomains the old exact-match rule missed.
         "refer.io", "adzuna.com", "jobs2web.com", "jobs2careers.com", "theladders.com", "postjobfree.com",
         # Lead-generation mailers whose subjects read like interview invitations ("confirm your interview availability").
-        "job-assist-now.com",
+        "job-assist-now.com", "job-matches.com",
     ]
     if _domain_is(domain, *JOB_BOARD_DOMAINS):
         return "Job Alert"

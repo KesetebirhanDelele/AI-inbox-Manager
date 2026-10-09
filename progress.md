@@ -85,6 +85,10 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (end): scan of the 93 pending approval cards; job-matches.com filed as Job Alert
+
+Kes asked to scan the review list and remove the non-interviews. Each pending draft was scored with the dashboard's real-interview check and the new classifier prompt: 46 are clearly not interviews (job postings from staffing firms, and lead-generation mailers from dd.job-assist-now.com and job-matches.com); 5 more (micro1 "complete your interview" reminders, one Eliassen "Application Next Steps" reminder) could be real steps for a student and were held back; 29 are uncertain; 13 look genuine. The bulk reject on the production database was BLOCKED by the permission system, so nothing was removed yet; the draft ids are in the scratchpad file `rejected_ids.txt` and in the chat. Added `job-matches.com` to `JOB_BOARD_DOMAINS` (with a test) so these stop creating cards.
+
 ### 2026-10-09 (end): a Teams join link no longer counts as "click-tracking"
 
 The real-interview check on a genuine Orange County CU invite said "Links go through a click-tracking address (teams.microsoft.com)": any link whose path had 40+ unbroken characters counted as tracking, and a Teams meeting URL always does. `execution/email_authenticity.py` now skips known meeting hosts (Teams, Zoom, Meet, Calendly, Webex, GoToMeeting, Whereby) in that test; real tracking links (for example dd.job-assist-now.com) are still flagged. Two tests added.

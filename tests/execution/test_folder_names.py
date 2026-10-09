@@ -63,3 +63,7 @@ def test_lookalike_domains_do_not_match():
 
 def test_lead_generation_mailer_is_a_job_alert():
     assert _pre("JAN: Business Intelligence Analyst jobs <info@dd.job-assist-now.com>", "Sehrish, confirm your interview availability") == "Job Alert"
+
+
+def test_job_matches_lead_generation_mailer_is_a_job_alert():
+    assert _pre("Job Matches <info@job-matches.com>", "Confirm interview availability") == "Job Alert"
