@@ -59,3 +59,7 @@ def test_lookalike_domains_do_not_match():
     assert _pre("Indeed Jobs <recruiter@acme-staffing.com>") is None
     assert _pre("x@notlinkedin.com") is None
     assert _pre("x@mybasecamp.com") is None
+
+
+def test_lead_generation_mailer_is_a_job_alert():
+    assert _pre("JAN: Business Intelligence Analyst jobs <info@dd.job-assist-now.com>", "Sehrish, confirm your interview availability") == "Job Alert"

@@ -85,6 +85,10 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (end): job-assist-now.com filed as Job Alert by rule
+
+Kes read the Sehrish card's email: "confirm your interview availability ... a potential interview" from `info@dd.job-assist-now.com` is a lead-generation mailer (unsubscribe link and mailing address), not an interview. Added the domain to `JOB_BOARD_DOMAINS` in `execution/process_inbox_auto.py` (rules fire before the AI) with a test. The card already in the queue stays until Kes rejects it.
+
 ### 2026-10-09 (end): approval card shows when the email arrived
 
 Kes could not tell when a message came in while verifying a card. `services/dashboard/frontend/src/components/NotificationQueue.tsx`: new first fact "Email received" (day, date, time in Central time, plus "8 days ago"); the old "When" label is now "Interview time" so the two dates cannot be confused. The API already sent `email.received_date`; no backend change.
