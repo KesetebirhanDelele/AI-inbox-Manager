@@ -30,6 +30,8 @@ APPROVED_CATEGORIES = [
     "Background Check",
     "Assessment",
     "Phone Screen",
+    "Technical Interview",
+    "Interview Follow-up",
     "Other"
 ]
 

@@ -504,7 +504,7 @@ class TestApprovedCategories:
 
     def test_approved_categories_count(self):
         """Test that the approved-category list matches the documented taxonomy."""
-        assert len(APPROVED_CATEGORIES) == 25
+        assert len(APPROVED_CATEGORIES) == 27
 
     def test_approved_categories_no_duplicates(self):
         """Test that there are no duplicate categories."""

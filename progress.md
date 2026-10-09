@@ -73,6 +73,18 @@ PROVEN on one live call to Kes's own contact. What remains is mostly testing, a 
 **Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
 The detail below is in the order the work happened; this block is the summary.
 
+### 2026-10-09 (evening): workbook categories (Technical Interview, Interview Follow-up), Client Screen and Job Machine events, retired categories in shadow
+
+**Changed:** `execution/classify_email.py`: new categories Technical Interview and Interview Follow-up (prompt definitions and disambiguation vs Assessment / Interview Request / Rejection); a confirmed interview is now filed
+by its TYPE (client, technical, phone) and Job Invite explicitly covers staffing-firm outreach for one open role; `remap_retired_category` re-files the retired Interview Schedule / Confirmation / Final Interview Scheduled
+(`CATEGORY_REMAP_MODE=off|shadow|live`, default **shadow**: only `category_shadow` is recorded). `execution/process_inbox_auto.py`: folders "Technical Interview" and "Interview follow up"; Technical Interview and Client Screen
+now create interview events (Client Screen created none before); Job Machine mail creates an event only when the interview sub-classifier reads it as an interview, reschedule or cancellation (before: never);
+Interview Follow-up creates no event and no student notice. `execution/subclassify_interview.py`: reads the new categories. `validate_classification.py`: the two new names (that list was already out of step with the classifier).
+**Evidence (re-classified 273 real emails from the last 90 days with the new prompt, counts only):** 215 same label, 58 different. All 8 Phone Screens and 5 of 7 Interview Cancelled stayed (the other 2 were application notices);
+17 of 61 stored "Interview Request" came back as Job Invite / Job Alert / Other and are staffing-firm job blasts ("Contract Opportunity - Power BI Developer"), so fewer false interview events; "Interview Cancelled" mislabels
+of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
+**Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
+
 ### 2026-10-09 (later): sender rules match subdomains (step 1 of the classification rework, first part)
 
 **Measured on 4,000 real emails from the last 9 days (metadata only, scratch copy, nothing printed per row):** the rule layer `pre_classify_by_sender` fired on only 26% of mail because it matched

@@ -47,6 +47,9 @@ INTERVIEW_RELATED_CATEGORIES = [
     "Final Interview Scheduled",
     "Phone Screen",
     "Assessment",
+    "Technical Interview",
+    "Client Screen",
+    "Job Machine",
 ]
 
 # Job Machine sub-types (for emails originating from Job Machine platform)

@@ -770,8 +770,8 @@ class TestConstants:
     """Test constant definitions."""
 
     def test_approved_categories_count(self):
-        """Test that we have 14 approved categories."""
-        assert len(APPROVED_CATEGORIES) == 14
+        """Test that we have 16 approved categories (14 + Technical Interview, Interview Follow-up)."""
+        assert len(APPROVED_CATEGORIES) == 16
 
     def test_approved_edge_case_types_include_none(self):
         """Test that None is in approved edge case types."""

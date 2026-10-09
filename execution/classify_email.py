@@ -38,6 +38,8 @@ APPROVED_CATEGORIES = [
     "Final Interview Scheduled",
     "Instant Interview",
     "Client Screen",
+    "Technical Interview",
+    "Interview Follow-up",
     "Phone Screen",
     "Rejection",
     "Offer",
@@ -73,7 +75,7 @@ You are an AI classifier for an automated inbox management system that processes
 
 ---
 
-## CLASSIFICATION CATEGORIES (16 Total)
+## CLASSIFICATION CATEGORIES (27 Total; the folder list follows Colaberry's 'Email Management - Labels' workbook)
 
 ### Primary Categories
 
@@ -193,8 +195,20 @@ You are an AI classifier for an automated inbox management system that processes
 - Signals: "client interview", "client screen", "meet with the client", "client wants to speak"
 - Confidence: High if client involvement is explicit
 
+**17b. Technical Interview**
+- A SCHEDULED technical interview: a live conversation with a panel or technical lead (plus HR), a coding/system-design interview, with a date or meeting details
+- Signals: "technical interview", "technical round", "system design interview", "panel interview", "coding interview" with a time or link
+- NOT this: a take-home test or online test link to complete alone → "Assessment". Asking for availability with no time → "Interview Request".
+- Confidence: High if a technical interview is explicit and details are given
+
+**17c. Interview Follow-up**
+- Sent AFTER an interview already took place: thank-you notes, "checking in on the outcome", feedback, "next steps", status updates about a completed interview
+- Signals: "thank you for your time", "following up on our interview", "next steps", "feedback", "checking in", reference to a previously completed interview
+- NOT this: a request or invitation for a NEW interview → "Interview Request"; "we regret to inform you" → "Rejection"; an offer → "Offer"
+- Confidence: High if it clearly refers to an interview that already happened
+
 **18. Job Invite**
-- Direct invitation to apply for a specific job role
+- Direct invitation to apply for a specific job role, INCLUDING staffing-firm / recruiter outreach about one open role (contract/W2, location, rate, "send your resume", "urgent opening")
 - Signals: "you've been invited to apply", "job opportunity for you", "we think you'd be a great fit for"
 - Confidence: High if personal job invitation language present
 
@@ -291,6 +305,19 @@ You are an AI classifier for an automated inbox management system that processes
 - **Rejection vs Interview Cancelled**:
   - Rejection = candidate not selected
   - Cancelled = interview won't happen but may not be rejection
+
+- **Once a time is confirmed, the TYPE of interview decides the category** (Interview Confirmation / Final Interview Scheduled are retired in favour of these):
+  - client / second-round interview with the client → Client Screen
+  - technical or panel interview → Technical Interview
+  - call with an HR person or recruiter → Phone Screen
+  - type unclear → Interview Request (a person decides)
+
+- **Technical Interview vs Assessment vs Interview Request**:
+  - Technical Interview = scheduled live technical conversation with people (panel/technical lead)
+  - Assessment = a test or exercise the candidate completes alone
+  - Interview Request = asking for availability, no time confirmed (even if the interview will be technical)
+
+- **Interview Follow-up vs others**: follow-up refers to an interview that ALREADY happened; a new interview invitation is Interview Request.
 
 - **Assessment vs Interview**:
   - Assessment = take-home or separate test
@@ -634,6 +661,35 @@ def parse_classification_response(response_text: str) -> Dict[str, Any]:
         raise
 
 
+# Categories the workbook retires. Their mail is re-filed by interview type (decision with Ali, 2026-10-09).
+RETIRED_INTERVIEW_CATEGORIES = {
+    "Interview Schedule": "Interview Request",
+    "Interview Confirmation": None,        # decided by type below
+    "Final Interview Scheduled": None,     # decided by type below
+}
+
+
+def remap_retired_category(category: str, extracted: Optional[Dict[str, Any]], email_data: Optional[Dict[str, Any]]) -> str:
+    """Pure rule: the category a retired interview category becomes (unchanged for every other category)."""
+    if category not in RETIRED_INTERVIEW_CATEGORIES:
+        return category
+    fixed = RETIRED_INTERVIEW_CATEGORIES[category]
+    if fixed:
+        return fixed
+    text = " ".join([
+        str((extracted or {}).get("interview_type") or ""),
+        str((email_data or {}).get("subject") or ""),
+        str((email_data or {}).get("body_content") or "")[:1500],
+    ]).lower()
+    if "client" in text:
+        return "Client Screen"
+    if any(k in text for k in ("technical", "panel", "coding", "system design")):
+        return "Technical Interview"
+    if any(k in text for k in ("phone", "call", "screening")):
+        return "Phone Screen"
+    return "Interview Request"
+
+
 def apply_business_rules(
     classification: Dict[str, Any],
     email_data: Optional[Dict[str, Any]] = None,
@@ -687,6 +743,17 @@ def apply_business_rules(
                 f"Domain override: '{original}' → 'Other' — sender '{from_addr}' "
                 f"is not a LinkedIn domain"
             )
+
+    # Retired interview categories: CATEGORY_REMAP_MODE = off | shadow (default: log the new label only) | live (use it).
+    mode = os.getenv("CATEGORY_REMAP_MODE", "shadow").lower()
+    if mode != "off":
+        remapped = remap_retired_category(result.get("category", ""), result.get("extracted_data"), email_data)
+        if remapped != result.get("category"):
+            logger.info(f"[remap {mode}] '{result.get('category')}' -> '{remapped}'")
+            result["category_shadow"] = remapped
+            if mode == "live":
+                result["category_original"] = result["category"]
+                result["category"] = remapped
 
     # Rule 1: Low confidence requires manual review
     if result.get("confidence", 0) < 0.70:

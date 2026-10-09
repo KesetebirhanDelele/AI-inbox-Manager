@@ -449,7 +449,14 @@ _CATEGORY_TO_SUB_TYPE = {
     "Final Interview Scheduled": "final_round",
     "Assessment":                "assessment",
     "Instant Interview":         "interview_request",
+    "Technical Interview":       "technical_interview",
+    "Client Screen":             "client_screen",
 }
+
+# Primary categories that may or may not be an interview: the interview sub-classifier decides (see _job_machine_not_interview).
+# Job Machine mail is job postings and application updates as well as interview notices.
+_NEEDS_SUBCLASSIFIER = {"Job Machine"}
+_JOB_MACHINE_INTERVIEW_SUBTYPES = {"interview", "reschedule", "cancellation"}
 _FORMAT_MAP = {
     "phone":     "phone",
     "video":     "video",
@@ -557,7 +564,8 @@ def creates_interview_event(classification: Dict[str, Any]) -> bool:
     """
     if is_genuine_interview_request(classification):
         return True
-    return classification.get("category", "") in _CATEGORY_TO_SUB_TYPE
+    category = classification.get("category", "")
+    return category in _CATEGORY_TO_SUB_TYPE or category in _NEEDS_SUBCLASSIFIER
 
 
 def _name_hint(classification: Dict[str, Any], email_data: Dict[str, Any]) -> Optional[str]:
@@ -686,6 +694,12 @@ def _identify_student(db, email_data: Dict[str, Any], classification: Dict[str, 
     return recipient_only_student(header_gmail, _name_hint(classification, email_data)), header_gmail
 
 
+def _is_job_machine_interview(sub_classification: Dict[str, Any]) -> bool:
+    """True only when the sub-classifier itself read the mail as a Job Machine interview, reschedule or cancellation notice."""
+    return (sub_classification.get("sub_type_source") == "subclassifier"
+            and sub_classification.get("job_machine_sub_type") in _JOB_MACHINE_INTERVIEW_SUBTYPES)
+
+
 def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classification: Dict[str, Any]) -> bool:
     """
     Process an interview email through the sub-classification pipeline.
@@ -714,6 +728,11 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
         extracted = classification.get("extracted_data") or {}
         sub_classification = _build_sub_classification(email_data, classification)
         sub_type = sub_classification["interview_sub_type"]
+
+        if classification.get("category") in _NEEDS_SUBCLASSIFIER and not _is_job_machine_interview(sub_classification):
+            classification["_not_an_interview"] = True
+            _logger.info("Job Machine mail that is not an interview notice: no event, no student notice")
+            return False
 
         # ── Resolve student from config/students.py ──────────────────────────
         student_id = None
@@ -888,6 +907,8 @@ CATEGORY_TO_FOLDER: Dict[str, str] = {
     "Instant Interview":         "Instant Interview",
     "Client Screen":             "Client Screen",
     "Phone Screen":              "Phone Screen (HR or Recruiter)",
+    "Technical Interview":       "Technical Interview",
+    "Interview Follow-up":       "Interview follow up",   # after the interview: no event, no student notice
     # Outcomes
     "Rejection":                 "Rejections",
     "Offer":                     "Offers",
@@ -1392,6 +1413,8 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
                                 logger.info(f"              [INTERVIEW EVENT CREATED]")
                             elif not is_new_email:
                                 pass  # Already processed, skip
+                            elif classification.get("_not_an_interview"):
+                                logger.info(f"              [NO INTERVIEW EVENT: not an interview notice]")
                             else:
                                 logger.warning(f"              [INTERVIEW PROCESSING FAILED]")
                     except Exception as e:
@@ -1452,6 +1475,8 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
                         if _db_id and _new_here and creates_interview_event(classification):
                             if process_interview_email(email_data, _db_id, classification):
                                 logger.info(f"              [INTERVIEW EVENT CREATED]")
+                            elif classification.get("_not_an_interview"):
+                                logger.info(f"              [NO INTERVIEW EVENT: not an interview notice]")
                             else:
                                 logger.warning(f"              [INTERVIEW PROCESSING FAILED]")
                     except Exception as _e:
