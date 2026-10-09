@@ -108,3 +108,12 @@ def test_keep_in_place_only_labels():
     imap = FakeImap({"[Gmail]/All Mail": {"900": "<m1@x>"}, "INBOX": {"11": "<m1@x>"}})
     out = lvs.apply_items(imap, [{"email_id": 1, "message_id": "<m1@x>", "folder": "INBOX"}], move=False)
     assert out["labelled"] == [1] and out["moved"] == [] and imap.flags == [] and imap.expunged == []
+
+
+def test_an_email_already_out_of_its_folder_counts_as_moved_and_a_missing_folder_too():
+    imap = FakeImap({"[Gmail]/All Mail": {"900": "<m1@x>", "901": "<m2@x>"}, "INBOX": {"12": "<other@x>"}})
+    items = [{"email_id": 1, "message_id": "<m1@x>", "folder": "INBOX"},               # label applied, no longer in INBOX
+             {"email_id": 2, "message_id": "<m2@x>", "folder": "Interview Scheduling"}]  # folder deleted in Gmail
+    out = lvs.apply_items(imap, items, move=True)
+    assert out["labelled"] == [1, 2] and sorted(out["moved"]) == [1, 2]
+    assert imap.flags == [] and imap.expunged == []       # nothing was flagged or expunged: nothing to remove

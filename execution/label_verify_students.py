@@ -97,13 +97,16 @@ def apply_items(imap, items: List[Dict[str, Any]], move: bool = True) -> Dict[st
                 continue
             s, _ = imap.select(_quote_folder(folder))
             if s != "OK":
-                logger.warning(f"folder {folder!r} cannot be opened: {len(group)} email(s) stay where they are (labelled only)")
+                # The folder no longer exists (for example it was merged away): the email is not in it, so it counts as moved.
+                logger.info(f"folder {folder!r} no longer exists: {len(group)} email(s) are out of it already")
+                out["moved"].extend(it["email_id"] for it in group)
                 continue
             flagged, ids = [], []
             for it in group:
                 uid = _uid_by_message_id(imap, it["message_id"])
                 if not uid:
-                    continue                      # no longer in that folder: nothing to remove
+                    out["moved"].append(it["email_id"])   # no longer in that folder: nothing to remove, the label is on
+                    continue
                 s2, _r2 = imap.uid("STORE", uid, "+FLAGS", "(\\Deleted)")
                 if s2 == "OK":
                     flagged.append(uid)
