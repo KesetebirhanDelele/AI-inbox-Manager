@@ -85,6 +85,13 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (late): use-case page and artifact updated; email to the approver drafted
+
+`docs/use-cases.html` (and the artifact https://claude.ai/artifact/FRzyZVP1uBnsvMPEViEZiw, version 5) now cover roles (UC18), the callback flow (UC19), verifying the student (UC20), the one approval screen (UC21), the workbook folders, the Job Invite rule,
+Technical Interview / follow-up / Job Machine / Client Screen events and the stale-draft alert. Gmail draft to the approver (what to verify and watch, final folder list) created, not sent.
+**Decisions from Kes:** Assessment wording approved; Gmail labels Position on hold, Potential Scam, Recruiter Connect left as they are; the "More Information Request" folder keeps its name (3,000+ mails); an idea to use 3 Colaberry staff as the first pilot recipients (to confirm).
+**Open (receptionist):** the new INTERVIEW CALLBACKS wording is still to be pasted into the GHL AI Receptionist (the old "shortly" text is still in the pasted prompt).
+
 ### 2026-10-09 (night): Interview Request must be a DIRECT interview offer; Job Invite vs Job Alert defined; Assessment wording approved
 
 **Kes's rule (2026-10-09):** a recruiter's job posting is not an interview; the recruiter decides after the candidate replies with an updated resume, and only a later message that actually offers an interview counts.

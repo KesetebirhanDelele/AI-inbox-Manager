@@ -56,13 +56,13 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
 
 <div class="wrap">
   <h1>InboxGenius: use cases and user stories</h1>
-  <p class="lede">InboxGenius reads the shared interview inbox, labels every email, and gives staff a dashboard to check the work. The newest part tells each student about their interview by call, text and email, and keeps following up until they confirm. Status as of 2 Oct 2026, after the deploy of commit 2298382.</p>
+  <p class="lede">InboxGenius reads the shared interview inbox, labels every email, and gives staff a dashboard to check the work. The newest part tells each student about their interview by call, text and email, and keeps following up until they confirm. Status as of 9 Oct 2026, after the deploy of commit 215d9e3. Roles replace people: the approver, the callback owner and the escalation contact are set on the dashboard Settings page (today: Rob, Rob, Jackie).</p>
 
   <div class="summary">
-    <span><strong>7</strong>working</span>
+    <span><strong>11</strong>working</span>
     <span><strong>5</strong>partial</span>
     <span><strong>5</strong>built, switched off</span>
-    <span>The student-notification feature (UC12 to UC17) is built and deployed but off: no credentials on the server, every channel is a dry run. The voice call itself was proven on a live test call on 2 Oct; text, email, voicemail, wrong-person and STOP tests are still to do (see the test plan).</span>
+    <span>The student-notification feature (UC12 to UC17) is built and deployed but off: every channel is a dry run and GHL writes are in shadow. The voice call itself was proven on a live test call on 2 Oct; text, email, voicemail, wrong-person and STOP tests are still to do (see the test plan).</span>
   </div>
   <div class="legend">
     <span><span class="pill ok">Working</span> running, checked on real mail or data</span>
@@ -74,7 +74,8 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
 
   <div class="actors">
     <div class="actor"><b>Ali (Ops lead)</b><span>Owns label quality and approves what is switched on.</span></div>
-    <div class="actor"><b>Rob (Assistant)</b><span>Approves the first send and follows up personally.</span></div>
+    <div class="actor"><b>Approver and callback owner (today: Rob)</b><span>Verifies students, approves the first sends, calls back students who ring in.</span></div>
+    <div class="actor"><b>Escalation contact (today: Jackie)</b><span>Told when a draft waits more than 2 business hours or a callback is late.</span></div>
     <div class="actor"><b>Student / candidate</b><span>Receives interview news and confirms it.</span></div>
     <div class="actor"><b>Kes (Engineer)</b><span>Builds, deploys and monitors.</span></div>
   </div>
@@ -89,6 +90,9 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">1.2</span><p>As <em>Rob</em>, I want obvious senders (LinkedIn, Indeed, Skool, bare job links) sorted by rule, so routine mail clears fast and cheaply.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">1.3</span><p>As <em>Kes</em>, I want a per-run cost limit, so a flood of mail cannot cause a surprise bill.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">1.4</span><p>As <em>Rob</em>, I want mail the model is unsure about moved to "Needs Review".</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">1.5</span><p>As <em>Ali</em>, I want every email filed into the folders of the Email Management labels workbook (22 folders), plus the safety folders Needs Review, Quarantine and Spam Review, so Gmail and the app agree.</p><span class="st pill ok">Working (9 Oct)</span></li>
+      <li><span class="id">1.6</span><p>As <em>Rob</em>, I want sender rules to recognise job-board subdomains (alert.indeed.com, alert.refer.io), so more mail clears without the AI: rules now cover 55% of mail, up from 26%.</p><span class="st pill ok">Working (9 Oct)</span></li>
+      <li><span class="id">1.7</span><p>As <em>Ali</em>, I want to know that some Gmail filters (LinkedIn and Indeed applications, "we've received your resume") sort mail before the app sees it, so those never appear in the app's counts.</p><span class="st pill part">Known gap</span></li>
     </ul>
   </section>
 
@@ -100,6 +104,8 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">2.2</span><p>As <em>Ali</em>, I want emails from known interview companies protected even if the model mislabels them.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">2.3</span><p>As <em>Ali</em>, I want to add or remove companies on a whitelist.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">2.4</span><p>As <em>Ali</em>, I want a job alert from a known company kept in the inbox without being counted as an interview. Seen working on real mail.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">2.5</span><p>As <em>Ali</em>, I want a recruiter's job posting (even "Immediate interview role") filed as Job Invite, not an interview. The recruiter decides after the candidate replies with an updated resume; only a message that directly offers an interview (asks for availability, offers slots, names a date) is an Interview Request. Tested on 273 real emails: 32 of 61 stored requests were postings.</p><span class="st pill ok">Working (9 Oct)</span></li>
+      <li><span class="id">2.6</span><p>As <em>the approver</em>, I want "RTR" (right to represent) mails and "RE:" replies from staffing firms watched in the first week, in case a real interview offer lands in Job Invite.</p><span class="st pill part">Watch week 1</span></li>
     </ul>
   </section>
 
@@ -113,13 +119,17 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">3.3</span><p>As <em>a student</em>, I want to know whether this is a second-round or client interview.</p><span class="st pill part">Tests only</span></li>
       <li><span class="id">3.4</span><p>As <em>Kes</em>, I want a test that fails if the sub-classifier stops being called.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">3.5</span><p>As <em>Ali</em>, I want each event to record whether its type came from the sub-classifier or the fallback.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">3.6</span><p>As <em>Ali</em>, I want Technical Interview and Client Screen mail to create interview events and student notices (Client Screen created none before).</p><span class="st pill part">Tests and samples</span></li>
+      <li><span class="id">3.7</span><p>As <em>a student</em>, I want a thank-you or "checking on the outcome" email after an interview to get its own folder (Interview follow up) and no notice about an interview that already happened.</p><span class="st pill part">Tested on samples</span></li>
+      <li><span class="id">3.8</span><p>As <em>Ali</em>, I want Job Machine mail to create an event only when it is really an interview, reschedule or cancellation notice (it never created one before).</p><span class="st pill part">Tests only</span></li>
+      <li><span class="id">3.9</span><p>As <em>Ali</em>, I want the retired categories (Schedule, Confirmation, Final Interview) re-filed by interview type, tried in shadow for a week before it goes live.</p><span class="st pill off">Shadow mode</span></li>
     </ul>
   </section>
 
   <section class="uc">
-    <div class="uc-head"><h2><small>UC4</small>Work out which student an email is for</h2><span class="pill part">Partial</span></div>
+    <div class="uc-head"><h2><small>UC4</small>Work out which student an email is for</h2><span class="pill ok">Working</span></div>
     <p class="meta"><b>Actor:</b> System &nbsp;·&nbsp; <b>Result:</b> the interview is linked to a student with a personal email.</p>
-    <p class="note"><b>Cause fixed, not yet reliable.</b> The forwarding headers were never captured. They are now, and one student has a saved assigned Gmail. The latest health check still found 3 of 5 new interview events with no student attached.</p>
+    <p class="note ok"><b>Rebuilt (3 to 4 Oct).</b> The student is identified from the Gmail the email was delivered to (precedence: the Gmail's owner, the student whose personal email it is, the roster, a name in the body that matches the Gmail, else the Gmail itself, using the greeting name). Anyone the system had to guess is flagged for the approver to verify (UC20). 43 past interviews were matched to students.</p>
     <ul class="stories">
       <li><span class="id">4.1</span><p>As <em>Rob</em>, I want the student matched from the forwarding headers.</p><span class="st pill part">Partial</span></li>
       <li><span class="id">4.2</span><p>As <em>a student</em>, I want notices sent to my personal email, never my job-application Gmail.</p><span class="st pill ok">Working</span></li>
@@ -131,7 +141,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
   <section class="uc">
     <div class="uc-head"><h2><small>UC5</small>Draft the student notification for Rob</h2><span class="pill part">Partial</span></div>
     <p class="meta"><b>Actor:</b> Rob &nbsp;·&nbsp; <b>Result:</b> a ready-made draft in the dashboard that Rob reviews and approves.</p>
-    <p class="note"><b>Replaced by UC12 once switched on.</b> Ali decided neither "the app emails" nor "Rob sends from Gmail" is enough: the app sends across three channels, with Rob approving the first send. Until then Approve still sends one email, and that send was tested (a test message reached Kes). The Approve button itself has not been clicked on a real draft.</p>
+    <p class="note"><b>Replaced by UC12 and UC21 once switched on.</b> Ali decided neither "the app emails" nor "Rob sends from Gmail" is enough: the app sends across three channels, with Rob approving the first send. Until then Approve still sends one email, and that send was tested (a test message reached Kes). The Approve button itself has not been clicked on a real draft.</p>
     <ul class="stories">
       <li><span class="id">5.1</span><p>As <em>Rob</em>, I want a draft with company, role, date and time filled in.</p><span class="st pill part">Partial</span></li>
       <li><span class="id">5.2</span><p>As <em>Rob</em>, I want to edit, approve or reject a draft in the dashboard.</p><span class="st pill part">Untested click</span></li>
@@ -156,7 +166,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
   <section class="uc">
     <div class="uc-head"><h2><small>UC7</small>Protect the ambiguous "Other" bucket</h2><span class="pill ok">Working</span></div>
     <p class="meta"><b>Actor:</b> System, Ali &nbsp;·&nbsp; <b>Result:</b> unclear emails can be recovered.</p>
-    <p class="note ok"><b>Fixed and checked live.</b> Unclear mail goes to a "Quarantine" folder instead of being deleted. Before this, 45 to 105 emails a day were permanently deleted. Quarantine has no clean-up schedule yet.</p>
+    <p class="note ok"><b>Fixed and checked live.</b> Unclear mail goes to a "Quarantine" folder instead of being deleted. Before this, 45 to 105 emails a day were permanently deleted. Quarantine has no clean-up schedule yet. In a 9-day sample 28% of all mail (1,104 of 4,000) was "Other", mostly retail, social and personal mail, so Quarantine is mostly right; 563 messages were unread there on 9 Oct.</p>
     <ul class="stories">
       <li><span class="id">7.1</span><p>As <em>Ali</em>, I want "Other" mail moved to quarantine, not deleted.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">7.2</span><p>As <em>Ali</em>, I want a count of how often quarantined mail turns out to be real.</p><span class="st pill part">Not built</span></li>
@@ -227,7 +237,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">12.3</span><p>As <em>the voice agent</em>, I want the interview facts (type, company, position, date, time, format, contact) passed on each call, so I can tell the student.</p><span class="st pill off">Built, off</span></li>
       <li><span class="id">12.4</span><p>As <em>Kes</em>, I want every message to differ slightly, because GHL only runs a workflow when the field changes.</p><span class="st pill off">Built, off</span></li>
       <li><span class="id">12.5</span><p>As <em>Kes</em>, I want sends to stay in a rehearsal mode until a human approves going live.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">12.6</span><p>As <em>Rob</em>, I want to be told when a draft is waiting for my approval.</p><span class="st pill part">Not built</span></li>
+      <li><span class="id">12.6</span><p>As <em>the escalation contact</em>, I want to be told when a draft has waited more than 2 business hours (Mon-Fri 9 to 5 Central), so no student waits on one person. Checked every 15 minutes.</p><span class="st pill ok">Working</span></li>
     </ul>
   </section>
 
@@ -287,7 +297,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">16.4</span><p>As <em>Ali</em>, I want the agent never to invent answers: unknown questions get "a team member will reach out".</p><span class="st pill ok">Seen once</span></li>
       <li><span class="id">16.5</span><p>As <em>a student</em>, I want no interview details left on my voicemail, only a call-back prompt.</p><span class="st pill part">Not tested</span></li>
       <li><span class="id">16.6</span><p>As <em>a student</em>, I want the agent to stop calling when I ask. Our app now remembers it; the GHL "do not call" tag action is still to build.</p><span class="st pill part">Partly built</span></li>
-      <li><span class="id">16.7</span><p>As <em>a candidate calling back</em>, I want the number's inbound receptionist to hand me to Interview Support, not ask for my name spelling and address.</p><span class="st pill part">On hold: waiting on Ali</span></li>
+      <li><span class="id">16.7</span><p>As <em>a candidate calling back</em>, I want the number's inbound receptionist to take my name and number and be told Interview Support will call me back within one business hour, not ask for my address. The app side is built (UC19).</p><span class="st pill part">Wording to paste in GHL</span></li>
           <li><span class="id">16.8</span><p>As <em>a student</em>, I want the call to open briefly and say why it is calling, not a long self-introduction.</p><span class="st pill part">Re-test due</span></li>
       <li><span class="id">16.9</span><p>As <em>Ali</em>, I want someone other than the student who answers to hear no interview details.</p><span class="st pill part">Not tested</span></li>
     </ul>
@@ -303,8 +313,53 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">17.3</span><p>As <em>Kes</em>, I want one real test call to my own contact, and to see how the interview facts reach the agent.</p><span class="st pill ok">Done for the call</span></li>
       <li><span class="id">17.5</span><p>As <em>Kes</em>, I want one tool that tests a call, a text or an email on a single exact-match contact, refusing anyone on Do-Not-Disturb.</p><span class="st pill ok">Working (call used live)</span></li>
       <li><span class="id">17.6</span><p>As <em>Ali</em>, I want a written test plan with pass criteria and a go-live checklist, so nothing reaches a real student until each step is proven.</p><span class="st pill ok">Written</span></li>
-      <li><span class="id">17.7</span><p>As <em>Ali</em>, I want to decide consent, the pilot size, who may undo a STOP, who takes callbacks, and the unapproved-draft alerts before go-live.</p><span class="st pill part">Emailed to Ali</span></li>
+      <li><span class="id">17.7</span><p>As <em>Ali</em>, I want to decide the remaining go-live questions: the AI disclosure wording, the authoritative student and phone list, the three pilot students, deleting about 200 stub emails, and who may undo a STOP (parked). Consent, the callback owner and the alerts are decided.</p><span class="st pill part">Emailed to Ali</span></li>
       <li><span class="id">17.4</span><p>As <em>Ali</em>, I want to confirm with Rob what he does today before anything is switched on, so nothing he relies on disappears.</p><span class="st pill part">Open</span></li>
+    </ul>
+  </section>
+
+  <h2 class="band">Roles, callbacks and checking who the student is <span class="pill new">New</span></h2>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC18</small>Roles, not people</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> Ali, Kes &nbsp;·&nbsp; <b>Result:</b> who approves, who calls back and who is told about delays can be changed without touching code.</p>
+    <ul class="stories">
+      <li><span class="id">18.1</span><p>As <em>Ali</em>, I want the approver, callback owner and escalation contact set on the Settings page, so a change of staff needs no deploy.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">18.2</span><p>As <em>Ali</em>, I want a draft nobody approves within 2 business hours reported to the escalation contact, once per draft.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">18.3</span><p>As <em>Ali</em>, I want the pilot limited to 3 approved notices (a setting) before everyone is notified.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">18.4</span><p>As <em>Kes</em>, I want no person's name or address written into the code, enforced by a test.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC19</small>A student calls back about an interview</h2><span class="pill part">Built, unproven</span></div>
+    <p class="meta"><b>Actor:</b> AI receptionist, callback owner &nbsp;·&nbsp; <b>Result:</b> a person calls the student back within one business hour. The AI never calls back.</p>
+    <p class="note"><b>Detection is unproven.</b> The app reads the receptionist's call log every 5 minutes. None of the 153 earlier calls was an interview callback, so a real test callback is still needed, and the new wording must first be pasted into the GHL AI Receptionist.</p>
+    <ul class="stories">
+      <li><span class="id">19.1</span><p>As <em>a student</em>, I want to be told that Interview Support will call me back within one business hour, and have my name and best number taken.</p><span class="st pill part">Wording to paste</span></li>
+      <li><span class="id">19.2</span><p>As <em>the callback owner</em>, I want an email alert and a "Callbacks waiting" list, then one click on "Called back".</p><span class="st pill part">Built, unproven</span></li>
+      <li><span class="id">19.3</span><p>As <em>Ali</em>, I want a callback not answered within one business hour sent to the escalation contact.</p><span class="st pill part">Built, unproven</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC20</small>Check who the student is before notifying</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> Approver &nbsp;·&nbsp; <b>Result:</b> no notice goes to a guessed student.</p>
+    <p class="note ok"><b>Live.</b> 11 students the system had to guess are flagged. The approver sees an orange "Verify who this student is" box with the evidence, corrects name, phone and email, and clicks Verify. Approve is refused until then.</p>
+    <ul class="stories">
+      <li><span class="id">20.1</span><p>As <em>the approver</em>, I want guessed names flagged, with the greeting name ("Hi Omolola") preferred over the Gmail username.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">20.2</span><p>As <em>the approver</em>, I want candidates who changed their email traced, since the delivery Gmail may not match the roster.</p><span class="st pill part">Open</span></li>
+      <li><span class="id">20.3</span><p>As <em>Ali</em>, I want Approve refused with no student, no contact details or no verification.</p><span class="st pill ok">Working</span></li>
+    </ul>
+  </section>
+
+  <section class="uc">
+    <div class="uc-head"><h2><small>UC21</small>One screen to review and approve</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> Approver &nbsp;·&nbsp; <b>Result:</b> everything needed to decide, in one place.</p>
+    <ul class="stories">
+      <li><span class="id">21.1</span><p>As <em>the approver</em>, I want Review > Student notifications to show contact details, a real-interview check, the email body (collapsible), previews, and Approve, Reject or Edit.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">21.2</span><p>As <em>Ali</em>, I want the Interviews page to replace the old Events Report, and redundant tiles and tabs removed.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">21.3</span><p>As <em>the approver</em>, I want Run Now to work in production.</p><span class="st pill ok">Working</span></li>
     </ul>
   </section>
 
