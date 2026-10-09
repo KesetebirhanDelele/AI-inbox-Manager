@@ -711,6 +711,7 @@ Render (see `progress.md` open item 5).
 
 ## 16. Changelog (infra / architecture only)
 
+- **2026-10-09 (this fork)** — The stale-draft alert is switched OFF on the server (Kes's decision): `/etc/cron.d/inboxgenius-stale` was moved to `/opt/ai-inbox-manager/disabled-cron/inboxgenius-stale`. Nothing else changed; the code (`execution/stale_draft_alerts.py`, source cron `execution/crontab.stale`) stays. To switch it back on: `mv /opt/ai-inbox-manager/disabled-cron/inboxgenius-stale /etc/cron.d/inboxgenius-stale`. Deploys do not touch host cron files, so it stays off until moved back. The overdue-callback alert (`inboxgenius-callbacks`) is unchanged.
 - **2026-10-09 (this fork)** — Pipeline folder names now follow Ali's labels workbook: `CATEGORY_TO_FOLDER` files into Offers, Rejections and Interview Request (instead of Offer, Rejection, Interview Scheduling); "More Information Request" keeps its name (3,000+ mails in it). The matching Gmail labels were renamed/merged by hand the same day; category names in the app did not change.
 - **2026-10-03 (this fork)** — **Dashboard "Run Now" works in production.** It no longer runs the pipeline in the web process (that was disabled and just returned
   "unavailable"): it writes `tmp/run_now.request`, and a host cron (`/etc/cron.d/inboxgenius-runnow`, source `execution/crontab.runnow`, installed with

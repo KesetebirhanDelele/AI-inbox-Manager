@@ -85,6 +85,11 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (end): stale-draft alert switched off; Gmail label clean-up under way
+
+Kes: "keep it off for now". The host cron file was moved aside (see RUNBOOK section 16 for the one-line way back); nothing in the code changed. Jackie's email now covers only the overdue-callback alert.
+Gmail label clean-up by Kes, one step at a time: Offer merged into Offers (done), Rejection into Rejections (done). Still to do: rename Interview Follow-up to "Interview follow up"; merge Interview Reschedule into Interview Rescheduled; merge the duplicate LinkedIn label; merge Interview Scheduling into Interview Request; merge Background Check into More Information Request; later re-file Interview Confirmation, Final Interview Scheduled and First Interview Scheduled by type once `CATEGORY_REMAP_MODE=live`.
+
 ### 2026-10-09 (late): use-case page and artifact updated; email to the approver drafted
 
 `docs/use-cases.html` (and the artifact https://claude.ai/artifact/FRzyZVP1uBnsvMPEViEZiw, version 5) now cover roles (UC18), the callback flow (UC19), verifying the student (UC20), the one approval screen (UC21), the workbook folders, the Job Invite rule,
