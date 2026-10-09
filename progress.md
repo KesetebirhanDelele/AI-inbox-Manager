@@ -76,8 +76,8 @@ The detail below is in the order the work happened; this block is the summary.
 ### 2026-10-09: Gmail folder names follow Ali's "Email Management - Labels" workbook (step 0 of the classification rework)
 
 **Why:** Ali's workbook (22 folders, plus 7 action playbooks) is the authority for folders. Kes renamed/merged the Gmail labels by hand on 2026-10-09 (Offer to Offers, Rejection to
-Rejections, More Information Request to More Information Needed, Interview Follow-up to Interview follow up, duplicates merged), so the pipeline had to file into the same names.
-**Changed:** `CATEGORY_TO_FOLDER` in `execution/process_inbox_auto.py`: Offer to "Offers", Rejection to "Rejections", More Information Request and Background Check to "More Information Needed",
+Rejections, Interview Follow-up to Interview follow up, duplicates merged), so the pipeline had to file into the same names.
+**Changed:** `CATEGORY_TO_FOLDER` in `execution/process_inbox_auto.py`: Offer to "Offers", Rejection to "Rejections", Background Check to "More Information Request" (that folder keeps its name: 3,000+ mails already sit in it, Kes 2026-10-09),
 Interview Schedule to "Interview Request" (the "Interview Scheduling" folder is retired). Category names inside the app are unchanged (dashboard, stats, templates unaffected); rows already in the
 database keep their old `current_folder` text. New test `tests/execution/test_folder_names.py` fails if the pipeline files into a folder the workbook does not have.
 **Findings (from Kes's Gmail sidebar, unread counts only):** unread mail sits mostly in Job Alerts (3,590), LinkedIn (2,913 across two labels), Job Invite (1,655), Application Notification (728),

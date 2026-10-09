@@ -15,10 +15,12 @@ WORKBOOK_FOLDERS = {
 }
 # Folders that stay until the interview categories are re-filed by type (plan step 3); not in the workbook.
 UNTIL_REFILED = {"Interview Confirmation", "Final Interview Scheduled"}
+# Kept on purpose: 3,000+ mails already sit in "More Information Request" and moving them is not worth it (Kes, 2026-10-09).
+KEPT_NAME = {"More Information Request"}
 
 
 def test_every_mapped_folder_is_a_workbook_folder():
-    unknown = set(pia.CATEGORY_TO_FOLDER.values()) - WORKBOOK_FOLDERS - UNTIL_REFILED
+    unknown = set(pia.CATEGORY_TO_FOLDER.values()) - WORKBOOK_FOLDERS - UNTIL_REFILED - KEPT_NAME
     assert not unknown, f"folders not in the workbook: {sorted(unknown)}"
 
 
@@ -26,6 +28,6 @@ def test_renamed_folders():
     m = pia.CATEGORY_TO_FOLDER
     assert m["Offer"] == "Offers"
     assert m["Rejection"] == "Rejections"
-    assert m["More Information Request"] == "More Information Needed"
-    assert m["Background Check"] == "More Information Needed"
+    assert m["More Information Request"] == "More Information Request"
+    assert m["Background Check"] == "More Information Request"
     assert m["Interview Schedule"] == "Interview Request"

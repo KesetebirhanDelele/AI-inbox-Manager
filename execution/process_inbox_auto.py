@@ -897,8 +897,8 @@ CATEGORY_TO_FOLDER: Dict[str, str] = {
     "Job Machine":               "Job Machine",
     "Application Notification":  "Application Notification",
     # Actions & requests
-    "More Information Request":  "More Information Needed",
-    "Background Check":          "More Information Needed",
+    "More Information Request":  "More Information Request",
+    "Background Check":          "More Information Request",
     "Assessment":                "Assessment",
     "Google Sheet Request":      "Google Sheet Request",
     # System / noise
