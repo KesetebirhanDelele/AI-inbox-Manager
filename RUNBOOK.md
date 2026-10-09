@@ -711,6 +711,7 @@ Render (see `progress.md` open item 5).
 
 ## 16. Changelog (infra / architecture only)
 
+- **2026-10-09 (this fork)** — Pipeline folder names now follow Ali's labels workbook: `CATEGORY_TO_FOLDER` files into Offers, Rejections, More Information Needed and Interview Request (instead of Offer, Rejection, More Information Request, Interview Scheduling). The matching Gmail labels were renamed/merged by hand the same day; category names in the app did not change.
 - **2026-10-03 (this fork)** — **Dashboard "Run Now" works in production.** It no longer runs the pipeline in the web process (that was disabled and just returned
   "unavailable"): it writes `tmp/run_now.request`, and a host cron (`/etc/cron.d/inboxgenius-runnow`, source `execution/crontab.runnow`, installed with
   `scp`, no image rebuild) runs `execution/run_now_watcher.py` in the cron container every minute when that file exists. The watcher starts the same

@@ -73,6 +73,19 @@ PROVEN on one live call to Kes's own contact. What remains is mostly testing, a 
 **Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
 The detail below is in the order the work happened; this block is the summary.
 
+### 2026-10-09: Gmail folder names follow Ali's "Email Management - Labels" workbook (step 0 of the classification rework)
+
+**Why:** Ali's workbook (22 folders, plus 7 action playbooks) is the authority for folders. Kes renamed/merged the Gmail labels by hand on 2026-10-09 (Offer to Offers, Rejection to
+Rejections, More Information Request to More Information Needed, Interview Follow-up to Interview follow up, duplicates merged), so the pipeline had to file into the same names.
+**Changed:** `CATEGORY_TO_FOLDER` in `execution/process_inbox_auto.py`: Offer to "Offers", Rejection to "Rejections", More Information Request and Background Check to "More Information Needed",
+Interview Schedule to "Interview Request" (the "Interview Scheduling" folder is retired). Category names inside the app are unchanged (dashboard, stats, templates unaffected); rows already in the
+database keep their old `current_folder` text. New test `tests/execution/test_folder_names.py` fails if the pipeline files into a folder the workbook does not have.
+**Findings (from Kes's Gmail sidebar, unread counts only):** unread mail sits mostly in Job Alerts (3,590), LinkedIn (2,913 across two labels), Job Invite (1,655), Application Notification (728),
+Quarantine (563). "Needs Review" has 1 unread, so it is not the pile-up that the code reading suggested. Job Invite and Quarantine are the two folders to audit for real interviews filed as noise.
+**Next (not done):** step 1 shadow rewrite (category list = workbook, fixed rules by sender/subject before the AI, add Technical Interview and Interview follow up, wire Job Machine into events,
+Assessment notice on the same three channels, Background Check merged); step 3 re-file Interview Confirmation / Final Interview Scheduled / First Interview Scheduled by type; audit sample of
+Job Invite and Quarantine; ask Ali about Position on hold, Potential Scam, Received Resume, Recruiter Connect (labels not in code or workbook; check Gmail filters).
+
 ### 2026-10-02 (night): prompt fix, call rules, own opt-out record, channel test tool, test plan
 - **Prompt** (`docs/voice-agent-outbound-interview-prompt.md`): the first test call showed the agent skipped "Am I speaking with ...?"
   because the agent's own Welcome Message setting is spoken before the prompt. Added checklist step 1a (set the welcome message to the

@@ -875,12 +875,13 @@ NEEDS_REVIEW_FOLDER = "Needs Review"
 # Below this threshold the email goes to NEEDS_REVIEW_FOLDER instead.
 ROUTING_CONFIDENCE_THRESHOLD = 0.70
 
+# Gmail label names follow the 'Email Management - Labels' workbook (Ali), renamed in Gmail 2026-10-09.
 # Master category → Gmail label mapping (module-level so both INBOX processing
 # and the spam-review pass use the same authoritative table).
 CATEGORY_TO_FOLDER: Dict[str, str] = {
     # Interview flow
     "Interview Confirmation":    "Interview Confirmation",
-    "Interview Schedule":        "Interview Scheduling",
+    "Interview Schedule":        "Interview Request",
     "Interview Reschedule":      "Interview Rescheduled",
     "Interview Cancelled":       "Interview Cancelled",
     "Final Interview Scheduled": "Final Interview Scheduled",
@@ -888,16 +889,16 @@ CATEGORY_TO_FOLDER: Dict[str, str] = {
     "Client Screen":             "Client Screen",
     "Phone Screen":              "Phone Screen (HR or Recruiter)",
     # Outcomes
-    "Rejection":                 "Rejection",
-    "Offer":                     "Offer",
+    "Rejection":                 "Rejections",
+    "Offer":                     "Offers",
     # Jobs & applications
     "Job Alert":                 "Job Alerts",
     "Job Invite":                "Job Invite",
     "Job Machine":               "Job Machine",
     "Application Notification":  "Application Notification",
     # Actions & requests
-    "More Information Request":  "More Information Request",
-    "Background Check":          "Background Check",
+    "More Information Request":  "More Information Needed",
+    "Background Check":          "More Information Needed",
     "Assessment":                "Assessment",
     "Google Sheet Request":      "Google Sheet Request",
     # System / noise
