@@ -416,10 +416,10 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
  * The approver's screen: every interview that needs a decision or a fix, with the student's contact details, an
  * advisory "is this a real interview?" check, a preview of what the student will receive, and Approve / Reject.
  */
-const NotificationQueue = () => {
+/** mode 'decide': cards that can be approved or fixed today. mode 'verify': students nobody has identified or verified yet. */
+const NotificationQueue = ({ mode = 'decide' }: { mode?: 'decide' | 'verify' }) => {
   const [showDone, setShowDone] = useState(false);
   const [onlyReady, setOnlyReady] = useState(false);
-  const [showWaiting, setShowWaiting] = useState(false);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['reviewQueue', showDone],
     queryFn: () => apiClient.getReviewQueue(showDone),
@@ -447,11 +447,32 @@ const NotificationQueue = () => {
   const fix = actionable.filter((i) => ['blocked', 'no_draft'].includes(i.state)).length;
   const shown = onlyReady ? actionable.filter((i) => i.state === 'ready') : actionable;
 
+  if (mode === 'verify') {
+    return (
+      <div className="space-y-4">
+        <div className="p-3 bg-orange-50 border border-orange-200 rounded text-sm text-orange-900">
+          Nobody can be told about these interviews until a person works out who the student is. Their emails are in the Gmail label
+          &ldquo;Verify Student&rdquo;. Nothing here is sent. Correct the details and click Verify once the student is confirmed.
+        </div>
+        {waiting.length === 0 ? (
+          <div className="py-10 text-center text-gray-500">No student is waiting to be identified or verified.</div>
+        ) : (
+          <ul className="space-y-4">
+            {waiting.map((item) => (
+              <QueueCard key={`${item.event_id}-${item.draft_id}`} item={item} escalationOn={data.escalation_enabled} callbacks={data.callbacks ?? []} />
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-gray-700">
           <strong>{ready}</strong> ready for your decision &middot; <strong>{fix}</strong> need fixing before they can be approved
+          {waiting.length > 0 && <span className="text-orange-800"> &middot; {waiting.length} waiting to be identified (see the Verify students tab)</span>}
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => setOnlyReady(!onlyReady)} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm">
@@ -490,31 +511,6 @@ const NotificationQueue = () => {
             <QueueCard key={`${item.event_id}-${item.draft_id}`} item={item} escalationOn={data.escalation_enabled} callbacks={data.callbacks ?? []} />
           ))}
         </ul>
-      )}
-      {waiting.length > 0 && (
-        <div className="border border-orange-200 rounded-md bg-orange-50">
-          <button
-            type="button"
-            onClick={() => setShowWaiting(!showWaiting)}
-            className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-orange-900"
-          >
-            <span>Waiting for the student to be identified or verified ({waiting.length})</span>
-            <span className="text-orange-700">{showWaiting ? 'Hide' : 'Show'}</span>
-          </button>
-          {showWaiting && (
-            <div className="px-3 pb-3 space-y-3">
-              <p className="text-xs text-orange-900">
-                Nobody can be told about these interviews until a person works out who the student is. Their emails are in the Gmail label
-                &ldquo;Verify Student&rdquo;; nothing here is sent.
-              </p>
-              <ul className="space-y-4">
-                {waiting.map((item) => (
-                  <QueueCard key={`${item.event_id}-${item.draft_id}`} item={item} escalationOn={data.escalation_enabled} callbacks={data.callbacks ?? []} />
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
       )}
     </div>
   );

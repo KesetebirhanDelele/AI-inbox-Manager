@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from database import get_db
 from utils_text import clean_email_text
@@ -361,6 +361,9 @@ def _send_draft_email(draft) -> dict:
     )
 
 
+REVIEW_MAX_AGE_DAYS = 14
+
+
 @router.get("/review-queue")
 async def get_review_queue(
     include_done: bool = Query(False, description="also list notices already sent or rejected"),
@@ -394,6 +397,9 @@ async def get_review_queue(
     for event, draft, student, email in rows:
         status_ = draft.email_status if draft else None
         if status_ in ("sent", "rejected") and not include_done:
+            continue
+        # Old mail is never a decision for today: anything received more than REVIEW_MAX_AGE_DAYS ago only shows with "Show finished".
+        if not include_done and email is not None and email.received_date and email.received_date < datetime.utcnow() - timedelta(days=REVIEW_MAX_AGE_DAYS):
             continue
         blockers, warnings = [], []
         verification = (db.query(StudentVerification).filter(StudentVerification.student_id == student.id).first()

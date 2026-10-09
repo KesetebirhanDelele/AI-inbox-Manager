@@ -365,6 +365,19 @@ class TestReviewQueue:
         assert resp.status_code == 200
         return resp.json()
 
+    def test_mail_older_than_two_weeks_is_not_a_decision_for_today(self, client, db, auth_cookies):
+        from datetime import datetime, timedelta
+        from conftest import make_email, make_student, make_interview_event, make_notification_draft
+        student = make_student(db)
+        old = make_email(db, email_id="old1", subject="Old", received_date=datetime.utcnow() - timedelta(days=20))
+        make_notification_draft(db, make_interview_event(db, old, student=student))
+        fresh = make_email(db, email_id="new1", subject="Fresh", received_date=datetime.utcnow() - timedelta(days=2))
+        make_notification_draft(db, make_interview_event(db, fresh, student=student))
+        subjects = [i["email"]["subject"] for i in self._queue(client, auth_cookies)["items"]]
+        assert subjects == ["Fresh"]
+        everything = [i["email"]["subject"] for i in self._queue(client, auth_cookies, include_done=True)["items"]]
+        assert sorted(everything) == ["Fresh", "Old"]
+
     def test_a_ready_draft_shows_student_contact_facts_check_and_preview(self, client, db, auth_cookies):
         from conftest import make_email, make_student, make_interview_event, make_notification_draft
         student = make_student(db)

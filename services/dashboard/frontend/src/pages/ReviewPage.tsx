@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../api/client';
 import { useSearchParams } from 'react-router-dom';
 import ApprovalsContent from '../components/ApprovalsContent';
 import NotificationQueue from '../components/NotificationQueue';
 
-type TabType = 'notifications' | 'approvals';
+type TabType = 'notifications' | 'verify' | 'approvals';
 
 const ReviewPage = () => {
   const [searchParams] = useSearchParams();
@@ -12,8 +14,13 @@ const ReviewPage = () => {
     requested === 'approvals' ? requested : 'notifications',
   );
 
+  // Same query the tabs use (cached), only to show how many students are waiting to be identified or verified.
+  const queue = useQuery({ queryKey: ['reviewQueue', false], queryFn: () => apiClient.getReviewQueue(false), staleTime: 0 });
+  const waitingCount = (queue.data?.items ?? []).filter((i) => ['needs_verification', 'needs_student'].includes(i.state)).length;
+
   const tabs: { id: TabType; name: string }[] = [
     { id: 'notifications', name: 'Student notifications' },
+    { id: 'verify', name: waitingCount > 0 ? `Verify students (${waitingCount})` : 'Verify students' },
     { id: 'approvals', name: 'Classification review' },
   ];
 
@@ -51,6 +58,7 @@ const ReviewPage = () => {
       {/* Tab Content */}
       <div>
         {activeTab === 'notifications' && <NotificationQueue />}
+        {activeTab === 'verify' && <NotificationQueue mode="verify" />}
         {activeTab === 'approvals' && <ApprovalsContent />}
       </div>
     </div>
