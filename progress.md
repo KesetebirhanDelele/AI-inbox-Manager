@@ -85,6 +85,14 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (night): approval list cleared for next week (production database, no deletions)
+
+Kes: clear the review list. Result: 96 drafts in total, **93 rejected, 3 pending**. Reasons are saved on each draft (`send_error`) and the reviewer is "cleanup 2026-10-09 (Claude, at Kes request)".
+- 46 clear non-interviews (earlier pass), 21 old (email over a week old or interview passed), 14 non-interviews (job postings, vendor marketing, an acknowledgement, a pay-rate confirmation): ids 33,35,43,76,87,50,38,29,83,82,77,56,45,68.
+- 3 told by hand or already past: 84, 86 (Orange County, Kes told the student) and 98 (TEKsystems meeting reminder).
+- 4 for unverified students, possibly real (25 Tier4 reminder, 31 Addison, 64 ADP, 94 CyberKy): their original emails are already in the Gmail label "Verify Student"; the drafts are closed for now. **To bring one back:** after the student is verified and if the interview is still ahead, set the draft's `email_status` back to `draft` (or ask Claude); no card reappears by itself.
+- Still pending (verified students, uncertain recruiter threads): 46 Adecco first contact, 74 e-solutions reply thread, 80 CGI reply thread.
+
 ### 2026-10-09 (end): callback emails carry the student's context (why they called, interviews, what we told them)
 
 Kes: when the escalation contact is brought in she needs to know why the student called and the recent communication history. `execution/callbacks.py`: new `context_lines()` used by BOTH the callback owner's alert and the escalation role's overdue email (the overdue one only had name, number and wait time before): their own words, how to reach them, their last three interviews with when the email arrived, notices the app sent (channel, time, status), their replies and confirmation, earlier callbacks from the number; one block per student in the overdue email. Read-only, capped. 2 new tests. Directive section "Callbacks" updated. The email that was already sent to the escalation contact described the older, shorter alert: nothing in it is now wrong, the alert simply says more.
