@@ -79,6 +79,8 @@ def assess(subject: str, from_address: str, body: str, company: Optional[str] = 
     tracked = []
     for host, path in URL.findall(body or ""):
         host = host.lower()
+        if MEETING_LINK.search(host):
+            continue    # a Teams / Zoom / Meet join link is long and opaque by design; it is the opposite of a tracking link
         opaque = re.search(r"[A-Za-z0-9_-]{40,}", path or "")
         if host.startswith(TRACKING_HOST_PREFIXES) or opaque:
             tracked.append(host)

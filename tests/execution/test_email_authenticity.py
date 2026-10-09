@@ -67,3 +67,19 @@ def test_weak_signals_alone_never_make_an_email_look_genuine():
     r = ea.assess("Rutendo, Refresh Your Resume. Refocus Your Career.", "onboarding@threepds.com",
                   "Your next steps: update your profile and schedule a call with our team.", "ThreePDS Recruiting, Staffing & Consulting")
     assert r["verdict"] == "needs_check" and r["for"]
+
+
+def test_a_teams_join_link_is_not_called_click_tracking():
+    """Production 2026-10-09: a real Teams invite was flagged because its join URL is long and opaque."""
+    body = ("The two of you are scheduled to meet over Teams on Wednesday, 10-14-26 at 11am.\n"
+            "Join: https://teams.microsoft.com/l/meetup-join/19%3ameeting_NGY2Yzk0MTQtOTFlYy00ZGZkLWJkMmItYWJjZGVmMDEyMzQ1%40thread.v2/0?context=abc\n"
+            "Meeting ID: 262 347 560 921 085")
+    out = ea.assess("Teams call to discuss Senior BI Analyst role", "troh@orangecountyscu.org", body)
+    assert not any("click-tracking" in r for r in out["against"])
+    assert out["verdict"] == "looks_genuine"
+
+
+def test_a_real_tracking_link_is_still_flagged():
+    out = ea.assess("Confirm your interview availability", "info@dd.job-assist-now.com",
+                 "Confirm your availability: https://dd.job-assist-now.com/c/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCdEfGh")
+    assert any("click-tracking" in r for r in out["against"])

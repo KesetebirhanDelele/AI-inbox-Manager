@@ -85,6 +85,11 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (end): a Teams join link no longer counts as "click-tracking"
+
+The real-interview check on a genuine Orange County CU invite said "Links go through a click-tracking address (teams.microsoft.com)": any link whose path had 40+ unbroken characters counted as tracking, and a Teams meeting URL always does. `execution/email_authenticity.py` now skips known meeting hosts (Teams, Zoom, Meet, Calendly, Webex, GoToMeeting, Whereby) in that test; real tracking links (for example dd.job-assist-now.com) are still flagged. Two tests added.
+Kes's reading of the second email: a phone screen already happened and the recruiter offers a follow-up Teams interview with an AVP on Wed 2026-10-14 at 11am or 4pm (a next-round request, then confirmed for 11am). The student was told by hand.
+
 ### 2026-10-09 (end): Approve returned a 500 in production (wrong import) and now says why it cannot send
 
 **Symptom (Kes, real interview card):** "Yes, approve" showed "Request failed with status code 500". **Cause:** the single-email path in `services/dashboard/api/routers/notifications.py` did `from execution.send_notification import send_email`; the API container has no `execution` package (other code puts `execution/` on `sys.path` and imports by bare name), so every Approve crashed BEFORE sending or changing anything. The tests passed because they patched the same wrong path and the repo root is on the test path. Approve had never worked in production on this path.
