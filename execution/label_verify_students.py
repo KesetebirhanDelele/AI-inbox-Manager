@@ -16,6 +16,7 @@ Usage (inside the cron container on the server):
     python execution/label_verify_students.py                # plan only
     python execution/label_verify_students.py --apply        # label and move
     python execution/label_verify_students.py --apply --keep-in-place   # label only, leave every email where it is
+    python execution/label_verify_students.py --no-student --apply      # the emails of interviews with NO student identified
 """
 
 import argparse
@@ -33,6 +34,21 @@ for p in (_ROOT / "execution", _ROOT, _ROOT / "services" / "dashboard" / "api"):
 logger = logging.getLogger("label_verify_students")
 LABEL = "Verify Student"
 ALL_MAIL = '"[Gmail]/All Mail"'
+
+
+def plan_no_student(db) -> List[Dict[str, Any]]:
+    """The emails of interview events with NO student identified (the "No student identified" cards): nobody can be told until a person works out who they are."""
+    import models as M
+
+    rows = (db.query(M.Email).join(M.InterviewEvent, M.InterviewEvent.email_id == M.Email.id)
+            .filter(M.InterviewEvent.student_id.is_(None)).order_by(M.Email.received_date).all())
+    seen, items = set(), []
+    for email in rows:
+        if email.id in seen or (email.current_folder or "") == LABEL:
+            continue
+        seen.add(email.id)
+        items.append({"email_id": email.id, "message_id": (email.message_id or "").strip(), "folder": email.current_folder or "INBOX"})
+    return items
 
 
 def plan(db, all_drafts: bool = False) -> List[Dict[str, Any]]:
@@ -122,6 +138,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--apply", action="store_true", help="change Gmail and the database (default: plan only)")
     ap.add_argument("--all-drafts", action="store_true", help="include students whose draft is no longer pending")
+    ap.add_argument("--no-student", action="store_true", help="instead: the emails of interview events with no student identified")
     ap.add_argument("--keep-in-place", action="store_true", help="add the label but do not take the email out of its folder")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -131,7 +148,7 @@ def main(argv=None) -> int:
     if db is None:
         print("No database connection.")
         return 1
-    items = plan(db, all_drafts=args.all_drafts)
+    items = plan_no_student(db) if args.no_student else plan(db, all_drafts=args.all_drafts)
     folders: Dict[str, int] = {}
     for it in items:
         folders[it["folder"]] = folders.get(it["folder"], 0) + 1

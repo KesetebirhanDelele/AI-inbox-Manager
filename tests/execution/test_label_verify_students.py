@@ -117,3 +117,14 @@ def test_an_email_already_out_of_its_folder_counts_as_moved_and_a_missing_folder
     out = lvs.apply_items(imap, items, move=True)
     assert out["labelled"] == [1, 2] and sorted(out["moved"]) == [1, 2]
     assert imap.flags == [] and imap.expunged == []       # nothing was flagged or expunged: nothing to remove
+
+
+def test_no_student_plan_picks_events_with_no_student_only(db_models):
+    db, M = db_models
+    known = _add(db, M, 1, verified=True)
+    lost = M.Email(email_id="9", message_id="<m9@x>", subject="s", from_address="a@b.com", received_date=datetime(2026, 10, 3), current_folder="INBOX")
+    db.add(lost); db.flush()
+    db.add(M.InterviewEvent(email_id=lost.id, student_id=None, sub_type="Interview Request", confidence=0.9))
+    db.commit()
+    assert [i["email_id"] for i in lvs.plan_no_student(db)] == [lost.id]
+    assert known.id not in [i["email_id"] for i in lvs.plan_no_student(db)]

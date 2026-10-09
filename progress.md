@@ -85,6 +85,10 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (night): "No student identified" emails moved to the Verify Student label
+
+Kes asked to move the emails of the "No student identified" cards to "Verify Student" in Gmail. `execution/label_verify_students.py --no-student` (plan only without `--apply`) selects interview events whose `student_id` is empty: 5 in production (3 in INBOX, 1 Interview Confirmation, 1 Phone Screen), all older than 14 days, no drafts. Same safe method as before (label found by Message-ID in All Mail, then removed from the old folder only, `current_folder` updated). 1 new test.
+
 ### 2026-10-09 (night): approval list cleared for next week (production database, no deletions)
 
 Kes: clear the review list. Result: 96 drafts in total, **93 rejected, 3 pending**. Reasons are saved on each draft (`send_error`) and the reviewer is "cleanup 2026-10-09 (Claude, at Kes request)".
