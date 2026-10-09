@@ -18,6 +18,7 @@ _SEND_EMAIL = "send_notification.send_email"
 def _smtp_login_present(monkeypatch):
     """The approve tests mock the send itself; pretend the server has an SMTP login (one test removes it)."""
     import send_notification
+    monkeypatch.setenv("SINGLE_EMAIL_APPROVE_ENABLED", "true")
     monkeypatch.setattr(send_notification, "SMTP_USERNAME", "sender@example.com", raising=False)
     monkeypatch.setattr(send_notification, "SMTP_PASSWORD", "x", raising=False)
 
@@ -487,3 +488,17 @@ class TestStudentVerification:
 
     def test_verifying_an_unknown_student_is_a_404(self, client, db, auth_cookies):
         assert client.post("/api/notifications/students/999/verify", cookies=auth_cookies, json={}).status_code == 404
+
+
+    def test_approve_by_single_email_is_off_unless_switched_on(self, client, db, auth_cookies, monkeypatch):
+        """The server .env holds a real SMTP login: without the explicit switch a click must send nothing and change nothing."""
+        monkeypatch.delenv("SINGLE_EMAIL_APPROVE_ENABLED", raising=False)
+        email = make_email(db)
+        event = make_interview_event(db, email, student=make_student(db))
+        draft = make_notification_draft(db, event, email_status="draft")
+        with patch(_SEND_EMAIL) as send:
+            resp = client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies)
+        assert resp.status_code == 409 and "switched off" in resp.json()["detail"]
+        send.assert_not_called()
+        db.refresh(draft)
+        assert draft.email_status == "draft" and draft.reviewed_by is None

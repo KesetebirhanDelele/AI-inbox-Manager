@@ -332,11 +332,22 @@ def _execution_module(name: str):
     return __import__(name)
 
 
+def _single_email_enabled() -> bool:
+    """The old one-email Approve is OFF unless SINGLE_EMAIL_APPROVE_ENABLED is 1/true/yes (the server .env has a real SMTP login, so without this switch a click would email a real student)."""
+    return os.getenv("SINGLE_EMAIL_APPROVE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+
+
 def _ensure_email_sending_configured() -> None:
     """
-    The single-email path needs an SMTP login in the API container. Without it Approve must say so BEFORE it changes anything
-    (before the draft is marked approved or a checklist step is ticked), so nothing is left half-done.
+    Approve through the single-email path must be switched on on purpose AND have an SMTP login. It says so BEFORE it changes anything
+    (before the draft is marked approved or a checklist step is ticked), so nothing is left half-done and nothing is sent by accident.
     """
+    if not _single_email_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Approve by single email is switched off until the three-channel flow starts, so nothing was sent and the draft is unchanged. "
+                   "Tell Kes if this student must be told today (he can tell them by hand).",
+        )
     mod = _execution_module("send_notification")
     if not (getattr(mod, "SMTP_USERNAME", "") and getattr(mod, "SMTP_PASSWORD", "")):
         raise HTTPException(
@@ -617,7 +628,8 @@ async def approve_notification(
                                 detail=f"Pilot limit reached: {started} of {limit} notices have already been started. "
                                        "Lift the limit on the Settings page once the pilot has run clean.")
 
-    _ensure_email_sending_configured()
+    if not _escalation_enabled():
+        _ensure_email_sending_configured()      # only the old one-email path needs (and risks) the SMTP login
 
     # Update status to approved
     draft.email_status = "approved"

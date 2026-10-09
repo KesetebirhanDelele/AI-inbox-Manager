@@ -50,6 +50,7 @@ def _sequence(db, draft):
 class TestApproveWithEscalation:
     def test_flag_off_keeps_the_old_behaviour_and_creates_no_sequence(self, client, db, auth_cookies, monkeypatch):
         monkeypatch.delenv("NOTIFY_ESCALATION_ENABLED", raising=False)
+        monkeypatch.setenv("SINGLE_EMAIL_APPROVE_ENABLED", "true")      # the old one-email path is off unless switched on on purpose
         draft, _ = _draft(db)
         with patch(_SEND_EMAIL, return_value={"status": "sent"}) as send:
             resp = client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies)
