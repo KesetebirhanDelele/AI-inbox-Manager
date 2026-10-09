@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from conftest import (
     make_email,
     make_interview_event,
@@ -9,7 +11,15 @@ from conftest import (
     make_student,
 )
 
-_SEND_EMAIL = "execution.send_notification.send_email"
+_SEND_EMAIL = "send_notification.send_email"
+
+
+@pytest.fixture(autouse=True)
+def _smtp_login_present(monkeypatch):
+    """The approve tests mock the send itself; pretend the server has an SMTP login (one test removes it)."""
+    import send_notification
+    monkeypatch.setattr(send_notification, "SMTP_USERNAME", "sender@example.com", raising=False)
+    monkeypatch.setattr(send_notification, "SMTP_PASSWORD", "x", raising=False)
 
 
 class TestGetPendingNotifications:
@@ -155,6 +165,24 @@ class TestApproveNotification:
         data = resp.json()
         assert data["email_status"] == "failed"
         assert data["send_error"] == "SMTP error"
+
+    def test_approve_without_smtp_login_is_a_clear_409_and_changes_nothing(self, client, db, auth_cookies, monkeypatch):
+        """Production 2026-10-09: Approve crashed with a 500. With no SMTP login it must say so, send nothing and leave the draft alone."""
+        import send_notification
+        monkeypatch.setattr(send_notification, "SMTP_USERNAME", "")
+        monkeypatch.setattr(send_notification, "SMTP_PASSWORD", "")
+        email = make_email(db)
+        event = make_interview_event(db, email, student=make_student(db))
+        draft = make_notification_draft(db, event, email_status="draft")
+
+        with patch(_SEND_EMAIL) as send:
+            resp = client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies)
+
+        assert resp.status_code == 409
+        assert "nothing was sent" in resp.json()["detail"]
+        send.assert_not_called()
+        db.refresh(draft)
+        assert draft.email_status == "draft" and draft.reviewed_by is None and draft.sent_at is None
 
     def test_approve_already_sent_rejected(self, client, db, auth_cookies):
         email = make_email(db)

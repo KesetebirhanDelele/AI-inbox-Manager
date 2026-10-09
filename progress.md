@@ -85,6 +85,13 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (end): Approve returned a 500 in production (wrong import) and now says why it cannot send
+
+**Symptom (Kes, real interview card):** "Yes, approve" showed "Request failed with status code 500". **Cause:** the single-email path in `services/dashboard/api/routers/notifications.py` did `from execution.send_notification import send_email`; the API container has no `execution` package (other code puts `execution/` on `sys.path` and imports by bare name), so every Approve crashed BEFORE sending or changing anything. The tests passed because they patched the same wrong path and the repo root is on the test path. Approve had never worked in production on this path.
+**Second cause found:** the API container has no `SMTP_USERNAME` / `SMTP_PASSWORD` (they are in the server `.env` but not passed into the container), so even with the import fixed no email could go out.
+**Fix:** `_send_draft_email` loads `send_notification` by bare name; `_ensure_email_sending_configured` runs BEFORE the draft is marked approved and answers 409 with a plain message when there is no SMTP login (draft untouched, nothing sent, no checklist step ticked). Tests now patch `send_notification.send_email`; new test for the 409. Nothing is sent by this change.
+**Open (Kes decides):** how real notices leave the app: give the API container the SMTP login (single email to the student's address, which for some students is only the job-application Gmail) or switch to the three-channel GHL flow (shadow rehearsal, then live pilot).
+
 ### 2026-10-09 (end): job-assist-now.com filed as Job Alert by rule
 
 Kes read the Sehrish card's email: "confirm your interview availability ... a potential interview" from `info@dd.job-assist-now.com` is a lead-generation mailer (unsubscribe link and mailing address), not an interview. Added the domain to `JOB_BOARD_DOMAINS` in `execution/process_inbox_auto.py` (rules fire before the AI) with a test. The card already in the queue stays until Kes rejects it.

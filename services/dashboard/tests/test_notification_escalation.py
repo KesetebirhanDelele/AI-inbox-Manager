@@ -17,7 +17,7 @@ from conftest import (
     make_student,
 )
 
-_SEND_EMAIL = "execution.send_notification.send_email"
+_SEND_EMAIL = "send_notification.send_email"
 
 
 class _FixedClock(datetime):

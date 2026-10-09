@@ -332,6 +332,35 @@ def _execution_module(name: str):
     return __import__(name)
 
 
+def _ensure_email_sending_configured() -> None:
+    """
+    The single-email path needs an SMTP login in the API container. Without it Approve must say so BEFORE it changes anything
+    (before the draft is marked approved or a checklist step is ticked), so nothing is left half-done.
+    """
+    mod = _execution_module("send_notification")
+    if not (getattr(mod, "SMTP_USERNAME", "") and getattr(mod, "SMTP_PASSWORD", "")):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This server has no email-sending login set up for the app, so nothing was sent and the draft is unchanged. "
+                   "Tell Kes before approving.",
+        )
+
+
+def _send_draft_email(draft) -> dict:
+    """
+    Send one draft by email through execution/send_notification.py (the single-email path used while the three-channel flow is off).
+
+    The module is loaded by its plain name (`execution/` is put on sys.path), because the API container has no `execution` package: the
+    old `from execution.send_notification import ...` crashed every Approve with a 500 in production (2026-10-09).
+    """
+    send_email = _execution_module("send_notification").send_email
+    return send_email(
+        recipient_email=draft.recipient_email or "",
+        subject=draft.email_subject or "",
+        body=draft.email_body or "",
+    )
+
+
 @router.get("/review-queue")
 async def get_review_queue(
     include_done: bool = Query(False, description="also list notices already sent or rejected"),
@@ -582,6 +611,8 @@ async def approve_notification(
                                 detail=f"Pilot limit reached: {started} of {limit} notices have already been started. "
                                        "Lift the limit on the Settings page once the pilot has run clean.")
 
+    _ensure_email_sending_configured()
+
     # Update status to approved
     draft.email_status = "approved"
     draft.reviewed_by = user.username
@@ -610,13 +641,7 @@ async def approve_notification(
         }
 
     # Send the email
-    from execution.send_notification import send_email
-
-    send_result = send_email(
-        recipient_email=draft.recipient_email or "",
-        subject=draft.email_subject or "",
-        body=draft.email_body or "",
-    )
+    send_result = _send_draft_email(draft)
 
     if send_result["status"] == "sent":
         draft.email_status = "sent"
@@ -680,13 +705,7 @@ async def edit_notification(
 
     # Optionally send after edit
     if request.send_after_edit:
-        from execution.send_notification import send_email
-
-        send_result = send_email(
-            recipient_email=draft.recipient_email or "",
-            subject=draft.email_subject or "",
-            body=draft.email_body or "",
-        )
+        send_result = _send_draft_email(draft)
 
         if send_result["status"] == "sent":
             draft.email_status = "sent"
