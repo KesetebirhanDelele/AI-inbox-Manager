@@ -64,6 +64,6 @@ class TestPilotLimit:
     def test_the_limit_does_not_apply_while_escalation_is_off(self, client, db, auth_cookies, monkeypatch):
         monkeypatch.delenv("NOTIFY_ESCALATION_ENABLED", raising=False)
         client.put("/api/roles/pilot-limit", json={"limit": 1}, cookies=auth_cookies)
-        with patch("execution.send_notification.send_email", return_value={"status": "sent"}):
+        with patch("send_notification.send_email", return_value={"status": "sent"}):
             for n in range(2):
                 assert client.post(f"/api/notifications/{self._draft(db, n).id}/approve", cookies=auth_cookies).status_code == 200

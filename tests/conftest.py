@@ -51,3 +51,23 @@ def sample_data():
             "value": "example"
         }
     }
+
+
+# --- tests must never send real email -----------------------------------------------------------------------------------------------
+# send_notification.py loads the developer's real SMTP login from .env, so any test that reaches an unmocked send would email a real
+# address (it did: "Interview Notification / You have an interview." to student@example.com, 2026-10-09). send_email swallows every
+# exception, so the guard records the attempt and fails the TEST afterwards.
+@pytest.fixture(autouse=True)
+def _never_open_a_real_smtp_connection(monkeypatch):
+    import smtplib
+
+    attempts = []
+
+    def _record(*args, **kwargs):
+        attempts.append(args[:1])
+        raise ConnectionError("blocked: tests must not open a real SMTP connection")
+
+    monkeypatch.setattr(smtplib, "SMTP", _record)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", _record)
+    yield
+    assert not attempts, "This test tried to open a real SMTP connection (it would have emailed a real address): mock send_email in it"
