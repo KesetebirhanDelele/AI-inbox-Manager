@@ -419,6 +419,7 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
 const NotificationQueue = () => {
   const [showDone, setShowDone] = useState(false);
   const [onlyReady, setOnlyReady] = useState(false);
+  const [showWaiting, setShowWaiting] = useState(false);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['reviewQueue', showDone],
     queryFn: () => apiClient.getReviewQueue(showDone),
@@ -437,9 +438,14 @@ const NotificationQueue = () => {
     );
   }
 
-  const ready = data.items.filter((i) => i.state === 'ready').length;
-  const fix = data.items.filter((i) => ['needs_verification', 'blocked', 'needs_student', 'no_draft'].includes(i.state)).length;
-  const shown = onlyReady ? data.items.filter((i) => i.state === 'ready') : data.items;
+  // Students nobody has identified or verified yet are looked at from the "Verify Student" label in Gmail, so they wait in their own
+  // collapsed section instead of mixing with the cards that can be decided today.
+  const isWaiting = (i: { state: string }) => ['needs_verification', 'needs_student'].includes(i.state);
+  const waiting = data.items.filter(isWaiting);
+  const actionable = data.items.filter((i) => !isWaiting(i));
+  const ready = actionable.filter((i) => i.state === 'ready').length;
+  const fix = actionable.filter((i) => ['blocked', 'no_draft'].includes(i.state)).length;
+  const shown = onlyReady ? actionable.filter((i) => i.state === 'ready') : actionable;
 
   return (
     <div className="space-y-4">
@@ -484,6 +490,31 @@ const NotificationQueue = () => {
             <QueueCard key={`${item.event_id}-${item.draft_id}`} item={item} escalationOn={data.escalation_enabled} callbacks={data.callbacks ?? []} />
           ))}
         </ul>
+      )}
+      {waiting.length > 0 && (
+        <div className="border border-orange-200 rounded-md bg-orange-50">
+          <button
+            type="button"
+            onClick={() => setShowWaiting(!showWaiting)}
+            className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-orange-900"
+          >
+            <span>Waiting for the student to be identified or verified ({waiting.length})</span>
+            <span className="text-orange-700">{showWaiting ? 'Hide' : 'Show'}</span>
+          </button>
+          {showWaiting && (
+            <div className="px-3 pb-3 space-y-3">
+              <p className="text-xs text-orange-900">
+                Nobody can be told about these interviews until a person works out who the student is. Their emails are in the Gmail label
+                &ldquo;Verify Student&rdquo;; nothing here is sent.
+              </p>
+              <ul className="space-y-4">
+                {waiting.map((item) => (
+                  <QueueCard key={`${item.event_id}-${item.draft_id}`} item={item} escalationOn={data.escalation_enabled} callbacks={data.callbacks ?? []} />
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
