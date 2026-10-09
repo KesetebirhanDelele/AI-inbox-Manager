@@ -15,6 +15,7 @@ Roles, not people: the addresses come from execution/roles.py.
 import os
 import re
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 import ghl_conversations as gcv
@@ -81,23 +82,69 @@ def _baseline(db, now: datetime) -> datetime:
     return now
 
 
+def _fmt(dt: Optional[datetime], hours) -> str:
+    from business_hours import _local
+    return _local(dt, hours.tz if hours else "America/Chicago").strftime("%a %b %d, %I:%M %p") if dt else "unknown time"
+
+
+def context_lines(db, student, req, hours, max_notices: int = 8) -> List[str]:
+    """
+    What the person calling the student back needs to know, in plain text: how to reach them, why they rang, their interviews, what we have already
+    told them (and what they answered), and any earlier callback. Read-only; every list is capped; reply text is shortened.
+    """
+    import models as M
+    lines: List[str] = []
+    if req.said:
+        lines.append(f'Why they called (their own words): "{req.said[:300]}"')
+    else:
+        lines.append("Why they called: the receptionist did not record their words.")
+    if student is not None:
+        reach = [x for x in (student.phone_number, student.personal_email, student.assigned_gmail) if x]
+        lines.append("How to reach them: " + (", ".join(dict.fromkeys(reach)) if reach else "no details on file") + f" (they called from {req.caller_number or 'an unknown number'})")
+        events = (db.query(M.InterviewEvent).filter(M.InterviewEvent.student_id == student.id)
+                  .order_by(M.InterviewEvent.id.desc()).limit(3).all())
+        if events:
+            lines.append("Their recent interviews:")
+        for ev in events:
+            when = " ".join(x for x in (str(ev.interview_date or ""), str(ev.interview_time or ""), ev.interview_timezone or "") if x)
+            email = db.get(M.Email, ev.email_id) if ev.email_id else None
+            lines.append(f"  - {ev.company_name or 'unknown company'}" + (f", {ev.position_title}" if ev.position_title else "")
+                         + f" ({ev.sub_type or 'interview'}" + (f", {when}" if when else ", time not stated")
+                         + (f", email received {_fmt(email.received_date, hours)}" if email is not None else "") + ")")
+        notices: List[tuple] = []
+        for seq in db.query(M.NotificationSequence).filter(M.NotificationSequence.student_id == student.id).all():
+            for at in db.query(M.NotificationAttempt).filter(M.NotificationAttempt.sequence_id == seq.id,
+                                                             M.NotificationAttempt.sent_at.isnot(None)).all():
+                notices.append((at.sent_at, f"we sent a {at.channel} ({at.status})"))
+            for msg in db.query(M.NotificationInbound).filter(M.NotificationInbound.sequence_id == seq.id).all():
+                who = "they replied" if (msg.direction or "inbound") == "inbound" else "we wrote"
+                notices.append((msg.received_at or msg.created_at, f'{who} by {msg.channel}: "{(msg.text or "")[:160]}"'))
+            if seq.ack_at:
+                notices.append((seq.ack_at, f"they confirmed by {seq.ack_channel or 'a reply'}"))
+        notices = sorted((n for n in notices if n[0] is not None), key=lambda n: n[0])[-max_notices:]
+        if notices:
+            lines.append("What we have already told them, and their answers:")
+            lines.extend(f"  - {_fmt(when, hours)}: {what}" for when, what in notices)
+        else:
+            lines.append("What we have already told them: nothing was sent through the app (any earlier contact was by hand).")
+    else:
+        lines.append("We could not match this number to a student, so there is no interview or notice history. Ask them who they are.")
+    earlier = db.query(M.CallbackRequest).filter(M.CallbackRequest.id != req.id, M.CallbackRequest.caller_number == req.caller_number,
+                                                 M.CallbackRequest.caller_number.isnot(None)).count() if req.caller_number else 0
+    if earlier:
+        lines.append(f"Earlier callbacks from this number: {earlier}.")
+    return lines
+
+
 def _describe(db, student, said: str, received_at: datetime, number: str, hours) -> tuple:
     import models as M
     from business_hours import _local
     who = student.full_name if student else "an unknown caller"
-    lines: List[str] = []
-    if student:
-        events = (db.query(M.InterviewEvent).filter(M.InterviewEvent.student_id == student.id)
-                  .order_by(M.InterviewEvent.id.desc()).limit(3).all())
-        for ev in events:
-            lines.append(f"  - {ev.company_name or 'unknown company'}" + (f", {ev.position_title}" if ev.position_title else ""))
+    req = SimpleNamespace(id=0, said=said, caller_number=number)
     deadline = _local(due_at(received_at, hours), (hours.tz if hours else "America/Chicago")) if hours else None
     when = _local(received_at, hours.tz if hours else "America/Chicago").strftime("%a %b %d, %I:%M %p")
-    body = (f"{who} called the Colaberry number about an interview ({when} {hours.tz if hours else 'Central'}).\n"
-            f"Number: {number or 'unknown'}\n"
-            + (f"Their recent interviews:\n" + "\n".join(lines) + "\n" if lines else "")
-            + (f"They said: \"{said[:300]}\"\n" if said else "")
-            + "\nPlease call them back"
+    body = (f"{who} called the Colaberry number about an interview ({when} {hours.tz if hours else 'Central'}).\n\n"
+            + "\n".join(context_lines(db, student, req, hours)) + "\n\nPlease call them back"
             + (f" by {deadline.strftime('%a %I:%M %p')} (one business hour, working hours)" if deadline else " within one business hour during working hours")
             + ". The AI receptionist only took the message and does not call back.\n"
             "When you have called, click \"Called back\" in the approval screen so this clears.")
@@ -157,13 +204,17 @@ def check_overdue(db, now: datetime, alerts, hours=None, env: Optional[Dict[str,
             if business_minutes_between(r.received_at, now, hours) >= SLA_BUSINESS_MINUTES]
     if not late:
         return 0
-    lines = []
-    for r in late:
+    blocks = []
+    for n, r in enumerate(late, 1):
         student = db.get(M.Student, r.student_id) if r.student_id else None
-        lines.append(f"- {student.full_name if student else 'unknown caller'} ({r.caller_number or 'no number'}): called "
-                     f"{business_minutes_between(r.received_at, now, hours) / 60:.1f} business hours ago")
-    body = ("These students called back about an interview and have not been called back within one business hour:\n\n" + "\n".join(lines) +
-            "\n\nThe callback owner has been told. You receive this because you hold the escalation role.")
+        waited = business_minutes_between(r.received_at, now, hours) / 60
+        blocks.append(f"{n}) {student.full_name if student else 'Unknown caller'} ({r.caller_number or 'no number'}), called {_fmt(r.received_at, hours)} "
+                      f"({waited:.1f} business hours ago)\n" + "\n".join("   " + l for l in context_lines(db, student, r, hours)))
+    body = ("These students called back about an interview and have not been called back within one business hour. "
+            "Below is why each one called and what we have already told them, so you can call with the full picture.\n\n"
+            + "\n\n".join(blocks) +
+            "\n\nPlease call them yourself today, then reply \"called back\" so it can be closed. The callback owner has already been told. "
+            "You receive this because you hold the escalation role.")
     if alerts.stale_drafts(f"{len(late)} interview callback(s) overdue", body):
         for r in late:
             r.sla_alerted_at = now

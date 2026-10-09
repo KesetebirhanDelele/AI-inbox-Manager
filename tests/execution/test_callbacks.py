@@ -197,3 +197,44 @@ def test_done_callbacks_and_night_hours_do_not_escalate(db):
     make_request(db, utc(2026, 10, 6, 16, 45))                       # 15 business minutes before close
     assert cb.check_overdue(db, utc(2026, 10, 7, 8), alerts(db, mail), CHI) == 0                      # overnight does not count
     assert cb.check_overdue(db, utc(2026, 10, 7, 9, 50), alerts(db, mail), CHI) == 1                  # 15 + 50 min
+
+
+def test_the_overdue_email_tells_the_escalation_role_why_they_called_and_what_we_already_told_them(db):
+    """Jackie must be able to call back with the full picture: their words, their interviews, our notices and their replies."""
+    from datetime import datetime
+    M = db.models
+    add_role(db, "escalation_target", "escalation@example.com")
+    student = add_student(db, username="omo", full_name="Omolola Adeyemi", phone_number="+19725550100", personal_email="omo@example.com")
+    email = M.Email(email_id="1", message_id="<a@x>", subject="s", from_address="hr@globex.com", received_date=datetime(2026, 10, 5, 15, 0))
+    db.add(email); db.flush()
+    event = M.InterviewEvent(email_id=email.id, student_id=student.id, sub_type="Phone Screen", company_name="Globex",
+                             position_title="Data Analyst", interview_date="2026-10-07", interview_time="14:00", confidence=0.9)
+    db.add(event); db.flush()
+    draft = M.NotificationDraft(interview_event_id=event.id, template_id="t", email_subject="s", email_body="b", recipient_email="omo@example.com")
+    db.add(draft); db.flush()
+    seq = M.NotificationSequence(draft_id=draft.id, student_id=student.id, status="active", timezone="America/Chicago", timezone_source="default", started_at=utc(2026, 10, 5, 16), ack_token="t")
+    db.add(seq); db.flush()
+    db.add(M.NotificationAttempt(sequence_id=seq.id, channel="call", step="t0", planned_for=utc(2026, 10, 5, 16), scheduled_for=utc(2026, 10, 5, 16), status="sent", sent_at=utc(2026, 10, 5, 16, 1)))
+    db.add(M.NotificationInbound(sequence_id=seq.id, channel="sms", direction="inbound", text="I can't make it, who do I call?",
+                                 received_at=utc(2026, 10, 5, 17), ghl_message_id="m1", handled_as="question"))
+    req = make_request(db, utc(2026, 10, 6, 10))
+    req.student_id, req.said, req.caller_number = student.id, "I got a text about my interview and I have a question", "+19725550100"
+    db.commit()
+    mail = Mail()
+    assert cb.check_overdue(db, utc(2026, 10, 6, 11, 5), alerts(db, mail), CHI) == 1
+    body = mail.sent[0]["body"]
+    for expected in ("I got a text about my interview and I have a question",   # why they called
+                     "Globex", "Data Analyst", "Phone Screen",                    # their interview
+                     "we sent a call", "I can't make it, who do I call?",         # what we told them and what they answered
+                     "omo@example.com", "+19725550100"):                          # how to reach them
+        assert expected in body, expected
+
+
+def test_an_unknown_caller_says_so_in_the_overdue_email(db):
+    add_role(db, "escalation_target", "escalation@example.com")
+    req = make_request(db, utc(2026, 10, 6, 10))
+    req.said = "I was returning a phone call."
+    db.commit()
+    mail = Mail()
+    cb.check_overdue(db, utc(2026, 10, 6, 11, 5), alerts(db, mail), CHI)
+    assert "could not match this number to a student" in mail.sent[0]["body"] and "returning a phone call" in mail.sent[0]["body"]
