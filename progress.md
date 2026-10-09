@@ -85,6 +85,11 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (end): approval card shows when the email arrived
+
+Kes could not tell when a message came in while verifying a card. `services/dashboard/frontend/src/components/NotificationQueue.tsx`: new first fact "Email received" (day, date, time in Central time, plus "8 days ago"); the old "When" label is now "Interview time" so the two dates cannot be confused. The API already sent `email.received_date`; no backend change.
+Verified in a real browser against the local stack (Playwright with Chrome). Needs `scripts/deploy_hetzner.sh --build-web`.
+
 ### 2026-10-09 (end): stale-draft alert switched off; Gmail label clean-up under way
 
 Kes: "keep it off for now". The host cron file was moved aside (see RUNBOOK section 16 for the one-line way back); nothing in the code changed. Jackie's email now covers only the overdue-callback alert.

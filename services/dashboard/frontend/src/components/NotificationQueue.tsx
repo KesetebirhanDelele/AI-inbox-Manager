@@ -27,6 +27,15 @@ const fmtWhen = (iso: string) => {
   return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' }) + ' CT';
 };
 
+/** "3 days ago" / "5 hours ago" / "just now": how long ago an email arrived. */
+const ago = (iso: string) => {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso.endsWith('Z') ? iso : `${iso}Z`).getTime()) / 60000));
+  if (mins < 2) return 'just now';
+  if (mins < 120) return `${mins} minutes ago`;
+  if (mins < 2880) return `${Math.round(mins / 60)} hours ago`;
+  return `${Math.round(mins / 1440)} days ago`;
+};
+
 /** One student who called back about an interview: the callback owner calls them and clicks "Called back". */
 const CallbackRow = ({ cb }: { cb: CallbackItem }) => {
   const queryClient = useQueryClient();
@@ -160,10 +169,16 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
         )}
 
         {/* Interview facts */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+          <div>
+            <span className="block text-xs text-gray-500">Email received</span>
+            {item.email?.received_date ? (
+              <>{fmtWhen(item.email.received_date)}<span className="block text-xs text-gray-500">{ago(item.email.received_date)}</span></>
+            ) : '—'}
+          </div>
           <div><span className="block text-xs text-gray-500">Company</span>{iv.company || '—'}</div>
           <div><span className="block text-xs text-gray-500">Position</span>{iv.position || '—'}</div>
-          <div><span className="block text-xs text-gray-500">When</span>{when || 'Not stated in the email'}</div>
+          <div><span className="block text-xs text-gray-500">Interview time</span>{when || 'Not stated in the email'}</div>
           <div><span className="block text-xs text-gray-500">Format</span>{iv.format || '—'}</div>
         </div>
 
