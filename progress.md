@@ -73,6 +73,17 @@ PROVEN on one live call to Kes's own contact. What remains is mostly testing, a 
 **Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
 The detail below is in the order the work happened; this block is the summary.
 
+### 2026-10-09 (later): sender rules match subdomains (step 1 of the classification rework, first part)
+
+**Measured on 4,000 real emails from the last 9 days (metadata only, scratch copy, nothing printed per row):** the rule layer `pre_classify_by_sender` fired on only 26% of mail because it matched
+`@indeed.com` literally, so `alert.indeed.com`, `jobalert.indeed.com`, `alert.refer.io`, `my.theladders.com` and so on went to the AI (1,576 Job Alerts, 28% "Other"). Other findings: 28% of mail is "Other"
+(retail, social, personal; Quarantine is mostly right); real interview mail is about 1.5% (about 60 of 4,000); 37 LinkedIn promotions were filed as "Other"; the app's own "[InboxGenius] notification draft(s)"
+alerts land in Spam Review.
+**Changed:** `execution/process_inbox_auto.py`: `_sender_domain` and `_domain_is` (suffix match on the real domain, so look-alikes such as `fakeindeed.com` or `indeed.com.evil.net` do not match);
+LinkedIn, job boards (added refer.io, adzuna.com, jobs2web.com, jobs2careers.com, theladders.com, postjobfree.com) and Basecamp now use it. Rules now fire on 55% of the sample (was 26%): 61 stored labels
+would differ (37 LinkedIn promotions Other to LinkedIn Notification; 24 job-board mails Other or Job Invite to Job Alert, as the prompt already says). Tests added in `tests/execution/test_folder_names.py`.
+**Not done yet:** Technical Interview and Interview follow up categories; Job Machine events; Assessment notice; collapsing Schedule/Confirmation/Final; the self-alert rule; audit of Job Invite (161 of 4,000).
+
 ### 2026-10-09: Gmail folder names follow Ali's "Email Management - Labels" workbook (step 0 of the classification rework)
 
 **Why:** Ali's workbook (22 folders, plus 7 action playbooks) is the authority for folders. Kes renamed/merged the Gmail labels by hand on 2026-10-09 (Offer to Offers, Rejection to

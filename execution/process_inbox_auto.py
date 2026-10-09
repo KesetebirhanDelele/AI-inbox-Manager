@@ -1657,6 +1657,17 @@ def _log_process_run(stats: Dict[str, Any], summary_file=None, status: str = "su
         _record_db_error(f"_log_process_run failed: {e}")
 
 
+def _sender_domain(from_addr: str) -> str:
+    """Domain of an address like 'Name <a@alert.indeed.com>' ('' when there is none)."""
+    m = re.search(r"@([\w.-]+)", from_addr or "")
+    return m.group(1).lower().rstrip(".") if m else ""
+
+
+def _domain_is(domain: str, *roots: str) -> bool:
+    """True when `domain` is one of `roots` or a subdomain of one (alert.indeed.com matches indeed.com)."""
+    return any(domain == r or domain.endswith("." + r) for r in roots)
+
+
 def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     """
     Apply deterministic sender-domain rules BEFORE the AI classification call.
@@ -1673,16 +1684,23 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     body      = (email_data.get("body_content") or email_data.get("body") or "").lower()[:500]
 
     # ── LinkedIn ────────────────────────────────────────────────────────────
-    if "@linkedin.com" in from_addr or "@e.linkedin.com" in from_addr:
+    domain = _sender_domain(from_addr)
+    if _domain_is(domain, "linkedin.com"):
         return "LinkedIn Notification"
+
+    # ── Basecamp ────────────────────────────────────────────────────────────
+    if _domain_is(domain, "basecamp.com", "3.basecamp.com"):
+        return "Basecamp"
 
     # ── Job boards — always Job Alert ───────────────────────────────────────
     JOB_BOARD_DOMAINS = [
-        "@indeed.com", "@jobleads.com", "@ziprecruiter.com", "@glassdoor.com",
-        "@monster.com", "@dice.com", "@careerbuilder.com", "@simplyhired.com",
-        "@lensa.com", "@snagajob.com", "@flexjobs.com", "@getwork.com",
+        "indeed.com", "jobleads.com", "ziprecruiter.com", "glassdoor.com",
+        "monster.com", "dice.com", "careerbuilder.com", "simplyhired.com",
+        "lensa.com", "snagajob.com", "flexjobs.com", "getwork.com",
+        # Seen as Job Alert on every one of 800+ mails in 2026-10 (Gmail sample); sent from subdomains the old exact-match rule missed.
+        "refer.io", "adzuna.com", "jobs2web.com", "jobs2careers.com", "theladders.com", "postjobfree.com",
     ]
-    if any(d in from_addr for d in JOB_BOARD_DOMAINS):
+    if _domain_is(domain, *JOB_BOARD_DOMAINS):
         return "Job Alert"
 
     # ── Community platform reminders (Skool) — never interview-related ───────

@@ -31,3 +31,31 @@ def test_renamed_folders():
     assert m["More Information Request"] == "More Information Request"
     assert m["Background Check"] == "More Information Request"
     assert m["Interview Schedule"] == "Interview Request"
+
+
+# --- sender rules: subdomains match, look-alikes do not -----------------------------------------------------------
+
+def _pre(sender, subject="Hello"):
+    return pia.pre_classify_by_sender({"sender_email": sender, "subject": subject, "body_content": ""})
+
+
+def test_job_board_subdomains_are_job_alerts():
+    assert _pre("Indeed <no-reply@alert.indeed.com>") == "Job Alert"
+    assert _pre("jobs@jobalert.indeed.com") == "Job Alert"
+    assert _pre("x@alert.refer.io") == "Job Alert"
+    assert _pre("x@my.theladders.com") == "Job Alert"
+
+
+def test_linkedin_and_basecamp_subdomains():
+    assert _pre("LinkedIn <messages-noreply@linkedin.com>") == "LinkedIn Notification"
+    assert _pre("jobs-listings@mail.linkedin.com") == "LinkedIn Notification"
+    assert _pre("x@3.basecamp.com") == "Basecamp"
+    assert _pre("x@basecamp.com") == "Basecamp"
+
+
+def test_lookalike_domains_do_not_match():
+    assert _pre("x@fakeindeed.com") is None
+    assert _pre("x@indeed.com.evil.net") is None
+    assert _pre("Indeed Jobs <recruiter@acme-staffing.com>") is None
+    assert _pre("x@notlinkedin.com") is None
+    assert _pre("x@mybasecamp.com") is None
