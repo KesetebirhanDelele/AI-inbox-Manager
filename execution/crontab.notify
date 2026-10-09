@@ -1,0 +1,8 @@
+# Host crontab for the student-notification follow-ups (Hetzner). Install on the SERVER (no image rebuild):
+#   scp execution/crontab.notify root@2.29.47.89:/etc/cron.d/inboxgenius-notify
+# Every 5 minutes: send what is due, read replies and calls, alert the approver, end finished sequences (execution/notification_tick.py).
+# Does nothing unless NOTIFY_ESCALATION_ENABLED is true in the server .env. While GHL_WRITE_MODE / GHL_WRITE_SHADOW_LOG_ONLY /
+# GHL_WRITE_NOTIFY_FIELDS are not all set to live, every send is only LOGGED ("[GHL shadow]"), nothing reaches a student.
+# To switch it off: move /etc/cron.d/inboxgenius-notify out of /etc/cron.d.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/5 * * * * root docker exec -u appuser -w /repo inboxgenius-cron-1 python execution/notification_tick.py >> /opt/ai-inbox-manager/logs/notify_tick.log 2>&1
