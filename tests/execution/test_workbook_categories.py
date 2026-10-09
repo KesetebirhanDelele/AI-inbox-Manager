@@ -105,3 +105,27 @@ def test_assessment_notice_says_test_not_interview_and_asks_for_done():
     t = et.get_template_by_id("next_round_assessment")
     assert "not an interview" in t.body_template and '"done"' in t.body_template
     assert "assessment" in t.subject_template.lower()
+
+
+def test_an_unverified_student_flags_the_email_for_the_verify_label(monkeypatch):
+    """The pipeline labels the ORIGINAL email 'Verify Student' only when the student had to be guessed from the delivery Gmail."""
+    import log_interview
+
+    monkeypatch.setattr(pia, "get_db_session", lambda: object())
+    monkeypatch.setattr(pia, "_build_sub_classification", lambda e, c: {
+        "interview_sub_type": "Phone Screen", "sub_type_source": "subclassifier"})
+    monkeypatch.setattr(log_interview, "upsert_student", lambda **k: {"id": 7})
+    monkeypatch.setattr(log_interview, "log_interview_event", lambda **k: {"id": 1})
+    marked = []
+    monkeypatch.setattr(log_interview, "mark_unverified", lambda *a, **k: marked.append(a) or True)
+
+    def run(config):
+        monkeypatch.setattr(pia, "_identify_student", lambda db, e, c: (config, "x@gmail.com"))
+        cls = {"category": "Phone Screen", "confidence": 0.9, "extracted_data": {}}
+        pia.process_interview_email({"subject": "Call"}, 1, cls)
+        return cls
+
+    guessed = run({"name": "Sehrish", "username": "sehrish", "identified_by": "recipient_gmail", "name_source": "gmail_guess"})
+    known = run({"name": "Known Student", "username": "known.student"})
+    assert guessed.get("_needs_verification") is True and len(marked) == 1
+    assert not known.get("_needs_verification")

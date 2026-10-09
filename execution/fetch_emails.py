@@ -262,6 +262,62 @@ def delete_emails(
                 pass
 
 
+def label_emails(
+    server: str,
+    port: int,
+    email_address: str,
+    password: str,
+    email_labels: Dict[str, str],
+    source_folder: str = "INBOX",
+    id_to_message_id: Optional[Dict[str, str]] = None,
+) -> int:
+    """
+    Add one Gmail label to each message and change nothing else: no move, no \Deleted flag, no expunge.
+
+    Used for the "Verify Student" label: the approver finds the original interview email in a Gmail folder while the email stays
+    wherever it is. Handles are UIDs, checked against the live UID set and re-resolved by Message-ID, like move_emails.
+    Must run BEFORE move_emails for the same batch (afterwards the UID is no longer in the source folder).
+
+    Returns the number of messages labelled.
+    """
+    if not email_labels:
+        return 0
+    id_to_message_id = id_to_message_id or {}
+    imap = None
+    try:
+        imap = connect_to_imap(server, port, email_address, password)
+        status, _ = imap.select(_quote_folder(source_folder))
+        if status != "OK":
+            raise EmailFetchError(f"Cannot select source folder {source_folder!r}")
+        present, mid_to_uid = _resolve_folder_uids(imap)
+        done = 0
+        for handle, label in email_labels.items():
+            uid = str(handle)
+            if uid not in present:
+                recovered = mid_to_uid.get(id_to_message_id.get(uid)) if id_to_message_id.get(uid) else None
+                if not recovered:
+                    logger.warning(f"Label: message {handle} no longer in {source_folder!r}; skipping")
+                    continue
+                uid = recovered
+            status, resp = imap.uid("STORE", uid, "+X-GM-LABELS", f"({_gm_label_atom(label)})")
+            if status == "OK":
+                done += 1
+            else:
+                logger.error(f"Label: failed to label UID {uid} as {label!r}: {resp}")
+        return done
+    except EmailFetchError:
+        raise
+    except Exception as exc:
+        logger.error(f"Label: could not label messages ({exc})")
+        return 0
+    finally:
+        if imap is not None:
+            try:
+                imap.logout()
+            except Exception:
+                pass
+
+
 def move_emails(
     server: str,
     port: int,

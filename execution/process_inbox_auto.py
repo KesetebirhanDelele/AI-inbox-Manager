@@ -63,7 +63,10 @@ logging.basicConfig(
 )
 
 # Import our execution modules
-from fetch_emails import fetch_emails, delete_emails, move_emails, EmailConnectionError, EmailFetchError
+from fetch_emails import fetch_emails, delete_emails, move_emails, label_emails, EmailConnectionError, EmailFetchError
+
+# Gmail label added to the original email when the student it is for had to be guessed (the approver verifies them).
+VERIFY_STUDENT_LABEL = "Verify Student"
 from classify_email import classify_email
 from db_url import normalize_db_url
 
@@ -757,6 +760,7 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
                     from log_interview import mark_unverified
                     mark_unverified(db, student_id, student_config.get("name_source", "gmail_guess"),
                                     student_config["name"], student_config.get("evidence", ""))
+                    classification["_needs_verification"] = True
                 _logger.info(
                     f"Resolved student: {student_config['name']} (DB id={student_id})"
                 )
@@ -1232,6 +1236,7 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
         interview_requests = []
         spam_email_ids: List[str] = []  # reserved for future hard-delete bypass; not used currently
         email_moves: Dict[str, str] = {}
+        verify_labels: Dict[str, str] = {}   # uid -> VERIFY_STUDENT_LABEL, for mail whose student is unverified
         # {uid: message_id} so move_emails can recover a stale handle via the
         # stable RFC 5322 Message-ID if a UID shifts between now and the move.
         id_to_mid: Dict[str, str] = {
@@ -1411,6 +1416,8 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
                                 logger.info(f"              [NO INTERVIEW EVENT: category '{category}' is not an interview]")
                             elif is_new_email and process_interview_email(email_data, email_db_id, classification):
                                 logger.info(f"              [INTERVIEW EVENT CREATED]")
+                                if classification.get("_needs_verification"):
+                                    verify_labels[str(email_data.get("email_id"))] = VERIFY_STUDENT_LABEL
                             elif not is_new_email:
                                 pass  # Already processed, skip
                             elif classification.get("_not_an_interview"):
@@ -1475,6 +1482,8 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
                         if _db_id and _new_here and creates_interview_event(classification):
                             if process_interview_email(email_data, _db_id, classification):
                                 logger.info(f"              [INTERVIEW EVENT CREATED]")
+                                if classification.get("_needs_verification"):
+                                    verify_labels[str(email_data.get("email_id"))] = VERIFY_STUDENT_LABEL
                             elif classification.get("_not_an_interview"):
                                 logger.info(f"              [NO INTERVIEW EVENT: not an interview notice]")
                             else:
@@ -1484,6 +1493,15 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
 
             except Exception as e:
                 logger.error(f"Failed to apply action for email {idx}: {e}")
+
+        # "Verify Student" label: added in place (no move) BEFORE any move, so the UID is still in INBOX.
+        if verify_labels and not cost_guardrail_triggered:
+            try:
+                n_lab = label_emails(server=server, port=port, email_address=email_address, password=password,
+                                     email_labels=verify_labels, id_to_message_id=id_to_mid)
+                logger.info(f"Labelled {n_lab} of {len(verify_labels)} email(s) '{VERIFY_STUDENT_LABEL}'")
+            except Exception as e:
+                logger.error(f"Failed to add the '{VERIFY_STUDENT_LABEL}' label: {e}")
 
         # Move organized emails
         if email_moves and not cost_guardrail_triggered:

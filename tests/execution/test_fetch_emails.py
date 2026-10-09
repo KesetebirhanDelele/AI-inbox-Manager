@@ -296,3 +296,24 @@ def test_delete_empty_list_is_noop(patch_connect):
     fake = patch_connect(FakeIMAP(["10"]))
     assert delete_emails("s", 993, "e", "p", email_ids=[]) == 0
     assert fake.calls == []
+
+
+# ── label_emails ────────────────────────────────────────────────────────────
+
+def test_label_adds_the_label_and_changes_nothing_else(patch_connect):
+    from fetch_emails import label_emails
+    fake = patch_connect(FakeIMAP(["10", "11"], {"10": "<a@x>", "11": "<b@x>"}))
+
+    done = label_emails("s", 993, "e", "p", {"10": "Verify Student"})
+
+    assert done == 1
+    assert ("10", "+", '("Verify Student")') in fake.label_ops
+    assert fake.flag_ops == [] and fake.uid_expunged == [] and fake.plain_expunge_called is False
+
+
+def test_label_skips_a_message_that_is_gone(patch_connect):
+    from fetch_emails import label_emails
+    fake = patch_connect(FakeIMAP(["10"], {"10": "<a@x>"}))
+
+    assert label_emails("s", 993, "e", "p", {"99": "Verify Student"}) == 0
+    assert fake.label_ops == []
