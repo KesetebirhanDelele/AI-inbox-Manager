@@ -489,14 +489,13 @@ _register(
     EmailTemplate(
         template_id="next_round_assessment",
         template_name="Next Round - Assessment",
-        subject_template="Congrats! You made it to the next round with {company_name}!",
+        subject_template="Action needed: complete your assessment for {company_name}",
         body_template=(
             "Hi {student_name},\n\n\n"
-            "Congratulations! You've made it to the next round with {company_name} "
-            "for their {position_title} opportunity!\n\n"
-            "As the next step, their team is asking you to complete an "
-            "exercise/assessment. Please see {contact_name}'s emails for details. "
-            "Please complete it as soon as you can!\n\n"
+            "Congratulations! {company_name} has asked you to complete an assessment "
+            "for their {position_title} opportunity. This is a test, not an interview.\n\n"
+            "Please see {contact_name}'s email for the details and the deadline, and complete it "
+            "as soon as you can. When it is done, reply to this message with \"done\" so we know.\n\n"
             "Good luck! And please let us know how else we can support you!\n\n\n"
             "Cheers,\n"
             "{assistant_name}"

@@ -98,3 +98,10 @@ def test_live_mode_uses_the_new_label(monkeypatch):
 def test_off_mode_changes_nothing(monkeypatch):
     r = _rules(monkeypatch, "off")
     assert r["category"] == "Interview Confirmation" and "category_shadow" not in r
+
+
+def test_assessment_notice_says_test_not_interview_and_asks_for_done():
+    import email_templates as et
+    t = et.get_template_by_id("next_round_assessment")
+    assert "not an interview" in t.body_template and '"done"' in t.body_template
+    assert "assessment" in t.subject_template.lower()

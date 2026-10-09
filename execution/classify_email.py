@@ -88,6 +88,9 @@ You are an AI classifier for an automated inbox management system that processes
   - Phone screen invites WITHOUT confirmed time
   - Recruiter outreach via LinkedIn/Indeed/email
 - **Must NOT have**: Calendar invite, confirmed date/time
+- **Must be a DIRECT offer of an interview**: the email itself asks to schedule or hold an interview with THIS candidate (asks for availability, offers time slots, a scheduling link, or names an interview date/time). 
+  A job description, an open role, an "urgent opening", "send your resume and rate", or a job title that merely contains the word "interview" ("Immediate Interview Role") is NOT an Interview Request: it is a **Job Invite**. 
+  The recruiter decides whether to pursue a candidate AFTER the candidate replies with an updated resume and shows interest; only the later message that actually offers an interview is an Interview Request.
 - **Confidence**: High if asks for availability without confirming time
 - **Critical**: These emails REQUIRE IMMEDIATE ACTION and must stay in inbox
 
@@ -144,6 +147,7 @@ You are an AI classifier for an automated inbox management system that processes
 - Confidence: High if explicit rejection language
 
 **9. Job Alert**
+- **Job Alert vs Job Invite**: Job Alert = automated, bulk, recurring digest or "jobs near you" list from a platform or system (many listings, not about this candidate). Job Invite = a recruiter or staffing firm writing about ONE specific role (location, contract/W2, rate, "send your resume"). Neither is an interview.
 - **Automated job posting notification - NOT a personal interview request**
 - **SENDER RULE**: If the sender email domain is @indeed.com, @jobleads.com, @ziprecruiter.com, @glassdoor.com, @monster.com, @dice.com, @careerbuilder.com, @simplyhired.com, @lensa.com, @linkedin.com (job digest), or any job board aggregator → ALWAYS "Job Alert" regardless of subject content
 - Signals: "jobs matching your criteria", "new opportunities", "job alert", "jobs just posted", job recommendations, hiring alerts, "X more jobs"

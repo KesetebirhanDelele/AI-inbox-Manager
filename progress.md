@@ -85,6 +85,16 @@ Interview Follow-up creates no event and no student notice. `execution/subclassi
 of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
 **Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
 
+### 2026-10-09 (night): Interview Request must be a DIRECT interview offer; Job Invite vs Job Alert defined; Assessment wording approved
+
+**Kes's rule (2026-10-09):** a recruiter's job posting is not an interview; the recruiter decides after the candidate replies with an updated resume, and only a later message that actually offers an interview counts.
+**Changed:** `classify_email.py` prompt: Interview Request needs the email itself to ask for availability / offer slots / name a date; "Immediate Interview Role" job titles are Job Invite; Job Alert = automated bulk digest, Job Invite = a recruiter writing about ONE role.
+`email_templates.py`: the Assessment notice now says "This is a test, not an interview", points to the sender's email for details and deadline, and asks the student to reply "done" (wording approved by Kes; Ali's own sign-off still welcome).
+**Re-test on the 273 real emails:** 32 of 61 stored "Interview Request" demoted (all postings or "immediate interview" blasts; the 6 with "interview" in the subject were W2 job posts); the genuine ones stayed
+(Phone Screen / Cancelled / Confirmation / Schedule: 24 of 29 kept). "RTR" (right-to-represent) and "RE:" replies from staffing firms now read Job Invite: watch them.
+**Gmail filters (Kes's screenshot):** server-side Gmail filters already file LinkedIn "You applied for" and Indeed applications to Application Notification, Indeed alerts to Job Alerts, applytojob "we've received your resume" to
+Received Resume, LinkedIn security mail to Account Recovery; most skip the inbox or mark read, so the pipeline never sees them. "Received Resume" is an application receipt. Labels Position on hold, Potential Scam, Recruiter Connect left as they are for now (Kes).
+
 ### 2026-10-09 (later): sender rules match subdomains (step 1 of the classification rework, first part)
 
 **Measured on 4,000 real emails from the last 9 days (metadata only, scratch copy, nothing printed per row):** the rule layer `pre_classify_by_sender` fired on only 26% of mail because it matched
