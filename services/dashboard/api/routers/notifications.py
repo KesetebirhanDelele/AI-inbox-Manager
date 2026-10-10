@@ -45,6 +45,14 @@ def _escalation_enabled() -> bool:
     return os.getenv("NOTIFY_ESCALATION_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
+def _delivery_is_live() -> bool:
+    """True only when the three GHL write switches are all live: otherwise every send is just logged (shadow) and no student is notified."""
+    try:
+        return bool(_execution_module("ghl_client").GhlConfig.from_env().is_live)
+    except Exception:
+        return False
+
+
 def _engine():
     """The escalation engine. Its modules live in execution/, which is not on the API's import path."""
     exec_dir = str(Path(__file__).resolve().parents[4] / "execution")
@@ -393,6 +401,7 @@ async def get_review_queue(
     authenticity = _execution_module("email_authenticity")
     nc = _execution_module("notify_channels")
     escalation_on = _escalation_enabled()
+    delivery_live = escalation_on and _delivery_is_live()
 
     rows = (
         db.query(InterviewEvent, NotificationDraft, Student, Email)
@@ -469,7 +478,10 @@ async def get_review_queue(
             "blockers": blockers,
             "warnings": warnings,
             "can_approve": state == "ready",
-            "will_happen": ("Starts a call, a text and an email to the student, then follows up until they confirm."
+            "will_happen": (("Starts a call, a text and an email to the student, then follows up until they confirm."
+                             if delivery_live else
+                             "Nothing reaches the student: the system is in SHADOW mode. Approving only starts the follow-up plan and logs what it "
+                             "would send (call, text, email). Tell the student by hand if it matters.")
                             if escalation_on else
                             "Sends one email to the student now. The call and text are not switched on yet."),
             "student": None if student is None else {
@@ -508,7 +520,7 @@ async def get_review_queue(
     from models import CallbackRequest
     callbacks = [callback_item(db, r).model_dump() for r in
                  db.query(CallbackRequest).filter(CallbackRequest.status == "open").order_by(CallbackRequest.received_at).limit(50).all()]
-    return {"escalation_enabled": escalation_on, "count": len(items), "items": items, "callbacks": callbacks}
+    return {"escalation_enabled": escalation_on, "delivery_live": delivery_live, "count": len(items), "items": items, "callbacks": callbacks}
 
 
 class VerifyStudentRequest(BaseModel):

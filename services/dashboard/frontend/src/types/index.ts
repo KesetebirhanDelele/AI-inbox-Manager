@@ -328,6 +328,7 @@ export interface CallbackItem {
 
 export interface ReviewQueue {
   escalation_enabled: boolean;
+  delivery_live?: boolean;
   count: number;
   items: ReviewQueueItem[];
   callbacks: CallbackItem[];

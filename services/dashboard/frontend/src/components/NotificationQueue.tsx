@@ -498,6 +498,12 @@ const NotificationQueue = ({ mode = 'decide' }: { mode?: 'decide' | 'verify' }) 
           </ul>
         </div>
       )}
+      {data.escalation_enabled && !data.delivery_live && (
+        <div className="p-3 bg-red-50 border border-red-300 rounded text-sm text-red-900">
+          <strong>Shadow mode:</strong> nothing is delivered yet. Approving a card starts the follow-up plan but only <em>logs</em> what it would send, so the
+          student is <strong>not</strong> notified. Tell students by hand until live delivery is switched on.
+        </div>
+      )}
       {!data.escalation_enabled && (
         <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-900">
           Approving sends <strong>one email</strong> to the student. The call and text are not switched on yet.

@@ -430,6 +430,8 @@ class TestReviewQueue:
         event = make_interview_event(db, make_email(db), student=make_student(db))
         make_notification_draft(db, event)
         monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "true")
+        for k, v in (("GHL_WRITE_MODE", "live"), ("GHL_WRITE_SHADOW_LOG_ONLY", "false"), ("GHL_WRITE_NOTIFY_FIELDS", "true")):
+            monkeypatch.setenv(k, v)                      # all three switches live: the notice really goes out
         data = self._queue(client, auth_cookies)
         assert data["escalation_enabled"] is True and "call, a text and an email" in data["items"][0]["will_happen"]
 
@@ -531,3 +533,27 @@ class TestStudentVerification:
         send.assert_not_called()
         db.refresh(draft)
         assert draft.email_status == "draft" and draft.reviewed_by is None
+
+
+class TestShadowModeIsSaidPlainly:
+    def _item(self, client, db, auth_cookies):
+        from conftest import make_email, make_student, make_interview_event, make_notification_draft
+        student = make_student(db)
+        make_notification_draft(db, make_interview_event(db, make_email(db), student=student, company="Acme"))
+        return client.get("/api/notifications/review-queue", cookies=auth_cookies).json()
+
+    def test_escalation_on_without_the_live_switches_says_nothing_is_delivered(self, client, db, auth_cookies, monkeypatch):
+        monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "true")
+        for k in ("GHL_WRITE_MODE", "GHL_WRITE_SHADOW_LOG_ONLY", "GHL_WRITE_NOTIFY_FIELDS"):
+            monkeypatch.delenv(k, raising=False)
+        data = self._item(client, db, auth_cookies)
+        assert data["escalation_enabled"] is True and data["delivery_live"] is False
+        assert "SHADOW" in data["items"][0]["will_happen"] and "Nothing reaches the student" in data["items"][0]["will_happen"]
+
+    def test_all_three_switches_live_says_the_notice_goes_out(self, client, db, auth_cookies, monkeypatch):
+        monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "true")
+        monkeypatch.setenv("GHL_WRITE_MODE", "live")
+        monkeypatch.setenv("GHL_WRITE_SHADOW_LOG_ONLY", "false")
+        monkeypatch.setenv("GHL_WRITE_NOTIFY_FIELDS", "true")
+        data = self._item(client, db, auth_cookies)
+        assert data["delivery_live"] is True and data["items"][0]["will_happen"].startswith("Starts a call")

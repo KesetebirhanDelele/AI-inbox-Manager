@@ -60,6 +60,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: the approval card now says plainly when nothing will be delivered (shadow mode)
+
+Kes saw the card for Fikru Cheklie say "Approving this will: Starts a call, a text and an email to the student, then follows up until they confirm" while production is in shadow (no `GHL_WRITE_*` switch), where nothing is delivered: a misleading sentence. `notifications.py`: `_delivery_is_live()` (all three switches live, via `GhlConfig.is_live`); `review-queue` returns `delivery_live`, and `will_happen` says "Nothing reaches the student: the system is in SHADOW mode ... Tell the student by hand if it matters" unless delivery is live. `NotificationQueue.tsx`: a red "Shadow mode" banner at the top of the list when escalation is on and delivery is not live. Tests for both modes; the old wording test now sets the three switches. Typechecked; the banner itself was not looked at in a browser (the local stack has escalation off). Needs `--build-web`.
+
 ### 2026-10-10: Fikru Cheklie verified; this log brought up to date
 
 Kes verified Fikru Cheklie in the app (student 9, admin, 2026-10-10 00:56 UTC). His draft (100) had been closed while he was unverified, so it was set back to `draft`
