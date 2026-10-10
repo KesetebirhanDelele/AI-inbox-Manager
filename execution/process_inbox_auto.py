@@ -1776,6 +1776,10 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     if _domain_is(domain, *JOB_BOARD_DOMAINS):
         return "Job Alert"
 
+    # ── Colaberry school form mailer (Kes 2026-10-10): "New/Final Project Request" notices, never an interview. Exact address only: other school.colaberry.com mail is not touched. ──
+    if from_addr.strip() == "info@school.colaberry.com":
+        return "Other"
+
     # ── Marketing and newsletter senders — never job-related ──────────────────
     # 2026-10-10: Kes asked for these to classify themselves. Checked on production: 0 interview events ever from any of them (65, 221, 17, 9 mails).
     # "Other" goes to Spam Review, then Quarantine on the next run; nothing is deleted.

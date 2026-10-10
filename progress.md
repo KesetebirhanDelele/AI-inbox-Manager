@@ -87,6 +87,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: info@school.colaberry.com goes to Other (Kes: "move all coming from info@school.colaberry.com to other folder")
+
+Production check: 6 emails ever from that address ("New Project Request" / "Final Project Request"), all already in Spam Review, 0 interview events, 5 still open in Classification review. `pre_classify_by_sender` now returns `Other` for that EXACT address (not the whole school.colaberry.com domain, tested), and `file_review_items.py --apply` closed the 5 open review items (already at their destination, so no Gmail change).
+
 ### 2026-10-10: manual moves find the mail by Message-ID (Kes: "Moving didn't work")
 
 The first fix (look in the email's own folder) was not enough. API log: `Move: message 760488 no longer in 'Spam Review'`: the database said Spam Review but the pipeline had already moved it on to Quarantine, and the stored UID is per folder and goes stale. New `fetch_emails.relabel_by_message_id` (used by `move_email` when the email has a Message-ID; old path kept as fallback): finds the message in All Mail by Message-ID, adds the target label, removes our other folder labels (the folders in use in the database), and takes a remaining Inbox copy out with the UID-scoped expunge. Nothing is deleted. Tests: label parsing, stale-folder move, inbox copy, not-found. Lesson: the stored folder and UID are hints, never the source of truth.

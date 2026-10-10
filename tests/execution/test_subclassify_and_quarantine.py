@@ -365,6 +365,8 @@ def test_no_headers_falls_back_to_name_without_saving_a_gmail(monkeypatch, ident
     ("info@irelaunch.com", "Get Conference-Ready", "Other"),
     ("noreply@msg.propertymeld.com", "How did we do?", "Other"),
     ("hello@reply.experteer.com", "When a headhunter calls", "Job Alert"),
+    ("info@school.colaberry.com", "New Project Request", "Other"),
+    ("someone@school.colaberry.com", "Interview next week", None),               # only that one address, not the whole school domain
     ("hr@notarcamax.com", "Interview next week", None),                           # look-alike domain
     ("student@gmail.com", "https://www.linkedin.com/jobs/view/4465614631/", "Job Alert"),
     ("student@gmail.com", "Fwd: https://www.linkedin.com/jobs/view/1/", None),   # not a bare link
