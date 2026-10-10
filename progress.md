@@ -98,6 +98,7 @@ Redundancy review found the same lists and numbers on Dashboard, Reports and Int
 - Dropped: the weekly "Top Companies" chart (the Companies tab covers it, all-time).
 - **Deferred:** week/all-time switch for Pipeline and Companies (needs API change); Students "Notified/Pending" still counts the old draft flow, not escalation sequences (needs API change, do after live testing); Notifications report once real notices flow.
 - Files: `DashboardPage.tsx`, `ReportsPage.tsx`, `InterviewsPage.tsx`, `Layout.tsx`, `App.tsx`. Checked in a real browser locally (all tabs, redirects, no console errors); type check and build pass.
+  **Slip:** a last wording edit put a bare `>` in JSX text, so the first deploy's web build FAILED on the server while `deploy_hetzner.sh` still printed "Deployed" (the old web stayed up; api/cron updated). Fixed in the next commit and the served bundle was checked by hand. Lesson: after `--build-web`, confirm the served bundle changed; rebuild locally after the final edit.
 
 ### 2026-10-10: health check understands shadow mode; interview-type re-filing switched LIVE (Kes: "proceed for both")
 

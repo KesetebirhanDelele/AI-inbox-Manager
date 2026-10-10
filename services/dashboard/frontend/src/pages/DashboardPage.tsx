@@ -379,7 +379,7 @@ const DashboardPage = () => {
             </div>
           ) : (
             <p className="text-sm text-gray-500 text-center py-8">
-              No interview has a confirmed date in the next 7 days. Requests that do not state a date yet are under Reports > Interviews.
+              No interview has a confirmed date in the next 7 days. Requests that do not state a date yet are under Reports, Interviews tab.
             </p>
           )}
         </div>
