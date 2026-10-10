@@ -87,6 +87,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10 (later): the real reason the NOV mail was missed: HTML inside the text part
+
+After deploying the job-alert-consent rule the dry run still did not match the NOV mail. Cause: some senders (Oracle recruiting, OpenAI: 1,161 of 9,844 stored bodies) put the whole HTML page in the **text/plain** part, and `extract_email_body` only cleaned HTML when it came as text/html. So the classifier's 1,500 characters (and the rules' 500) were the HTML head and CSS, never the message. Fixes: `extract_email_body` now cleans any body that looks like HTML (stray "<" in real text is left alone, tested); `file_review_items.plan` cleans stored bodies before applying the rules; the dashboard email detail already cleaned for display. New mail benefits from the next run; the 1,161 old stored bodies are left as they are (not rewritten).
+
 ### 2026-10-10: OpenAI account mail is Other; job-alert subscription confirmations are Job Alerts (Kes: "should have been moved to other already")
 
 - **Why they were in review at all:** the AI answered "Other" at only 50 to 65% confidence, and an "Other" below 70% (but above 0) is queued for a person by design (`needs_human_review`); only exact 0.0 "Other" files itself. Rules skip that step, so `noreply@email.openai.com` (exact address) now returns `Other` before the AI is asked.

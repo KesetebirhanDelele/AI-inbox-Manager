@@ -727,6 +727,12 @@ def extract_email_body(msg: Message) -> str:
                 from text_cleaning import clean_email_text
                 body = clean_email_text(body)
 
+        # Some senders (Oracle recruiting, OpenAI) put the whole HTML page in the text/plain part. Without this the classifier's
+        # first 1,500 characters are the HTML head and CSS, never the message (found 2026-10-10: 1,161 stored bodies were raw HTML).
+        from text_cleaning import clean_email_text, looks_like_html
+        if looks_like_html(body):
+            body = clean_email_text(body)
+
         return body.strip()
 
     except Exception as e:

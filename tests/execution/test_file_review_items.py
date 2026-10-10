@@ -78,3 +78,16 @@ def test_items_already_filed_by_the_pipeline_only_get_their_approval_closed(db_m
     assert out == {"filed": 1, "skipped": 0}
     assert db.get(M.Email, e.id).current_folder == "Quarantine"
     assert db.query(M.Approval).filter_by(email_id=e.id).one().status == "approved"
+
+
+def test_a_raw_html_stored_body_is_read_as_text_by_the_rules(db_models):
+    """The NOV job-alert consent mail is stored as raw HTML (CSS first); the rules must read its text, not the markup."""
+    db, M = db_models
+    html = ("<!DOCTYPE HTML><html><head><style>" + "p{color:red}" * 120 + "</style></head><body><p>Hello Omolola, one final step to update your options. "
+            "Please read and confirm below. NOV may use your data for providing job alerts and recruiting marketing material. "
+            "Click the link to confirm that you agree to receive: Job Alerts.</p></body></html>")
+    e = _pending(db, M, 1, "NOV Careers : Confirm Your Options", sender="egay.fa.sender@workflow.email.us-ashburn-1.ocs.oraclecloud.com")
+    e.full_body = html
+    db.commit()
+    items = fri.plan(db)
+    assert [(i["email_id"], i["target"]) for i in items] == [(1, "Job Alerts")]

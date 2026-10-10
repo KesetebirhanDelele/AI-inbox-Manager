@@ -498,3 +498,16 @@ def test_the_consent_rule_never_swallows_an_interview():
     assert pre_classify_by_sender(interview) is None
     plain = {"sender_email": same_sender, "subject": "Update", "body_content": "We have job alerts for you."}   # no confirm/opt-in wording
     assert pre_classify_by_sender(plain) is None
+
+
+def test_html_inside_the_text_part_is_turned_into_text():
+    from email.message import EmailMessage
+    import fetch_emails
+    msg = EmailMessage()
+    msg["Subject"] = "NOV Careers : Confirm Your Options"
+    msg.set_content("<html><head><style>p{color:red}</style></head><body><p>Please confirm that you agree to receive Job Alerts.</p></body></html>")
+    body = fetch_emails.extract_email_body(msg)
+    assert "<" not in body and "Job Alerts" in body
+    plain = EmailMessage()
+    plain.set_content("Hi, can you interview on Friday at 2 < 3 pm?")          # a stray < in real text is left alone
+    assert fetch_emails.extract_email_body(plain).startswith("Hi, can you interview")

@@ -45,11 +45,13 @@ def plan(db) -> List[Dict[str, Any]]:
 
     rows = (db.query(M.Approval, M.Email).join(M.Email, M.Email.id == M.Approval.email_id)
             .filter(M.Approval.status == "pending").order_by(M.Email.received_date).all())
+    from text_cleaning import clean_email_text
     items = []
     for approval, email in rows:
         category = pre_classify_by_sender({
             "sender_email": email.from_address, "subject": email.subject,
-            "body_content": email.full_body or email.body_preview or ""})
+            # Stored bodies can still be raw HTML (older mail): the rules read text, as the live pipeline does.
+            "body_content": clean_email_text(email.full_body or email.body_preview or "")})
         if category not in FILEABLE:
             continue
         items.append({"approval_id": approval.id, "email_id": email.id, "message_id": (email.message_id or "").strip(),
