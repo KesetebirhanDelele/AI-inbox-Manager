@@ -37,6 +37,33 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 | Roles | escalation = jackie@colaberry.com; callback owner = robelyn@colaberry.com; **approver is TEMPORARILY kes@colaberry.com** (so rehearsal alerts do not reach Rob): RESTORE robelyn@colaberry.com after the rehearsal. Rob checks only her email for now (callback alerts); Kes verifies everything in the app and wants timed reminders |
 | Tests | 868 root + 229 dashboard. Tests can no longer send email (autouse guard in both `conftest.py`); `execution/simulate_notifications.py` (13 made-up students, 29 checks) guards the cadence |
 
+### Where we are in the testing (updated 2026-10-10 ~02:30 UTC)
+| Test | Status |
+|---|---|
+| Automated tests | 868 root + 231 dashboard pass; tests cannot send email (conftest guard) |
+| Local simulation (`execution/simulate_notifications.py`) | DONE: 13 made-up students, 29 checks pass (cadence, quiet hours, STOP/YES/link, night approval, unreachable, plan stops at the interview). Nothing real contacted |
+| Voice call, outbound agent | Proven ONCE (2026-10-02, Kes's own contact). NOT done: greeting re-test with the new custom disclosure, the "yes" read-back with the new wording, wrong person, voicemail, STOP |
+| Text and email tests on Kes's own contact | NOT done (`ghl_test_call.py --channel sms|email --send`) |
+| Test callback to the AI receptionist | NOT done. Evidence the poll works: it picked up an Oct 5 call ("I was returning a phone call. No.", unknown caller): a stale false positive still open as a "Callbacks waiting" card; Kes must click "Called back" |
+| Server shadow rehearsal | Wiring is ON (env, channels, 5-minute cron, read-only conversations key; first poll clean) but NOT exercised: 0 sequences. No verified student with a phone has a genuine upcoming interview (Kes rejected two of the three random drafts as job invites; the third was a past interview). Candidate: draft 100 (Fikru Cheklie, Mon 2026-10-12 11:00 EDT), reopened, waiting for Kes to click Approve (it only logs) |
+| Approve on a real draft with the three-channel flow, in production | NEVER done |
+| Staff test (3 Colaberry staff) | Monday 2026-10-12: shadow first, live only after Kes validates the log and approves the three `GHL_WRITE_*` switches |
+| Pilot (3 real students, then lift the limit) | Not started. Needs verified students with a phone and a genuine upcoming interview |
+
+### Still to BUILD or change (nothing below is built)
+1. **"Told by hand" button** on the card (closes it as "informed outside the app"): Kes: not now; revisit if the flow has not started by about 2026-10-20 or many cards are rejected.
+2. **Remove the "Verify Student" Gmail label automatically when a student is verified**, and **label real interviews whose student is missing altogether** (today only guessed students get the label): proposed, Kes has not answered.
+3. **Lock down the old script `execution/process_interviews.py`** (it can auto-send an email by SMTP if run by hand; nothing schedules it): proposed, Kes has not answered.
+4. **Pause follow-ups after a "needs help" reply** ("I can't make it", a question): today they continue four days (decision for Kes and Ali). **Hold emails at night** (decision; Ali's rule says email any time).
+5. **GHL: an action that tags a stopped contact `do not call`** (Kes, in GHL; not built); confirm the outbound prompt, custom disclosure and one-line welcome.
+6. `docs/use-cases.html` and the artifact: not yet updated for the plan-stops-at-interview rule, the shadow banner, the Verify students tab changes.
+7. Longer term: roster from `config/students.py` into the database (every deploy overwrites it); a Google-Sheet roster lookup (Kes to say where the sheet is); phone numbers (only 4 of 19 students have one); the classifier still mislabels some application notices; compare `email_templates.py` with the Google Doc templates (the Drive connector is not authorized); a backup escalation holder.
+
+### WAITING on answers or actions
+- **Kes:** (a) staff names, emails, phones and consent on Monday; (b) click Approve on Fikru Cheklie's card for the shadow rehearsal, and TELL HIM BY HAND (no phone, shadow delivers nothing, interview Mon 11:00 EDT); (c) "Called back" on the Oct 5 card; (d) answers to: fix the label gap? tidy the 7 job postings out of "Verify Student" (keep Tier4 and Everforth or not)? lock down `process_interviews.py`? pause follow-ups after "needs help"? night emails?; (e) approval of the three `GHL_WRITE_*` switches only AFTER the shadow log is validated; (f) restore Rob as approver after the rehearsal; (g) which Gmail drafts were sent (Rob alerts + folders, Jackie callbacks); (h) GHL tasks in item 5 above.
+- **Ali:** the four questions (disclosure wording, authoritative student/phone list, pilot students, deleting about 200 stub emails): Kes says "consider all resolved" but Claude never saw the answers, so the 208 stub emails are NOT deleted and the pilot students are not changed; who may undo a STOP; a backup escalation holder; Google Doc templates vs the code.
+- **Rob (by email only):** call students back within one business hour (callback alerts); verify the five unverified students from the "Verify Student" label (Kenya, Olukayode, Nabour, Shahadalijawad, Priyan) once Kes asks. **Jackie:** takes overdue callbacks.
+
 ### What remains (in order)
 1. **Fikru Cheklie, interview Mon 2026-10-12 11:00 EDT** (verified, no phone on file): in shadow the app delivers nothing, so he must be told by hand (his Gmail fcheklie@gmail.com). His reopened draft (100) can serve as the real-case shadow rehearsal (Approve = logs only).
 2. **Monday 2026-10-12, staff test** (3 Colaberry staff with GHL contacts; Kes gives names, email, phone, consent): shadow first (read `notify_tick.log`), then Kes approves the three `GHL_WRITE_*` switches AFTER validating, then live tests. GHL allows ONE call per number per day, so wrong person / voicemail / STOP need separate days. Each staff member needs a student record + interview event (no "fake account tool", Kes's decision).
