@@ -16,11 +16,12 @@ execution_path = Path(__file__).parent.parent.parent.parent.parent / "execution"
 sys.path.insert(0, str(execution_path))
 
 try:
-    from fetch_emails import move_emails, delete_emails
+    from fetch_emails import move_emails, delete_emails, relabel_by_message_id
     IMAP_AVAILABLE = True
 except ImportError:
     IMAP_AVAILABLE = False
     move_emails = None
+    relabel_by_message_id = None
     delete_emails = None
 
 from config import settings
@@ -63,15 +64,22 @@ def move_email(
     try:
         if not IMAP_AVAILABLE:
             raise Exception("IMAP actions not available in cloud deployment")
-        moved_count = move_emails(
-            server=settings.email_server,
-            port=settings.email_port,
-            email_address=settings.email_address,
-            password=settings.email_password,
-            email_moves=email_moves,
-            source_folder=email.current_folder or "INBOX",   # the mail is usually NOT in INBOX any more; looking only there made every move fail
-            id_to_message_id=id_to_mid,
-        )
+        if (email.message_id or "").strip():
+            # Find the mail by Message-ID wherever Gmail has it now; the stored folder can be stale.
+            known = {row[0] for row in db.query(Email.current_folder).distinct() if row[0]} | {"INBOX"}
+            moved_count = 1 if relabel_by_message_id(
+                settings.email_server, settings.email_port, settings.email_address, settings.email_password,
+                email.message_id.strip(), target_folder, known) else 0
+        else:
+            moved_count = move_emails(
+                server=settings.email_server,
+                port=settings.email_port,
+                email_address=settings.email_address,
+                password=settings.email_password,
+                email_moves=email_moves,
+                source_folder=email.current_folder or "INBOX",
+                id_to_message_id=id_to_mid,
+            )
 
         if moved_count == 0:
             raise Exception(f"Failed to move email {email.email_id}")

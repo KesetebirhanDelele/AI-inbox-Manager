@@ -87,6 +87,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: manual moves find the mail by Message-ID (Kes: "Moving didn't work")
+
+The first fix (look in the email's own folder) was not enough. API log: `Move: message 760488 no longer in 'Spam Review'`: the database said Spam Review but the pipeline had already moved it on to Quarantine, and the stored UID is per folder and goes stale. New `fetch_emails.relabel_by_message_id` (used by `move_email` when the email has a Message-ID; old path kept as fallback): finds the message in All Mail by Message-ID, adds the target label, removes our other folder labels (the folders in use in the database), and takes a remaining Inbox copy out with the UID-scoped expunge. Nothing is deleted. Tests: label parsing, stale-folder move, inbox copy, not-found. Lesson: the stored folder and UID are hints, never the source of truth.
+
 ### 2026-10-10: Classification review actions fixed (Kes: no "Other" in the folder list; approved Delete left the card in the list)
 
 Production API log showed `POST /api/approvals/8/approve 500` ("Failed to delete email"): the screen swallowed the error, so the card simply stayed. Two root causes: (1) `integration/email_actions.move_email` never passed `source_folder`, so `move_emails` looked only in INBOX and every manual move of mail filed elsewhere (Spam Review, Needs Review...) failed the same way; now it passes `email.current_folder`; (2) Delete is permanent and breaks the quarantine-never-delete rule, so the API now answers 400 with a plain message for the `delete` action (approve and override) and the screen no longer offers it. The folder list was a stale hard-coded five (Interview Scheduling, Rejection...): it is now the real workbook folders in groups, with **"Other (not job related)"** first (moves to Spam Review, the pipeline's route; its second pass parks it in Quarantine). The screen now shows the server's error under the Approve button instead of failing silently. Tests: delete refused (approval stays pending, nothing deleted), move reads from the email's own folder.

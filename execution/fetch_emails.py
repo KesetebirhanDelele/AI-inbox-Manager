@@ -318,6 +318,68 @@ def label_emails(
                 pass
 
 
+_GM_LABELS_RE = re.compile(r"X-GM-LABELS \((.*?)\)\s*(?:UID|\)|$)", re.S)
+_LABEL_TOKEN_RE = re.compile(r'"((?:[^"\\]|\\.)*)"|(\S+)')
+
+
+def _parse_gm_labels(fetch_line: str) -> List[str]:
+    """The labels in a FETCH (X-GM-LABELS (...)) answer: quoted names keep their spaces, bare ones are atoms."""
+    m = _GM_LABELS_RE.search(fetch_line)
+    if not m:
+        return []
+    return [(q.replace('\\"', '"') if q else a) for q, a in _LABEL_TOKEN_RE.findall(m.group(1))]
+
+
+def relabel_by_message_id(
+    server: str, port: int, email_address: str, password: str,
+    message_id: str, target: str, known_folders: "set[str]",
+) -> bool:
+    r"""
+    Put one email into the folder `target`, wherever Gmail actually has it.
+
+    The database's idea of the folder can be stale (the pipeline moves mail between Spam Review and Quarantine on its own), so this
+    never trusts a UID or a folder name: it finds the message in All Mail by Message-ID, adds the `target` label, then removes the
+    other labels that are our own folders (`known_folders`). A copy still in the Inbox is taken out with the documented flag + UID
+    EXPUNGE scoped to INBOX (a plain label removal does not leave the Inbox). Nothing is ever deleted.
+
+    Returns True once the target label is on the message; False when the message cannot be found.
+    """
+    imap = connect_to_imap(server, port, email_address, password)
+    try:
+        if imap.select('"[Gmail]/All Mail"')[0] != "OK":
+            raise EmailFetchError("Cannot open All Mail")
+        status, data = imap.uid("SEARCH", None, "HEADER", "Message-ID", message_id)
+        uids = data[0].split() if status == "OK" and data and data[0] else []
+        if not uids:
+            logger.warning("Move: message not found in All Mail by Message-ID")
+            return False
+        uid = uids[-1].decode()
+        if imap.uid("STORE", uid, "+X-GM-LABELS", f"({_gm_label_atom(target)})")[0] != "OK":
+            raise EmailFetchError(f"Could not label the message {target!r}")
+        status, resp = imap.uid("FETCH", uid, "(X-GM-LABELS)")
+        line = " ".join(r.decode("utf-8", "ignore") if isinstance(r, bytes) else str(r)
+                        for part in (resp or []) for r in (part if isinstance(part, tuple) else (part,)))
+        labels = _parse_gm_labels(line)
+        in_inbox = any(l.lower() == "\\inbox" for l in labels)
+        for label in labels:
+            if label != target and label in known_folders and not label.startswith("\\"):
+                imap.uid("STORE", uid, "-X-GM-LABELS", f"({_gm_label_atom(label)})")
+        if in_inbox and target != "INBOX":
+            if imap.select("INBOX")[0] == "OK":
+                st, d = imap.uid("SEARCH", None, "HEADER", "Message-ID", message_id)
+                inbox_uids = d[0].split() if st == "OK" and d and d[0] else []
+                for iu in inbox_uids:
+                    imap.uid("STORE", iu.decode(), "+FLAGS", "(\\Deleted)")
+                if inbox_uids:
+                    imap.uid("EXPUNGE", ",".join(i.decode() for i in inbox_uids))
+        return True
+    finally:
+        try:
+            imap.logout()
+        except Exception:
+            pass
+
+
 def move_emails(
     server: str,
     port: int,

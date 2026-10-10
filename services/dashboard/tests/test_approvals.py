@@ -217,14 +217,27 @@ class TestOverrideClassification:
         assert resp.status_code == 404
 
 
-def test_move_reads_from_the_folder_the_email_is_in(db):
-    """Moves used to look only in INBOX, so mail filed in Spam Review / Needs Review could never be moved by hand."""
+def test_move_finds_the_mail_by_message_id_not_by_the_stored_folder(db):
+    """Mail the pipeline filed itself (Spam Review -> Quarantine) is not where the database says: a manual move must still find it."""
+    from unittest.mock import patch as _patch
+    from integration import email_actions
+    email = make_email(db)
+    email.current_folder = "Spam Review"
+    email.message_id = "<abc@x>"
+    db.commit()
+    with _patch.object(email_actions, "IMAP_AVAILABLE", True),             _patch.object(email_actions, "relabel_by_message_id", return_value=True) as mock_relabel:
+        email_actions.move_email(db=db, email=email, target_folder="Job Alerts", performed_by="admin")
+    assert mock_relabel.call_args.args[4:6] == ("<abc@x>", "Job Alerts")
+    assert email.current_folder == "Job Alerts"
+
+
+def test_move_without_a_message_id_falls_back_to_the_stored_folder(db):
     from unittest.mock import patch as _patch
     from integration import email_actions
     email = make_email(db)
     email.current_folder = "Needs Review"
+    email.message_id = None
     db.commit()
-    with _patch.object(email_actions, "IMAP_AVAILABLE", True), \
-            _patch.object(email_actions, "move_emails", return_value=1) as mock_move:
+    with _patch.object(email_actions, "IMAP_AVAILABLE", True),             _patch.object(email_actions, "move_emails", return_value=1) as mock_move:
         email_actions.move_email(db=db, email=email, target_folder="Job Alerts", performed_by="admin")
     assert mock_move.call_args.kwargs["source_folder"] == "Needs Review"
