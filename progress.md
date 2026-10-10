@@ -87,6 +87,14 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10 (night): Classification review re-read and reclassified; "Other" at 50% or more no longer queued (Kes: "Yes proceed, analyse and reclassify")
+
+- **Finding:** "Other" mail is already parked physically (Spam Review, then Quarantine) whatever its confidence; the review queue only gave a person a chance to look. Kes agreed to stop queueing the confident ones.
+- **Policy (`needs_human_review`):** "Other" at 50% or more is no longer queued (was: only exactly 0%); a weak "Other" under 50% still goes to a person; every other category still queues under 70%.
+- **New `execution/reclassify_review_items.py` (dry-run default, `--apply`):** re-reads each pending item with the CLEANED body, runs the live path (rules, then the AI), and files a confident non-interview answer (Job Alert, Job Invite, LinkedIn/Application/Gmail Notification, Basecamp, Forwarded Email at 70% or more), closes "Other" (50% or more, or the model's 0% junk answer), and leaves the rest. It never touches mail written by a person: personal-mailbox senders, Colaberry addresses, and any "Re:/Fw:/Fwd:" subject stay for a human. New answers are stored as new classification rows (`review-reclassify`); old rows are kept.
+- **Result on production (54 open):** 41 closed as Other (already in Spam Review/Quarantine), 4 filed (2 Job Alerts, 2 Job Invites, in Gmail), **9 left for Kes**: a recruiter RTR reading Interview Request 95% (westcoastllc), a recruiter reply read as Job Invite (mobiusengine), internal Colaberry mail (Logging Interviews; Ali's "Questions About Colaberry?"), a university reply about transcripts, and four from personal mailboxes (Audio; Caleb Ephrem; No Subject; Southlake networking).
+- Tests: 913+ pass (new file for the script, policy cases updated).
+
 ### 2026-10-10 (later): the real reason the NOV mail was missed: HTML inside the text part
 
 After deploying the job-alert-consent rule the dry run still did not match the NOV mail. Cause: some senders (Oracle recruiting, OpenAI: 1,161 of 9,844 stored bodies) put the whole HTML page in the **text/plain** part, and `extract_email_body` only cleaned HTML when it came as text/html. So the classifier's 1,500 characters (and the rules' 500) were the HTML head and CSS, never the message. Fixes: `extract_email_body` now cleans any body that looks like HTML (stray "<" in real text is left alone, tested); `file_review_items.plan` cleans stored bodies before applying the rules; the dashboard email detail already cleaned for display. New mail benefits from the next run; the 1,161 old stored bodies are left as they are (not rewritten).
