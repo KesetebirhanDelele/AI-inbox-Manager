@@ -137,6 +137,15 @@ There is no second call on day 1: GHL Voice AI allows **one call per phone numbe
 plan makes 4 in total). Telling the approver does **not** stop the sequence. Only an acknowledgement, or the approver closing it, does.
 "Up to three days" = days 2, 3 and 4 after day 1 (Kes, 2026-10-02).
 
+### The plan stops at the interview (2026-10-10)
+The plan above is built from the approval time. When the interview's date (and time) is known (`escalation_schedule.interview_when`, zone from the interview, else the student's), it is shortened:
+- An interview that has already happened plans nothing (the sequence is `interview_passed`); Approve also refuses it with a clear message.
+- A follow-up that would land less than an hour before the interview, or after it, is dropped. Every attempt is also checked again when it comes due, and the sequence closes as `interview_passed` once the interview time arrives (no "never acknowledged" alert).
+- Short notice (interview within 36 hours of approval, time of day known): two same-channel reminders are never closer than 2 hours, and a **final text and email go out 2 hours before the interview**. No final call (calls stay at most one a day and four in all).
+- A date with no time of day counts as the end of that day: nothing after it, no timed reminder.
+- The approver's "no response" alert comes at +6h, or an hour before the interview if that is sooner.
+- No interview date known: the four-day plan above, unchanged. Simulation: `execution/simulate_notifications.py` (scenarios S11 to S13).
+
 ## Quiet hours (Ali)
 - In the **student's own** time zone. Texts: quiet 9 PM to 8 AM (Ali). **Calls: quiet 8 PM to 8 AM**, because GHL Voice AI
   itself only places calls 8 AM to 8 PM in the contact's zone and silently reschedules the rest, so we match it rather

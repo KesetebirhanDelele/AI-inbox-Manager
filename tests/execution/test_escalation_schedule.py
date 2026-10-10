@@ -146,3 +146,71 @@ def test_collision_rule():
     assert es.collides_with_neighbour(t, [t + timedelta(hours=2, minutes=59)]) is True
     assert es.collides_with_neighbour(t, [t + timedelta(hours=3)]) is False
     assert es.collides_with_neighbour(t, []) is False
+
+
+# --- the plan stops at the interview (2026-10-10) -----------------------------------------------------------------------------------
+
+from datetime import datetime as _dt, timedelta as _td  # noqa: E402
+
+_CHI = "America/Chicago"
+
+
+def _utc(y, mo, d, h, mi=0):
+    return _dt(y, mo, d, h, mi)
+
+
+def test_interview_when_reads_the_zone_written_on_the_interview_and_a_missing_time_means_end_of_day():
+    assert es.interview_when("2026-10-14", "11:00", "CT", "America/New_York") == (_utc(2026, 10, 14, 16), True)
+    assert es.interview_when("2026-10-14", "2:30 PM", "EDT", _CHI) == (_utc(2026, 10, 14, 18, 30), True)
+    when, known = es.interview_when("2026-10-14", None, None, _CHI)
+    assert known is False and when == _utc(2026, 10, 15, 4, 59)
+    assert es.interview_when(None, "11:00", "CT", _CHI) == (None, False)
+    assert es.interview_when("not a date", "11:00", "CT", _CHI) == (None, False)
+
+
+def test_no_interview_date_keeps_the_four_day_plan():
+    start = _utc(2026, 10, 12, 20)
+    assert len(es.build_plan(start, _CHI)) == len(es.build_plan(start, _CHI, None)) == 15
+
+
+def test_a_far_interview_keeps_the_four_day_plan_and_adds_no_final_reminder():
+    start = _utc(2026, 10, 12, 20)
+    plan = es.build_plan(start, _CHI, _utc(2026, 10, 24, 16), True)
+    assert len(plan) == 15 and not any(p.step == "final" for p in plan)
+
+
+def test_interview_tomorrow_stops_at_the_interview_and_adds_a_final_text_and_email():
+    start = _utc(2026, 10, 12, 20)                       # Monday 3 PM Central
+    interview = _utc(2026, 10, 13, 19)                   # Tuesday 2 PM Central
+    plan = es.build_plan(start, _CHI, interview, True)
+    assert all(p.planned_for < interview for p in plan)
+    assert not any(p.step in ("day3", "day4") for p in plan)
+    finals = [(p.channel, p.planned_for) for p in plan if p.step == "final"]
+    assert sorted(c for c, _ in finals) == ["email", "sms"] and all(t == interview - _td(hours=2) for _, t in finals)
+    assert len(plan) == 11
+
+
+def test_interview_in_three_hours_gets_the_first_notice_and_an_email_only():
+    start = _utc(2026, 10, 12, 20)
+    plan = es.build_plan(start, _CHI, start + _td(hours=3), True)
+    assert [(p.step, p.channel) for p in plan] == [("start", "call"), ("start", "email"), ("start", "sms"), ("d1_2h", "email")] or \
+        sorted((p.step, p.channel) for p in plan) == sorted([("start", "call"), ("start", "sms"), ("start", "email"), ("d1_2h", "email")])
+
+
+def test_an_interview_that_is_already_over_plans_nothing():
+    start = _utc(2026, 10, 12, 20)
+    assert es.build_plan(start, _CHI, start - _td(minutes=1), True) == []
+
+
+def test_an_interview_with_no_time_of_day_gets_no_timed_reminder_but_still_stops_at_the_end_of_that_day():
+    start = _utc(2026, 10, 12, 20)
+    interview, known = es.interview_when("2026-10-13", None, None, _CHI)
+    plan = es.build_plan(start, _CHI, interview, known)
+    assert not any(p.step == "final" for p in plan) and all(p.planned_for < interview for p in plan)
+
+
+def test_the_no_response_alert_comes_before_a_near_interview_not_after_it():
+    start = _utc(2026, 10, 12, 20)
+    assert es.no_response_due(start) == start + _td(hours=6)
+    assert es.no_response_due(start, start + _td(hours=3)) == start + _td(hours=2)
+    assert es.no_response_due(start, start + _td(days=5)) == start + _td(hours=6)

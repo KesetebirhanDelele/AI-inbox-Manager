@@ -45,6 +45,7 @@ class Scenario:
     contact: bool = True                # False: no phone, no email, no Gmail at all
     actions: List[Tuple[timedelta, str, str]] = field(default_factory=list)   # (after approval, kind, text)
     unreachable: bool = False
+    interview: Tuple[str, str, str] = ("2026-10-20", "11:00", "CT")      # date, time, zone written on the interview
 
 
 MON_15_CT = datetime(2026, 10, 12, 20, 0)      # Monday 3:00 PM Central
@@ -59,6 +60,9 @@ SCENARIOS = [
     Scenario("S08", "Nothing on file: no phone, no email, no Gmail", "312", MON_15_CT, phone=False, contact=False),
     Scenario("S09", "Approved at 10 PM local (quiet hours)", "213", datetime(2026, 10, 13, 5, 0)),     # 10:00 PM Pacific on Monday
     Scenario("S10", "Cannot be found in GHL", "312", MON_15_CT, unreachable=True),
+    Scenario("S11", "Interview TOMORROW 2 PM, never confirms", "312", MON_15_CT, interview=("2026-10-13", "14:00", "CT")),
+    Scenario("S12", "Interview in 3 hours (Mon 6 PM), never confirms", "312", MON_15_CT, interview=("2026-10-12", "18:00", "CT")),
+    Scenario("S13", "Interview already over when approved", "312", MON_15_CT, interview=("2026-10-12", "10:00", "CT")),
 ]
 
 
@@ -147,8 +151,8 @@ def _run() -> Dict[str, Any]:
         db.add(email)
         db.flush()
         event = M.InterviewEvent(email_id=email.id, student_id=student.id, sub_type="Phone Screen", company_name="Simulated Co",
-                                 position_title="Data Analyst", interview_date="2026-10-20", interview_time="11:00",
-                                 interview_timezone="CT", interview_format="phone", confidence=0.95)
+                                 position_title="Data Analyst", interview_date=sc.interview[0], interview_time=sc.interview[1],
+                                 interview_timezone=sc.interview[2], interview_format="phone", confidence=0.95)
         db.add(event)
         db.flush()
         draft = M.NotificationDraft(interview_event_id=event.id, template_id="phone_screening_scheduled", email_subject="PHONE SCREENING: Interview Scheduled - Simulated Co",
@@ -183,7 +187,8 @@ def _run() -> Dict[str, Any]:
         engine.tick(db, now, channels, alerts, "https://example.test/ack")
         now += TICK
 
-    return {"db": db, "M": M, "people": people, "mail": mail, "channels": channels, "t0": t0}
+    import escalation_schedule as sched_mod
+    return {"db": db, "M": M, "people": people, "mail": mail, "channels": channels, "t0": t0, "sched": sched_mod}
 
 
 def local(dt: datetime, tz: str) -> datetime:
@@ -277,14 +282,39 @@ def checks(sim) -> List[Tuple[str, bool, str]]:
         f"{len(unreachable_alerts)} alert(s)")
 
     unanswered = {f"Simulated Student {k[1:]}" for k in people if people[k]["seq"].status == "exhausted"}
+    interview_over = {f"Simulated Student {k[1:]}" for k in people if people[k]["seq"].status == "interview_passed"}
     no_resp = [m["subject"].split("] ")[-1].split(" has not")[0] for m in mail.sent if "has not responded" in m["subject"]]
     add("'No response' reaches the approver once for each student who had not confirmed 6 hours in (and for nobody else)",
-        len(no_resp) == len(set(no_resp)) and set(no_resp) <= unanswered and "Simulated Student 01" in no_resp and
+        len(no_resp) == len(set(no_resp)) and set(no_resp) <= (unanswered | interview_over) and "Simulated Student 01" in no_resp and
+        {"Simulated Student 11", "Simulated Student 12"} <= set(no_resp) and "Simulated Student 13" not in no_resp and
         not any(n in no_resp for n in ("Simulated Student 02", "Simulated Student 03", "Simulated Student 04", "Simulated Student 05")),
         f"{sorted(set(no_resp))}")
     ended = [m["subject"].split("Follow-ups ended: ")[-1].split(" never")[0] for m in mail.sent if "Follow-ups ended" in m["subject"]]
     add("'Follow-ups ended' goes out once for each student whose sequence ran out unanswered",
         len(ended) == len(set(ended)) and set(ended) == unanswered, f"ended {sorted(set(ended))} vs unanswered {sorted(unanswered)}")
+    # --- the plan stops at the interview
+    def interview_utc(key):
+        d, t, z = people[key]["scenario"].interview
+        return sim["sched"].interview_when(d, t, z, "America/Chicago")[0]
+
+    for key in ("S11", "S12", "S13"):
+        late = [a for a in delivered(sim, key) if a.sent_at >= interview_utc(key)]
+        add(f"{key}: nothing is ever sent at or after the interview time", not late, f"{len(late)} sent late")
+    s11 = delivered(sim, "S11")
+    add("S11: interview tomorrow 2 PM: 11 messages, all before it, incl. a text and email at noon, none on days 3 and 4",
+        len(s11) == 11 and any(a.step == "final" and a.channel == "sms" for a in s11) and any(a.step == "final" and a.channel == "email" for a in s11)
+        and not any(a.step in ("day3", "day4") for a in s11), f"{len(s11)} messages: {[(a.channel, a.step) for a in s11]}")
+    add("S11 and S12: when the interview time comes the sequence is closed, not chased ('interview_passed')",
+        people["S11"]["seq"].status == "interview_passed" and people["S12"]["seq"].status == "interview_passed",
+        f"{people['S11']['seq'].status}, {people['S12']['seq'].status}")
+    s12 = delivered(sim, "S12")
+    add("S12: interview in 3 hours: the first notice at once and at most an email and a text before it, nothing at night",
+        len(s12) <= 6 and sum(1 for a in s12 if a.channel == "call") == 1, str([(a.channel, a.step) for a in s12]))
+    add("S13: the interview was already over at approval: nothing is planned, nothing is sent, nobody is chased",
+        people["S13"]["seq"].status == "interview_passed" and not people["S13"]["seq"].attempts and not delivered(sim, "S13"),
+        f"{people['S13']['seq'].status}, {len(people['S13']['seq'].attempts)} attempts")
+    add("S01 (interview a week away): the plan is unchanged (4 calls, 5 texts, 6 emails)", counts == {"call": 4, "sms": 5, "email": 6}, str(counts))
+
     to = {m["recipient_email"] for m in mail.sent}
     add("Every alert went to the approver address, none to anyone else", to <= {"approver@example.test"}, str(to))
     return out

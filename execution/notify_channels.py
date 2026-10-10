@@ -38,7 +38,7 @@ FAILED = "failed"
 SKIPPED = "skipped"        # deliberately not sent (for example the contact opted out)
 DEFERRED = "deferred"      # not now; retry at result.retry_at (for example the daily text budget is used)
 
-STEP_TAGS = {"start": "", "d1_2h": "Reminder 1: ", "d1_4h": "Reminder 2: ",
+STEP_TAGS = {"start": "", "d1_2h": "Reminder 1: ", "d1_4h": "Reminder 2: ", "final": "Interview soon: ",
              "day2": "Day 2 reminder: ", "day3": "Day 3 reminder: ", "day4": "Final reminder: "}
 
 
@@ -121,7 +121,7 @@ def interview_facts(event: Any) -> list:
     return facts
 
 
-ATTEMPT_LABELS = {"start": "first notice", "d1_2h": "reminder 1", "d1_4h": "reminder 2",
+ATTEMPT_LABELS = {"start": "first notice", "d1_2h": "reminder 1", "d1_4h": "reminder 2", "final": "final reminder shortly before the interview",
                   "day2": "day 2 reminder", "day3": "day 3 reminder", "day4": "final reminder"}
 
 

@@ -14,7 +14,7 @@ def test_the_simulation_passes_every_check_and_leaves_the_environment_alone():
     failed = [(name, detail) for name, ok, detail in sim.checks(result) if not ok]
     assert not failed, failed
     assert os.environ.get("DATABASE_URL") == before
-    assert len(result["people"]) == 10
+    assert len(result["people"]) == 13
 
 
 def test_nothing_in_the_simulation_is_a_real_message():

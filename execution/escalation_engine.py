@@ -52,6 +52,7 @@ def start_sequence(db, draft, student, now: datetime, started_by: Optional[str] 
 
     phone = getattr(student, "phone_number", None)
     tz_name, tz_source = sched.timezone_for_phone(phone)
+    interview_utc, time_known = _interview_utc(db, draft, tz_name)
     seq = M.NotificationSequence(
         draft_id=draft.id,
         student_id=getattr(student, "id", None),
@@ -70,7 +71,12 @@ def start_sequence(db, draft, student, now: datetime, started_by: Optional[str] 
     # student with ANY way to be found (phone, personal email or assigned Gmail) keeps their call and text attempts.
     can_be_found = has_phone or bool((getattr(student, "personal_email", None) or "").strip())         or bool((getattr(student, "assigned_gmail", None) or "").strip())
     has_email = bool((draft.recipient_email or "").strip()) or can_be_found
-    for planned in sched.build_plan(now, tz_name):
+    plan = sched.build_plan(now, tz_name, interview_utc, time_known)
+    if interview_utc is not None and not plan:
+        seq.status = "interview_passed"                  # the interview is already over: nothing is planned
+    for planned in plan:
+        if interview_utc is not None and sched.scheduled_time(planned, tz_name) >= interview_utc:
+            continue                                     # a quiet-hours hold must never push an attempt past the interview
         attempt = M.NotificationAttempt(
             sequence_id=seq.id,
             channel=planned.channel,
@@ -89,6 +95,16 @@ def start_sequence(db, draft, student, now: datetime, started_by: Optional[str] 
 
 
 # ── stopping ─────────────────────────────────────────────────────────────────
+
+def _interview_utc(db, draft, tz_name: str):
+    """(naive UTC interview time, whether the time of day is known) for a draft's interview, or (None, False) when no usable date is stored."""
+    M = _m()
+    event = db.get(M.InterviewEvent, draft.interview_event_id) if getattr(draft, "interview_event_id", None) else None
+    if event is None:
+        return None, False
+    return sched.interview_when(getattr(event, "interview_date", None), getattr(event, "interview_time", None),
+                                getattr(event, "interview_timezone", None), tz_name)
+
 
 def _cancel_pending(seq, reason: str) -> int:
     n = 0
@@ -275,6 +291,13 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RoleAlert
     report = TickReport()
     sequences = db.query(M.NotificationSequence).filter(M.NotificationSequence.status == "active").all()
     for seq in sequences:
+        draft_for_seq = db.get(M.NotificationDraft, seq.draft_id)
+        interview_utc, _known = _interview_utc(db, draft_for_seq, seq.timezone) if draft_for_seq is not None else (None, False)
+        if interview_utc is not None and now >= interview_utc:
+            seq.status = "interview_passed"              # the interview time has come: nothing more is sent, nobody is chased
+            _cancel_pending(seq, "the interview time has passed")
+            db.commit()
+            continue
         due = sorted((a for a in seq.attempts if a.status == "pending" and a.scheduled_for <= now),
                      key=lambda a: a.scheduled_for)
         for attempt in due:
@@ -331,7 +354,7 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RoleAlert
             db.commit()
             report.no_response_alerts += 1
 
-        if seq.rob_day1_alert_at is None and now >= sched.no_response_due(seq.started_at):
+        if seq.rob_day1_alert_at is None and now >= sched.no_response_due(seq.started_at, interview_utc):
             alerts.no_response(seq, _student_name(db, seq))
             seq.rob_day1_alert_at = now
             db.commit()

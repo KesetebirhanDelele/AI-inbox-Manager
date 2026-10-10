@@ -138,6 +138,35 @@ class TestApproveGuardsAndChecklist:
         assert row.is_completed is True and row.completed_by
 
 
+class TestApproveRefusesAPastInterview:
+    def test_an_interview_that_has_already_happened_cannot_be_approved(self, client, db, auth_cookies, monkeypatch):
+        from datetime import datetime, timedelta
+        monkeypatch.setenv("SINGLE_EMAIL_APPROVE_ENABLED", "true")
+        email = make_email(db)
+        event = make_interview_event(db, email, student=make_student(db))
+        event.interview_date = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
+        event.interview_time, event.interview_timezone = "11:00", "CT"
+        db.commit()
+        draft = make_notification_draft(db, event, email_status="draft")
+        with patch(_SEND_EMAIL) as send:
+            resp = client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies)
+        assert resp.status_code == 400 and "already happened" in resp.json()["detail"]
+        send.assert_not_called()
+        db.refresh(draft)
+        assert draft.email_status == "draft"
+
+    def test_an_interview_with_no_date_or_a_future_date_is_still_approvable(self, client, db, auth_cookies, monkeypatch):
+        from datetime import datetime, timedelta
+        monkeypatch.setenv("SINGLE_EMAIL_APPROVE_ENABLED", "true")
+        event = make_interview_event(db, make_email(db), student=make_student(db))
+        event.interview_date = (datetime.utcnow() + timedelta(days=3)).strftime("%Y-%m-%d")
+        event.interview_time, event.interview_timezone = "11:00", "CT"
+        db.commit()
+        draft = make_notification_draft(db, event, email_status="draft")
+        with patch(_SEND_EMAIL, return_value={"status": "sent"}):
+            assert client.post(f"/api/notifications/{draft.id}/approve", cookies=auth_cookies).status_code == 200
+
+
 class TestApproveNotification:
     def test_approve_sends_email(self, client, db, auth_cookies):
         email = make_email(db)

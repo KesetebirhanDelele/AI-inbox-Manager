@@ -611,6 +611,15 @@ async def approve_notification(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="This student has no phone, email or Gmail on file. Add their contact details first.")
 
+    # An interview that has already happened must never start a notice (the follow-up plan stops at the interview time).
+    sched = _execution_module("escalation_schedule")
+    when, _known = sched.interview_when(event_for_guard.interview_date, event_for_guard.interview_time, event_for_guard.interview_timezone,
+                                        "America/Chicago")
+    if when is not None and when <= datetime.utcnow():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"This interview was on {event_for_guard.interview_date}, so it has already happened and a notice would only confuse "
+                                   "the student. Reject this card, or tell the student by hand if it still matters.")
+
     pending_check = (db.query(StudentVerification).filter(StudentVerification.student_id == student_for_guard.id,
                                                           StudentVerification.status != "verified").first())
     if pending_check is not None:

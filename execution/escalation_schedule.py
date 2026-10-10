@@ -15,6 +15,10 @@ Schedule (T0 = the moment the approver approves):
 Quiet hours, student-local: calls only 8 AM to 8 PM (GHL Voice AI itself places calls only in that window and
 silently reschedules the rest, so we match it); texts 9 PM to 8 AM is quiet (Ali). Email goes at any time.
 An attempt that lands in quiet hours is held and released at 8 AM.
+
+The plan stops at the interview (2026-10-10): nothing is planned for after the interview time, the 9 AM follow-ups on later days only exist
+when the interview is still at least an hour away, and when the interview is within SHORT_NOTICE_HOURS a final text and email go out two hours
+before it. With no interview date the four-day plan above is used unchanged.
 """
 
 from dataclasses import dataclass
@@ -35,6 +39,18 @@ ENDED_ALERT_AFTER_LAST_ATTEMPT = timedelta(hours=3)
 MIN_SAME_CHANNEL_GAP = timedelta(hours=3)  # applies to held (quiet-hours) attempts only
 
 PHONE_CHANNELS = ("call", "sms")           # the channels quiet hours bind
+
+REMINDER_MARGIN = timedelta(hours=1)       # nothing is planned within an hour of the interview, except the final reminder
+SHORT_NOTICE_HOURS = 36                    # interview this close to approval: close-spaced reminders plus a final one
+FINAL_REMINDER_BEFORE = timedelta(hours=2)
+MIN_REMINDER_GAP = timedelta(hours=2)      # two reminders on the same channel are never closer than this (final reminders excepted)
+TZ_ABBREVIATIONS = {
+    "CT": "America/Chicago", "CST": "America/Chicago", "CDT": "America/Chicago",
+    "ET": "America/New_York", "EST": "America/New_York", "EDT": "America/New_York",
+    "MT": "America/Denver", "MST": "America/Denver", "MDT": "America/Denver",
+    "PT": "America/Los_Angeles", "PST": "America/Los_Angeles", "PDT": "America/Los_Angeles",
+    "UTC": "UTC", "GMT": "UTC",
+}
 
 
 @dataclass(frozen=True)
@@ -112,8 +128,46 @@ def release_time(utc_naive: datetime, tz_name: str, channel: str) -> datetime:
 
 # ── the plan ─────────────────────────────────────────────────────────────────
 
-def build_plan(start_utc: datetime, tz_name: str) -> List[Planned]:
-    """Every attempt of one sequence, in order, before quiet-hours adjustment."""
+def interview_when(date_text: Optional[str], time_text: Optional[str], tz_text: Optional[str], fallback_tz: str) -> Tuple[Optional[datetime], bool]:
+    """
+    When the interview is, as (naive UTC, time_is_known). (None, False) when there is no usable date.
+    A date with no time counts as the END of that day (so nothing is sent after the day, and no timed reminder is planned).
+    The zone is the one written on the interview (CT, EDT ...) else the student's own.
+    """
+    import re
+    date_text = (date_text or "").strip()
+    try:
+        day = datetime.strptime(date_text[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None, False
+    zone_name = TZ_ABBREVIATIONS.get((tz_text or "").strip().upper()) or fallback_tz
+    try:
+        zone = ZoneInfo(zone_name)
+    except Exception:
+        zone = ZoneInfo(FALLBACK_TIMEZONE)
+    clock = None
+    match = re.match(r"^\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?\s*$", time_text or "")
+    if match:
+        hour, minute, ampm = int(match.group(1)), int(match.group(2)), (match.group(3) or "").lower()
+        if ampm == "pm" and hour < 12:
+            hour += 12
+        if ampm == "am" and hour == 12:
+            hour = 0
+        if 0 <= hour < 24 and 0 <= minute < 60:
+            clock = time(hour, minute)
+    if clock is None:
+        return _to_utc_naive(datetime.combine(day, time(23, 59), tzinfo=zone)), False
+    return _to_utc_naive(datetime.combine(day, clock, tzinfo=zone)), True
+
+
+def build_plan(start_utc: datetime, tz_name: str, interview_utc: Optional[datetime] = None, time_known: bool = True) -> List[Planned]:
+    """
+    Every attempt of one sequence, in order, before quiet-hours adjustment.
+
+    With an interview time the plan stops there: an interview already past plans nothing; a follow-up that would land less than an hour
+    before it (or after it) is dropped; and a short-notice interview (within 36 hours of approval, time known) gets a final text and email two
+    hours before it, with no two same-channel reminders closer than two hours.
+    """
     plan: List[Planned] = [
         Planned("start", "call", start_utc),
         Planned("start", "sms", start_utc),
@@ -129,7 +183,23 @@ def build_plan(start_utc: datetime, tz_name: str) -> List[Planned]:
         due = _to_utc_naive(local_nine)
         for channel in ("call", "sms", "email"):
             plan.append(Planned(f"day{offset + 1}", channel, due))
-    return plan
+    if interview_utc is None:
+        return plan
+
+    if interview_utc <= start_utc:
+        return []                                   # the interview has already happened: nothing to send
+    latest = interview_utc - REMINDER_MARGIN
+    kept: List[Planned] = [p for p in plan if p.step == "start" or p.planned_for <= latest]
+    short_notice = time_known and (interview_utc - start_utc) <= timedelta(hours=SHORT_NOTICE_HOURS)
+    if short_notice:
+        kept = [p for p in kept if p.step == "start" or not any(
+            q is not p and q.channel == p.channel and q.planned_for < p.planned_for and p.planned_for - q.planned_for < MIN_REMINDER_GAP for q in kept)]
+        final_at = interview_utc - FINAL_REMINDER_BEFORE
+        if final_at > start_utc + timedelta(hours=1):
+            for channel in ("sms", "email"):
+                if not any(q.channel == channel and abs(q.planned_for - final_at) < MIN_REMINDER_GAP for q in kept):
+                    kept.append(Planned("final", channel, final_at))
+    return sorted(kept, key=lambda p: (p.planned_for, p.channel))
 
 
 def scheduled_time(planned: Planned, tz_name: str) -> datetime:
@@ -137,9 +207,15 @@ def scheduled_time(planned: Planned, tz_name: str) -> datetime:
     return release_time(planned.planned_for, tz_name, planned.channel)
 
 
-def no_response_due(start_utc: datetime) -> datetime:
-    """the approver is told the student has not responded after day 1's rounds. This does NOT end the sequence."""
-    return start_utc + ROB_NO_RESPONSE_AFTER
+def no_response_due(start_utc: datetime, interview_utc: Optional[datetime] = None) -> datetime:
+    """
+    the approver is told the student has not responded after day 1's rounds. This does NOT end the sequence.
+    With an interview coming up sooner than that, the approver is told an hour before it (never earlier than 30 minutes in).
+    """
+    due = start_utc + ROB_NO_RESPONSE_AFTER
+    if interview_utc is not None and interview_utc - REMINDER_MARGIN < due:
+        due = max(start_utc + timedelta(minutes=30), interview_utc - REMINDER_MARGIN)
+    return due
 
 
 def sequence_ended_due(plan: List[Planned], tz_name: str) -> datetime:
