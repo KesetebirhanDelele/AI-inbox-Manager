@@ -87,6 +87,14 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: Classification review list filed by rule; bare job links auto-classified (Kes: "move them... classified automatically from now on")
+
+Kes saw bare job links (subject is only a LinkedIn URL, from a student's Gmail, 65% "Other") sitting in Review > Classification review.
+- **From now on:** `pre_classify_by_sender` already turned a bare LinkedIn job link into Job Alert (folder "Job Alerts"); the old items were queued before that rule. The rule is now wider: `_BARE_JOB_LINK` also covers Indeed, Glassdoor, ZipRecruiter, Dice, Monster, CareerBuilder, SimplyHired postings (subject must START with http; "Fwd: <link>" is not matched, it can carry a message). Tests added.
+- **Existing list:** new `execution/file_review_items.py` (dry-run by default, `--apply`): for every PENDING approval whose email a rule classifies as Job Alert / LinkedIn Notification / Basecamp / Gmail Notification it labels and moves the email in Gmail (reuses `label_verify_students.apply_items`, now with a `label` parameter; UID-scoped, nothing deleted), sets `current_folder`, and closes the approval (approved, move_to_folder, reviewed_by `rule-filing`). Interview results are never filed by it. Mail Gmail cannot find stays pending.
+- Files: `execution/file_review_items.py`, `execution/label_verify_students.py`, `execution/process_inbox_auto.py`, `tests/execution/test_file_review_items.py`, `tests/execution/test_subclassify_and_quarantine.py`.
+- Still open (Kes to decide): the "Delete" action on Classification review is permanent per its code comment, which breaks the quarantine-never-delete rule: remove it or make it move to Quarantine; "dismiss older than 14 days" for that list.
+
 ### 2026-10-10: Dashboard = act today, Reports = look back (Kes: "Option C ... do it now")
 
 Redundancy review found the same lists and numbers on Dashboard, Reports and Interviews. Consolidated (frontend only, no API or notification change):

@@ -79,8 +79,8 @@ def _uid_by_message_id(imap, message_id: str) -> Optional[str]:
     return uids[-1].decode() if uids else None
 
 
-def apply_items(imap, items: List[Dict[str, Any]], move: bool = True) -> Dict[str, List[int]]:
-    """Label (and optionally move) each item. Returns {"labelled": [...], "moved": [...], "skipped": [...]} of email ids."""
+def apply_items(imap, items: List[Dict[str, Any]], move: bool = True, label: str = LABEL) -> Dict[str, List[int]]:
+    """Label (and optionally move) each item with `label`. Returns {"labelled": [...], "moved": [...], "skipped": [...]} of email ids."""
     from fetch_emails import _gm_label_atom, _quote_folder
 
     out: Dict[str, List[int]] = {"labelled": [], "moved": [], "skipped": []}
@@ -97,7 +97,7 @@ def apply_items(imap, items: List[Dict[str, Any]], move: bool = True) -> Dict[st
             logger.warning(f"email {it['email_id']}: not found in All Mail by Message-ID; skipped")
             out["skipped"].append(it["email_id"])
             continue
-        s, _r = imap.uid("STORE", uid, "+X-GM-LABELS", f"({_gm_label_atom(LABEL)})")
+        s, _r = imap.uid("STORE", uid, "+X-GM-LABELS", f"({_gm_label_atom(label)})")
         if s != "OK":
             out["skipped"].append(it["email_id"])
             continue
@@ -109,7 +109,7 @@ def apply_items(imap, items: List[Dict[str, Any]], move: bool = True) -> Dict[st
         for it in labelled_ids:
             by_folder.setdefault(it["folder"], []).append(it)
         for folder, group in by_folder.items():
-            if folder == LABEL:
+            if folder == label:
                 continue
             s, _ = imap.select(_quote_folder(folder))
             if s != "OK":

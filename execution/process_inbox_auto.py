@@ -1711,6 +1711,12 @@ def _domain_is(domain: str, *roots: str) -> bool:
     return any(domain == r or domain.endswith("." + r) for r in roots)
 
 
+# A subject that is only a link to a posting on a known job site (what a student sends when forwarding a job). Not "Fwd: <link>": that can carry a real message.
+_BARE_JOB_LINK = re.compile(
+    r"(?:linkedin\.com/(?:comm/)?jobs/|indeed\.com/(?:viewjob|rc/clk|m/viewjob)|glassdoor\.com/job-listing|ziprecruiter\.com/(?:c|jobs|k)/"
+    r"|dice\.com/(?:job-detail|jobs/detail)|monster\.com/job-openings|careerbuilder\.com/job/|simplyhired\.com/job/)", re.I)
+
+
 def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     """
     Apply deterministic sender-domain rules BEFORE the AI classification call.
@@ -1756,7 +1762,7 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
 
     # ── Bare LinkedIn job links — a student forwarding a posting, not an interview ─
     # Subject is just the URL, so there is no interview context for the model to find.
-    if subject.strip().startswith("http") and "linkedin.com/jobs/" in subject:
+    if subject.strip().startswith("http") and _BARE_JOB_LINK.search(subject):
         return "Job Alert"
 
     # ── Social media / entertainment notifications — never interview-related ─

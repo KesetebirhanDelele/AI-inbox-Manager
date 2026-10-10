@@ -362,6 +362,10 @@ def test_no_headers_falls_back_to_name_without_saving_a_gmail(monkeypatch, ident
     ("hello@mail.skool.com", "Your weekly digest", "Other"),
     ("student@gmail.com", "https://www.linkedin.com/jobs/view/4465614631/", "Job Alert"),
     ("student@gmail.com", "Fwd: https://www.linkedin.com/jobs/view/1/", None),   # not a bare link
+    ("student@gmail.com", "https://www.indeed.com/viewjob?jk=abc123", "Job Alert"),
+    ("student@gmail.com", "https://www.glassdoor.com/job-listing/data-analyst-JV_1.htm", "Job Alert"),
+    ("student@gmail.com", "https://www.dice.com/job-detail/abc", "Job Alert"),
+    ("student@gmail.com", "https://calendly.com/recruiter/30min", None),         # a link, but not a job posting
     ("hr@notskool.com", "Interview next week", None),                           # look-alike domain
     ("hr@skoolcity.com", "Interview next week", None),
     ("recruiter@acme.com", "Interview request: Data Analyst", None),             # real mail still goes to the model
