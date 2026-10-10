@@ -14,7 +14,10 @@ from datetime import datetime
 from database import get_db
 from auth import get_current_user
 from models import Approval, Email, Classification, UserSession
-from integration.email_actions import move_email, delete_email
+from integration.email_actions import move_email, delete_email  # noqa: F401  (delete_email stays importable; the action is switched off)
+
+DELETE_OFF = ("Delete is switched off: the system quarantines mail and never deletes it. "
+              "Move the email to the Other (not job related) folder instead.")
 from integration.email_classifier import reclassify_email
 from integration.summary_importer import add_to_whitelist
 
@@ -143,12 +146,7 @@ async def approve_classification(
             )
 
         elif request.action == "delete":
-            delete_email(
-                db=db,
-                email=email,
-                performed_by=user.username,
-                reason=f"Approved deletion: {request.notes or 'No notes'}"
-            )
+            raise HTTPException(status_code=400, detail=DELETE_OFF)
 
         elif request.action == "keep_inbox":
             # No action needed, just mark as approved
@@ -256,12 +254,7 @@ async def override_classification(
             )
 
         elif request.action == "delete":
-            delete_email(
-                db=db,
-                email=email,
-                performed_by=user.username,
-                reason=f"Overridden to {request.new_category}, deleted: {request.notes or 'No notes'}"
-            )
+            raise HTTPException(status_code=400, detail=DELETE_OFF)
 
         elif request.action == "keep_inbox":
             pass

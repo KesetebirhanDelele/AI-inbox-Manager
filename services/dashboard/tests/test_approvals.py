@@ -78,7 +78,7 @@ class TestApproveClassification:
         assert resp.status_code == 200
         mock_move.assert_called_once()
 
-    def test_approve_delete(self, client, db, auth_cookies):
+    def test_approve_delete_is_switched_off(self, client, db, auth_cookies):
         email = make_email(db)
         clf = make_classification(db, email, confidence=0.60)
         approval = make_approval(db, email, clf)
@@ -89,8 +89,11 @@ class TestApproveClassification:
                 json={"action": "delete"},
                 cookies=auth_cookies,
             )
-        assert resp.status_code == 200
-        mock_delete.assert_called_once()
+        assert resp.status_code == 400
+        assert "never deletes" in resp.json()["detail"]
+        mock_delete.assert_not_called()
+        db.refresh(approval)
+        assert approval.status == "pending"
 
     def test_approve_move_without_folder_fails(self, client, db, auth_cookies):
         email = make_email(db)
@@ -212,3 +215,16 @@ class TestOverrideClassification:
             cookies=auth_cookies,
         )
         assert resp.status_code == 404
+
+
+def test_move_reads_from_the_folder_the_email_is_in(db):
+    """Moves used to look only in INBOX, so mail filed in Spam Review / Needs Review could never be moved by hand."""
+    from unittest.mock import patch as _patch
+    from integration import email_actions
+    email = make_email(db)
+    email.current_folder = "Needs Review"
+    db.commit()
+    with _patch.object(email_actions, "IMAP_AVAILABLE", True), \
+            _patch.object(email_actions, "move_emails", return_value=1) as mock_move:
+        email_actions.move_email(db=db, email=email, target_folder="Job Alerts", performed_by="admin")
+    assert mock_move.call_args.kwargs["source_folder"] == "Needs Review"

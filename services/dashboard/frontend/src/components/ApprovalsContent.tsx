@@ -5,11 +5,22 @@ import { format } from 'date-fns';
 import type { Approval } from '../types';
 import EmailBodyPanel from './EmailBodyPanel';
 
+// The Gmail folders of the workbook. A person can move an email by hand to any of them; the "Other" choice sends it to Spam Review,
+// the pipeline's own route for mail that is not job related (its second pass parks it in Quarantine, nothing is deleted).
+const FOLDER_GROUPS: { label: string; options: { label: string; value: string }[] }[] = [
+  { label: 'Not job related', options: [{ label: 'Other (not job related)', value: 'Spam Review' }] },
+  { label: 'Jobs and applications', options: ['Job Alerts', 'Job Invite', 'Job Machine', 'Application Notification'].map((f) => ({ label: f, value: f })) },
+  { label: 'Actions and requests', options: ['More Information Request', 'Assessment', 'Google Sheet Request'].map((f) => ({ label: f, value: f })) },
+  { label: 'Outcomes', options: ['Offers', 'Rejections'].map((f) => ({ label: f, value: f })) },
+  { label: 'Interviews (no student notice is created by moving here)', options: ['Interview Request', 'Phone Screen (HR or Recruiter)', 'Client Screen', 'Technical Interview', 'Interview Rescheduled', 'Interview Cancelled', 'Interview follow up'].map((f) => ({ label: f, value: f })) },
+  { label: 'System and noise', options: ['LinkedIn Notification', 'Gmail Notification', 'Forwarded Emails', 'Basecamp', 'Account Recovery'].map((f) => ({ label: f, value: f })) },
+];
+
 const ApprovalsContent = () => {
   const queryClient = useQueryClient();
   const [selectedApproval, setSelectedApproval] = useState<Approval | null>(null);
-  const [action, setAction] = useState<'keep_inbox' | 'move_to_folder' | 'delete'>('keep_inbox');
-  const [targetFolder, setTargetFolder] = useState('Job Alerts');
+  const [action, setAction] = useState<'keep_inbox' | 'move_to_folder'>('keep_inbox');
+  const [targetFolder, setTargetFolder] = useState('Spam Review');
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -32,6 +43,7 @@ const ApprovalsContent = () => {
 
   const handleApprove = () => {
     if (!selectedApproval) return;
+    approveMutation.reset();
     approveMutation.mutate({
       id: selectedApproval.id,
       action,
@@ -202,7 +214,6 @@ const ApprovalsContent = () => {
                 >
                   <option value="keep_inbox">Keep in Inbox</option>
                   <option value="move_to_folder">Move to Folder</option>
-                  <option value="delete">Delete</option>
                 </select>
               </div>
 
@@ -214,11 +225,11 @@ const ApprovalsContent = () => {
                     onChange={(e) => setTargetFolder(e.target.value)}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                   >
-                    <option>Job Alerts</option>
-                    <option>Interview Confirmation</option>
-                    <option>Interview Scheduling</option>
-                    <option>Rejection</option>
-                    <option>More Information Request</option>
+                    {FOLDER_GROUPS.map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </optgroup>
+                    ))}
                   </select>
                 </div>
               )}
@@ -233,6 +244,12 @@ const ApprovalsContent = () => {
                   placeholder="Add any notes about this decision..."
                 />
               </div>
+
+              {approveMutation.isError && (
+                <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3" role="alert">
+                  This did not work: {(approveMutation.error as any)?.response?.data?.detail || 'the server could not complete the move. The email is still in the list.'}
+                </p>
+              )}
 
               <div className="pt-4 space-y-3">
                 <button

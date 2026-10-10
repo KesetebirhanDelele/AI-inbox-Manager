@@ -69,6 +69,7 @@ def move_email(
             email_address=settings.email_address,
             password=settings.email_password,
             email_moves=email_moves,
+            source_folder=email.current_folder or "INBOX",   # the mail is usually NOT in INBOX any more; looking only there made every move fail
             id_to_message_id=id_to_mid,
         )
 
