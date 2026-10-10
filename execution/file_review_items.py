@@ -63,10 +63,29 @@ def apply_plan(db, imap, items: List[Dict[str, Any]], now: datetime = None) -> D
     from label_verify_students import apply_items
 
     now = now or datetime.utcnow()
+
+    def close(it):
+        email = db.get(M.Email, it["email_id"])
+        approval = db.get(M.Approval, it["approval_id"])
+        if email is not None:
+            email.current_folder = it["target"] if not _already_there(it) else email.current_folder
+        if approval is not None:
+            approval.status = "approved"
+            approval.human_action = "move_to_folder"
+            approval.target_folder = it["target"]
+            approval.human_category = it["category"]
+            approval.reviewed_by = REVIEWER
+            approval.reviewed_at = now
+            approval.notes = "Filed by rule (execution/file_review_items.py)"
+
     by_target: Dict[str, List[Dict[str, Any]]] = {}
-    for it in items:
-        by_target.setdefault(it["target"], []).append(it)
     done = skipped = 0
+    for it in items:
+        if _already_there(it):
+            close(it)          # the pipeline already filed the email; only its review approval was still open
+            done += 1
+        else:
+            by_target.setdefault(it["target"], []).append(it)
     for target, group in by_target.items():
         result = apply_items(imap, group, move=True, label=target)
         moved = set(result["moved"])
@@ -74,21 +93,15 @@ def apply_plan(db, imap, items: List[Dict[str, Any]], now: datetime = None) -> D
             if it["email_id"] not in moved:
                 skipped += 1
                 continue
-            email = db.get(M.Email, it["email_id"])
-            approval = db.get(M.Approval, it["approval_id"])
-            if email is not None:
-                email.current_folder = target
-            if approval is not None:
-                approval.status = "approved"
-                approval.human_action = "move_to_folder"
-                approval.target_folder = target
-                approval.human_category = it["category"]
-                approval.reviewed_by = REVIEWER
-                approval.reviewed_at = now
-                approval.notes = "Filed by rule (execution/file_review_items.py)"
+            close(it)
             done += 1
     db.commit()
     return {"filed": done, "skipped": skipped}
+
+
+def _already_there(it: Dict[str, Any]) -> bool:
+    """The email already sits in the destination (Quarantine counts as past Spam Review): nothing to do in Gmail."""
+    return it["folder"] == it["target"] or (it["target"] == "Spam Review" and it["folder"] == "Quarantine")
 
 
 def main(argv=None) -> int:

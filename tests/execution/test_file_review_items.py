@@ -66,3 +66,15 @@ def test_apply_closes_the_approval_and_records_the_folder(db_models, monkeypatch
     assert (ap1.status, ap1.human_action, ap1.target_folder, ap1.reviewed_by) == ("approved", "move_to_folder", "Job Alerts", "rule-filing")
     assert db.query(M.Approval).filter_by(email_id=e2.id).one().status == "pending"            # not found in Gmail: left for a person
     assert db.get(M.Email, e2.id).current_folder == "INBOX"
+
+
+def test_items_already_filed_by_the_pipeline_only_get_their_approval_closed(db_models):
+    db, M = db_models
+    e = _pending(db, M, 1, "1 event happening tomorrow", sender="noreply@skool.com")
+    e.current_folder = "Quarantine"
+    db.commit()
+    items = fri.plan(db)
+    out = fri.apply_plan(db, imap=None, items=items)          # imap=None: Gmail must not be touched
+    assert out == {"filed": 1, "skipped": 0}
+    assert db.get(M.Email, e.id).current_folder == "Quarantine"
+    assert db.query(M.Approval).filter_by(email_id=e.id).one().status == "approved"
