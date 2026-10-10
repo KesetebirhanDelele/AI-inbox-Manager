@@ -228,15 +228,15 @@ const DashboardPage = () => {
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <div className="text-3xl font-bold text-green-600">
-                  {statsLoading ? <Skel /> : stats?.total_interview_requests || 0}
+                  {statsLoading ? <Skel /> : stats?.today_interview_requests || 0}
                 </div>
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-bold text-gray-800 truncate">
-                    Interview Requests
+                    Interview Requests Today
                   </dt>
-                  <dd className="mt-1 text-xs text-primary-600">Click to view all</dd>
+                  <dd className="mt-1 text-xs text-primary-600">See all interviews in Reports</dd>
                 </dl>
               </div>
             </div>
