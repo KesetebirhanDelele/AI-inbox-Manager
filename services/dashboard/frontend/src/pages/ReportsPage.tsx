@@ -1,22 +1,112 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import { apiClient } from '../api/client';
+import InterviewsPage from './InterviewsPage';
 
 const TABS = [
-  { id: 'weekly', label: 'Weekly Summary' },
-  { id: 'pipeline', label: 'Interview Pipeline' },
-  { id: 'students', label: 'Student Activity' },
-  { id: 'companies', label: 'Company Tracker' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'interviews', label: 'Interviews' },
+  { id: 'pipeline', label: 'Pipeline' },
+  { id: 'students', label: 'Students' },
+  { id: 'companies', label: 'Companies' },
+  { id: 'system', label: 'System' },
 ];
+
+// Sizes under 1 GB stay in MB; larger caps (the Hetzner disk budget) read better in GB.
+const formatStorage = (bytes: number | null | undefined): string => {
+  const mb = (bytes ?? 0) / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(mb < 100 ? 1 : 0)} MB`;
+};
+
+const PALETTE = ['#2563eb', '#16a34a', '#dc2626', '#f97316', '#8b5cf6', '#0891b2', '#ca8a04', '#db2777', '#4f46e5', '#059669', '#9333ea', '#ea580c'];
 
 const formatDate = (iso: string) => {
   const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
   return format(toZonedTime(d, 'America/Chicago'), 'MMM d, yyyy');
+};
+
+// ── Overview: this week, 7-day trend, category mix, offers goal ─────────────
+
+const OFFER_GOAL = 10;
+
+const Overview = () => {
+  const { data: trends } = useQuery({ queryKey: ['trends'], queryFn: () => apiClient.getTrends(7) });
+  const { data: categoryData } = useQuery({
+    queryKey: ['categoryBreakdown'],
+    queryFn: () => apiClient.getCategoryBreakdown(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)),
+  });
+  const { data: offers } = useQuery({ queryKey: ['offers'], queryFn: () => apiClient.getOffers(100) });
+
+  // Every category the classifier uses, biggest first; the long tail is grouped so the legend stays readable.
+  const sorted = [...(categoryData ?? [])].sort((a, b) => b.count - a.count);
+  const top = sorted.slice(0, 10);
+  const otherCount = sorted.slice(10).reduce((n, d) => n + d.count, 0);
+  const pieData: { category: string; count: number }[] = otherCount > 0 ? [...top, { category: 'All smaller categories', count: otherCount }] : top;
+  const total = pieData.reduce((n, d) => n + d.count, 0);
+
+  const central = (iso: string) => toZonedTime(new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z'), 'America/Chicago');
+  const thisMonth = format(toZonedTime(new Date(), 'America/Chicago'), 'yyyy-MM');
+  const monthOffers = (offers ?? []).filter((o: any) => o.received_date && format(central(o.received_date), 'yyyy-MM') === thisMonth).length;
+
+  return (
+    <div className="space-y-6">
+      <WeeklySummary />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="bg-gray-200 px-6 py-3 text-center">
+            <h2 className="text-base font-bold text-gray-800">Where mail went (last 30 days)</h2>
+          </div>
+          <div className="p-6">
+            {pieData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie data={pieData} dataKey="count" nameKey="category" cx="50%" cy="45%" innerRadius={60} outerRadius={95} paddingAngle={2}>
+                    {pieData.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v: number) => [`${v} (${((v / total) * 100).toFixed(1)}%)`, 'Count']} />
+                  <Legend iconType="circle" iconSize={10} formatter={(v) => <span style={{ fontSize: 11 }}>{v}</span>} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : <p className="text-sm text-gray-500 text-center py-12">No category data yet</p>}
+          </div>
+        </div>
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="bg-gray-200 px-6 py-3 text-center">
+            <h2 className="text-base font-bold text-gray-800">Daily trends (last 7 days)</h2>
+          </div>
+          <div className="p-6">
+            {trends?.trends?.length ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={trends.trends}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" fontSize={11} />
+                  <YAxis fontSize={11} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
+                  <Bar dataKey="total_emails" fill="#3b82f6" name="Total" />
+                  <Bar dataKey="interview_requests" fill="#10b981" name="Interviews" />
+                  <Bar dataKey="spam_deleted" fill="#ef4444" name="Quarantined" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : <p className="text-sm text-gray-500 text-center py-12">No trend data yet</p>}
+          </div>
+        </div>
+      </div>
+      <div className="bg-white shadow rounded-lg p-5">
+        <div className="flex justify-between text-sm font-medium text-gray-700 mb-2">
+          <span>Offers this month</span><span>{monthOffers} of {OFFER_GOAL}</span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min((monthOffers / OFFER_GOAL) * 100, 100)}%` }} />
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // ── Weekly Summary ─────────────────────────────────────────────────────────
@@ -58,24 +148,6 @@ const WeeklySummary = () => {
         </div>
       </div>
 
-      {data.top_companies.length > 0 && (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="bg-gray-200 px-6 py-3 text-center">
-            <h2 className="text-base font-bold text-gray-800">Top Companies This Week</h2>
-          </div>
-          <div className="p-6">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={data.top_companies} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" fontSize={11} />
-                <YAxis dataKey="company" type="category" width={160} fontSize={11} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#6366f1" name="Requests" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -129,7 +201,7 @@ const InterviewPipeline = () => {
             );
           })}
         </div>
-        <p className="text-xs text-gray-400 text-center mt-4">Percentages relative to total emails in database</p>
+        <p className="text-xs text-gray-400 text-center mt-4">All-time counts. Percentages are relative to total emails in the database.</p>
       </div>
     </div>
   );
@@ -264,6 +336,82 @@ const CompanyTracker = () => {
   );
 };
 
+// ── System: engineering numbers and run history ─────────────────────────────
+
+const System = () => {
+  const { data: kpi } = useQuery({ queryKey: ['engineeringKPIs'], queryFn: () => apiClient.getEngineeringKPIs() });
+  const { data: runs, isLoading } = useQuery({ queryKey: ['processingRuns', 25], queryFn: () => apiClient.getProcessingRuns(25) });
+  const cst = (iso: string) => format(toZonedTime(new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z'), 'America/Chicago'), 'MMM d, yyyy h:mm a');
+  const failColor = kpi == null ? 'text-gray-400' : kpi.failure_rate_7d === 0 ? 'text-green-600' : kpi.failure_rate_7d < 20 ? 'text-yellow-600' : 'text-red-600';
+  const pct = kpi?.db_storage_pct ?? 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white shadow rounded-lg p-5">
+          <div className="text-3xl font-bold text-emerald-600">{kpi ? `$${kpi.ai_cost_today_usd.toFixed(4)}` : '—'}</div>
+          <div className="text-sm font-bold text-gray-800 mt-1">AI cost today</div>
+          <div className="text-xs text-gray-500">GPT spend since midnight UTC</div>
+        </div>
+        <div className="bg-white shadow rounded-lg p-5">
+          <div className="text-3xl font-bold text-blue-600">{kpi?.avg_duration_seconds_7d != null ? `${kpi.avg_duration_seconds_7d}s` : '—'}</div>
+          <div className="text-sm font-bold text-gray-800 mt-1">Average run time (7 days)</div>
+          <div className="text-xs text-gray-500">{kpi ? `over ${kpi.run_count_7d} run${kpi.run_count_7d !== 1 ? 's' : ''}` : 'rolling average'}</div>
+        </div>
+        <div className="bg-white shadow rounded-lg p-5">
+          <div className={`text-3xl font-bold ${failColor}`}>{kpi ? `${kpi.failure_rate_7d}%` : '—'}</div>
+          <div className="text-sm font-bold text-gray-800 mt-1">Failure rate (7 days)</div>
+          <div className="text-xs text-gray-500">{kpi ? `${kpi.failed_run_count_7d} of ${kpi.run_count_7d} runs failed` : 'last 7 days'}</div>
+        </div>
+        {kpi?.db_storage_used_bytes != null && (
+          <div className="bg-white shadow rounded-lg p-5">
+            <div className="text-sm font-bold text-gray-800">Database storage</div>
+            <div className="text-xs text-gray-500 mt-1">{formatStorage(kpi.db_storage_used_bytes)} / {formatStorage(kpi.db_storage_cap_bytes)} ({pct}%)</div>
+            <div className="mt-3 h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+              <div className={`h-full rounded-full ${pct > 80 ? 'bg-red-500' : pct > 50 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div className="bg-gray-200 px-6 py-3 text-center">
+          <h2 className="text-base font-bold text-gray-800">Processing runs (last 25)</h2>
+        </div>
+        <div className="p-4 overflow-x-auto">
+          {isLoading ? <Spinner /> : runs && runs.length > 0 ? (
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Date / time (Central)</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Emails</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Interviews</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Organized</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Quarantined</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {runs.map((r, i) => (
+                  <tr key={r.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">{cst(r.run_timestamp)}</td>
+                    <td className="px-3 py-2 text-right text-gray-700">{r.total_emails}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-green-600">{r.interview_requests}</td>
+                    <td className="px-3 py-2 text-right text-gray-700">{r.organized}</td>
+                    <td className="px-3 py-2 text-right text-red-600">{r.spam_deleted}</td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${r.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{r.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <p className="text-sm text-gray-500 text-center py-8">No processing runs yet</p>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const Spinner = () => (
@@ -279,13 +427,16 @@ const Empty = ({ text }: { text: string }) => (
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 const ReportsPage = () => {
-  const [activeTab, setActiveTab] = useState('weekly');
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('tab') || 'overview';
+  const activeTab = TABS.some(t => t.id === requested) ? requested : 'overview';
+  const setActiveTab = (id: string) => setParams(id === 'overview' ? {} : { tab: id }, { replace: true });
 
   return (
     <div className="space-y-6">
       <div className="text-center">
         <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-        <p className="mt-1 text-sm text-gray-600">Analytics and insights across all email processing activity</p>
+        <p className="mt-1 text-sm text-gray-600">Looking back: how the week went, every interview, and how the system is running. What needs you today is on the Dashboard.</p>
       </div>
 
       {/* Tab bar */}
@@ -308,10 +459,12 @@ const ReportsPage = () => {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'weekly' && <WeeklySummary />}
+      {activeTab === 'overview' && <Overview />}
+      {activeTab === 'interviews' && <InterviewsPage embedded />}
       {activeTab === 'pipeline' && <InterviewPipeline />}
       {activeTab === 'students' && <StudentActivity />}
       {activeTab === 'companies' && <CompanyTracker />}
+      {activeTab === 'system' && <System />}
     </div>
   );
 };

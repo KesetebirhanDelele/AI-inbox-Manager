@@ -5,19 +5,11 @@ import { apiClient } from '../api/client';
 import { TYPE_LABELS } from '../constants/interviewTypes';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import CountdownTimer from '../components/CountdownTimer';
 
 const Skel = ({ w = 'w-16', h = 'h-8' }: { w?: string; h?: string }) => (
   <div className={`animate-pulse bg-gray-300 rounded ${w} ${h}`} />
 );
-
-// Sizes under 1 GB stay in MB (the Neon-era 512 MB cap); larger caps (e.g. the
-// Hetzner disk budget set via DB_STORAGE_CAP_MB) read better in GB.
-const formatStorage = (bytes: number | null | undefined): string => {
-  const mb = (bytes ?? 0) / (1024 * 1024);
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(mb < 100 ? 1 : 0)} MB`;
-};
 
 const DashboardPage = () => {
   const queryClient = useQueryClient();
@@ -42,15 +34,12 @@ const DashboardPage = () => {
       // Refresh all dashboard data
       queryClient.invalidateQueries({ queryKey: ['summaryStats'] });
       queryClient.invalidateQueries({ queryKey: ['processingRuns'] });
-      queryClient.invalidateQueries({ queryKey: ['categoryBreakdown'] });
-      queryClient.invalidateQueries({ queryKey: ['trends'] });
       queryClient.invalidateQueries({ queryKey: ['recentInterviews'] });
       queryClient.invalidateQueries({ queryKey: ['offers'] });
       queryClient.invalidateQueries({ queryKey: ['todayEmails'] });
       queryClient.invalidateQueries({ queryKey: ['upcomingInterviews'] });
       queryClient.invalidateQueries({ queryKey: ['reviewQueue'] });
       queryClient.invalidateQueries({ queryKey: ['inboxCount'] });
-      queryClient.invalidateQueries({ queryKey: ['engineeringKPIs'] });
       setTimeout(() => setRunResult(null), 8000);
     },
     onError: (error: any) => {
@@ -83,17 +72,6 @@ const DashboardPage = () => {
     staleTime: 0,
     refetchOnMount: 'always',
     refetchInterval: 5 * 60 * 1000, // auto-refresh every 5 minutes
-  });
-
-  // Stats charts data
-  const { data: categoryData } = useQuery({
-    queryKey: ['categoryBreakdown'],
-    queryFn: () => apiClient.getCategoryBreakdown(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)),
-  });
-
-  const { data: trends } = useQuery({
-    queryKey: ['trends'],
-    queryFn: () => apiClient.getTrends(7),
   });
 
   const { data: offers } = useQuery({
@@ -150,23 +128,7 @@ const DashboardPage = () => {
   const emailTrendPct = yesterdayCount > 0
     ? Math.round(((todayCount - yesterdayCount) / yesterdayCount) * 100)
     : null;
-
-  // Offers progress bar (monthly goal = 10)
-  const OFFER_GOAL = 10;
-  const currentMonthOffers = (offers ?? []).filter((o: any) => {
-    if (!o.received_date) return false;
-    return cstDay(o.received_date).slice(0, 7) === todayCST.slice(0, 7);
-  }).length;
-
-  // Sparkline data for This Week card
-  const sparklineData = (trends?.trends ?? []).slice(-7).map((d: any) => ({ v: d.total_emails }));
-
-  const { data: engKPIs } = useQuery({
-    queryKey: ['engineeringKPIs'],
-    queryFn: () => apiClient.getEngineeringKPIs(),
-    staleTime: 0,
-    refetchOnMount: 'always',
-  });
+  const lastRun = runs && runs.length > 0 ? runs[0] : null;
 
   return (
     <div className="space-y-6">
@@ -261,7 +223,7 @@ const DashboardPage = () => {
         })()}
 
         {/* Interview Requests */}
-        <Link to="/interviews" className="bg-gray-200 overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow">
+        <Link to="/reports?tab=interviews" className="bg-gray-200 overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow">
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
@@ -293,252 +255,34 @@ const DashboardPage = () => {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-bold text-gray-800 truncate">Offers Today</dt>
-                  <dd className="mt-1 text-xs text-gray-500">{currentMonthOffers}/{OFFER_GOAL} this month</dd>
-                </dl>
-              </div>
-            </div>
-            <div className="mt-2">
-              <div className="w-full bg-gray-300 rounded-full h-1.5">
-                <div
-                  className="bg-green-500 h-1.5 rounded-full transition-all"
-                  style={{ width: `${Math.min((currentMonthOffers / OFFER_GOAL) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* This Week */}
-        <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="text-3xl font-bold text-gray-600">
-                    {statsLoading ? <Skel /> : stats?.week_total_emails || 0}
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <dt className="text-sm font-bold text-gray-800">This Week</dt>
-                </div>
-              </div>
-              {sparklineData.length > 1 && (
-                <ResponsiveContainer width={70} height={36}>
-                  <LineChart data={sparklineData}>
-                    <Line type="monotone" dataKey="v" stroke="#6b7280" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Engineering KPIs */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-4">
-        {/* AI Cost Today */}
-        <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="text-3xl font-bold text-emerald-600">
-                  {engKPIs == null ? <Skel /> : `$${engKPIs.ai_cost_today_usd.toFixed(4)}`}
-                </div>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-bold text-gray-800 truncate">AI Cost Today</dt>
-                  <dd className="mt-1 text-xs text-gray-500">GPT spend since midnight UTC</dd>
+                  <dd className="mt-1 text-xs text-gray-500">Monthly goal is on Reports</dd>
                 </dl>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Avg Processing Duration (7-day) */}
-        <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
+        {/* Last run: one line; the full history and system numbers are on Reports > System */}
+        <Link to="/reports?tab=system" className="bg-gray-200 overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow">
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <div className="text-3xl font-bold text-blue-600">
-                  {engKPIs == null ? <Skel /> : engKPIs.avg_duration_seconds_7d != null ? `${engKPIs.avg_duration_seconds_7d}s` : '—'}
+                <div className={`text-3xl font-bold ${runsLoading || !lastRun ? 'text-gray-400' : lastRun.status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                  {runsLoading ? <Skel /> : lastRun ? (lastRun.status === 'success' ? 'OK' : 'Failed') : '—'}
                 </div>
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-bold text-gray-800 truncate">Avg Duration (7d)</dt>
-                  <dd className="mt-1 text-xs text-gray-500">
-                    {engKPIs ? `over ${engKPIs.run_count_7d} run${engKPIs.run_count_7d !== 1 ? 's' : ''}` : 'rolling average'}
+                  <dt className="text-sm font-bold text-gray-800 truncate">Last run</dt>
+                  <dd className="mt-1 text-xs text-gray-500 truncate">
+                    {lastRun ? `${formatDateCST(lastRun.run_timestamp)} · ${lastRun.total_emails} emails` : 'No run yet'}
                   </dd>
                 </dl>
               </div>
             </div>
           </div>
-        </div>
+        </Link>
 
-        {/* Failure Rate (7-day) */}
-        <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className={`text-3xl font-bold ${
-                  engKPIs == null ? 'text-gray-400'
-                  : engKPIs.failure_rate_7d === 0 ? 'text-green-600'
-                  : engKPIs.failure_rate_7d < 20 ? 'text-yellow-600'
-                  : 'text-red-600'
-                }`}>
-                  {engKPIs != null ? `${engKPIs.failure_rate_7d}%` : '—'}
-                </div>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-bold text-gray-800 truncate">Failure Rate (7d)</dt>
-                  <dd className="mt-1 text-xs text-gray-500">
-                    {engKPIs
-                      ? `${engKPIs.failed_run_count_7d} of ${engKPIs.run_count_7d} runs failed`
-                      : 'last 7 days'}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Database Storage — used vs DB_STORAGE_CAP_MB (default 512 MB =
-            Neon's free tier, which blocks new writes once full; on Hetzner it
-            is the disk budget). Hitting the cap doesn't interrupt email
-            processing itself (DB writes are best-effort), but the dashboard
-            would silently stop getting new data, so this is a reminder to
-            prune/upgrade before that happens. The days-to-full estimate was
-            removed on purpose (2026-09-29). */}
-        {engKPIs?.db_storage_used_bytes != null && (
-          <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-bold text-gray-800 truncate">Database Storage</dt>
-                    <dd className="mt-1 text-xs text-gray-500">
-                      {formatStorage(engKPIs.db_storage_used_bytes)}
-                      {' / '}
-                      {formatStorage(engKPIs.db_storage_cap_bytes)}
-                      {' ('}{engKPIs.db_storage_pct}%{')'}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-              <div className="mt-3 h-1.5 w-full rounded-full bg-gray-300 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${
-                    (engKPIs.db_storage_pct ?? 0) > 80 ? 'bg-red-500'
-                    : (engKPIs.db_storage_pct ?? 0) > 50 ? 'bg-yellow-500'
-                    : 'bg-green-500'
-                  }`}
-                  style={{ width: `${Math.min(engKPIs.db_storage_pct ?? 0, 100)}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Charts: Category Breakdown + Daily Trends — directly under stat cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Category Breakdown Donut Chart */}
-        {(() => {
-          const ALLOWED_CATEGORIES = [
-            'Offer',
-            'Rejection',
-            'Interview Request',
-            'Interview Schedule',
-            'Interview Confirmation',
-          ];
-          const CATEGORY_COLORS: Record<string, string> = {
-            'Offer':                  '#22c55e',  // green
-            'Rejection':              '#dc2626',  // red
-            'Interview Request':      '#2563eb',  // blue
-            'Interview Schedule':     '#f97316',  // orange
-            'Interview Confirmation': '#8b5cf6',  // purple
-          };
-          const filteredCategoryData = (categoryData ?? []).filter(d => ALLOWED_CATEGORIES.includes(d.category));
-          const total = filteredCategoryData.reduce((sum, d) => sum + d.count, 0);
-          return (
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              <div className="bg-gray-200 px-6 py-3 text-center">
-                <h2 className="text-base font-bold text-gray-800">Category Breakdown (Last 30 Days)</h2>
-              </div>
-              <div className="p-6">
-                {filteredCategoryData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={260}>
-                    <PieChart>
-                      <Pie
-                        data={filteredCategoryData}
-                        dataKey="count"
-                        nameKey="category"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={65}
-                        outerRadius={100}
-                        paddingAngle={3}
-                      >
-                        {filteredCategoryData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={CATEGORY_COLORS[entry.category] ?? '#6b7280'} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [`${value} (${((value / total) * 100).toFixed(1)}%)`, 'Count']} />
-                      <Legend
-                        iconType="circle"
-                        iconSize={10}
-                        formatter={(value) => <span style={{ fontSize: 11 }}>{value}</span>}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                    <svg className="h-12 w-12 mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                    </svg>
-                    <p className="text-sm font-medium">No category data available</p>
-                    <p className="text-xs mt-1">Data will appear after emails are processed</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Daily Trends */}
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="bg-gray-200 px-6 py-3 text-center">
-            <h2 className="text-base font-bold text-gray-800">Daily Trends (Last 7 Days)</h2>
-          </div>
-          <div className="p-6">
-            {trends && trends.trends && trends.trends.length > 0 ? (
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={trends.trends}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" fontSize={11} />
-                  <YAxis fontSize={11} />
-                  <Tooltip />
-                  <Legend wrapperStyle={{ fontSize: '12px' }} />
-                  <Bar dataKey="total_emails" fill="#3b82f6" name="Total" />
-                  <Bar dataKey="interview_requests" fill="#10b981" name="Interviews" />
-                  <Bar dataKey="spam_deleted" fill="#ef4444" name="Quarantined" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                <svg className="h-12 w-12 mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <p className="text-sm font-medium">No trend data available</p>
-                <p className="text-xs mt-1">Data will appear after emails are processed</p>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Quick Actions Banner */}
@@ -635,7 +379,7 @@ const DashboardPage = () => {
             </div>
           ) : (
             <p className="text-sm text-gray-500 text-center py-8">
-              No interview has a confirmed date in the next 7 days. Requests that do not state a date yet are on the Interviews page.
+              No interview has a confirmed date in the next 7 days. Requests that do not state a date yet are under Reports > Interviews.
             </p>
           )}
         </div>
@@ -693,11 +437,9 @@ const DashboardPage = () => {
                       <td className="px-3 py-2 text-gray-600 max-w-[180px] truncate" title={email.from_address || ''}>{email.from_address || '—'}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-                          email.category === 'Interview Request' ? 'bg-blue-100 text-blue-800' :
-                          email.category === 'Offer' ? 'bg-green-100 text-green-800' :
-                          email.category === 'Rejection' ? 'bg-red-100 text-red-800' :
-                          email.category === 'Interview Schedule' ? 'bg-orange-100 text-orange-800' :
-                          email.category === 'Interview Confirmation' ? 'bg-purple-100 text-purple-800' :
+                          /^(Offer|Offers)$/.test(email.category || '') ? 'bg-green-100 text-green-800' :
+                          /^(Rejection|Rejections)$/.test(email.category || '') ? 'bg-red-100 text-red-800' :
+                          /Interview|Screen/.test(email.category || '') ? 'bg-blue-100 text-blue-800' :
                           'bg-gray-100 text-gray-700'
                         }`}>
                           {email.category || '—'}
@@ -716,62 +458,6 @@ const DashboardPage = () => {
         </div>
       </div>
       )}
-
-      {/* Recent processing runs */}
-      <div className="grid grid-cols-1 gap-6">
-        {/* Recent Processing Runs */}
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="bg-gray-200 px-6 py-3 text-center">
-            <h2 className="text-base font-bold text-gray-800">Recent Processing Runs</h2>
-          </div>
-          <div className="px-4 py-5 sm:p-6">
-            {runsLoading ? (
-              <div className="space-y-2 py-4">
-                {[...Array(3)].map((_, i) => <Skel key={i} w="w-full" h="h-8" />)}
-              </div>
-            ) : runs && runs.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date / Time (CST)</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Emails</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Interviews</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Organized</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Quarantined</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {runs.map((run, idx) => (
-                      <tr key={run.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-900 font-medium">
-                          {formatDateCST(run.run_timestamp)}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-700">{run.total_emails}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-green-600">{run.interview_requests}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{run.organized}</td>
-                        <td className="px-3 py-2 text-right text-red-600">{run.spam_deleted}</td>
-                        <td className="px-3 py-2 text-center">
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                            run.status === 'success'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {run.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 text-center py-8">No recent processing runs</p>
-            )}
-          </div>
-        </div>
-      </div>
 
     </div>
   );

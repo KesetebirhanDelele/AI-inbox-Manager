@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import InterviewChecklist from '../components/InterviewChecklist';
 import EmailBodyPanel from '../components/EmailBodyPanel';
-import type { InterviewEventRecord, UpcomingInterview } from '../types';
+import type { InterviewEventRecord } from '../types';
 
 const NOTIF_STYLES: Record<string, string> = {
   sent: 'bg-green-100 text-green-800',
@@ -28,7 +28,6 @@ const NOTIF_LABELS: Record<string, string> = {
 type FilterTab = 'all' | 'decision' | 'notified' | 'cannot';
 
 const PAGE_SIZE = 25;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** "Notified", "Needs your decision", or why there is nothing to notify yet. */
 const notificationOf = (e: InterviewEventRecord): { label: string; cls: string; decide: boolean } => {
@@ -48,7 +47,8 @@ const notificationOf = (e: InterviewEventRecord): { label: string; cls: string; 
   return { label: 'No draft', cls: 'bg-gray-100 text-gray-700', decide: false };
 };
 
-const InterviewsPage = () => {
+/** `embedded` = shown as a tab inside Reports, which already has the page title. */
+const InterviewsPage = ({ embedded = false }: { embedded?: boolean }) => {
   const [expandedEventId, setExpandedEventId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -58,13 +58,6 @@ const InterviewsPage = () => {
   const { data: events, isLoading } = useQuery({
     queryKey: ['interviewEvents'],
     queryFn: () => apiClient.getInterviewEvents(),
-    staleTime: 0,
-    refetchOnMount: 'always',
-  });
-
-  const { data: upcomingInterviews } = useQuery({
-    queryKey: ['upcomingInterviews'],
-    queryFn: () => apiClient.getUpcomingInterviews(),
     staleTime: 0,
     refetchOnMount: 'always',
   });
@@ -107,20 +100,6 @@ const InterviewsPage = () => {
     });
   }, [events, searchQuery, typeFilter, activeTab]);
 
-  // Upcoming: interviews with a confirmed date in the next 7 days; later ones are counted, not hidden.
-  const { thisWeek, later } = useMemo(() => {
-    const now = Date.now();
-    const soon: UpcomingInterview[] = [];
-    let after = 0;
-    for (const iv of upcomingInterviews ?? []) {
-      const t = iv.interview_date ? new Date(`${iv.interview_date}T23:59:59`).getTime() : NaN;
-      if (Number.isNaN(t)) continue;
-      if (t - now <= 7 * DAY_MS) soon.push(iv);
-      else after += 1;
-    }
-    return { thisWeek: soon, later: after };
-  }, [upcomingInterviews]);
-
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
@@ -146,53 +125,11 @@ const InterviewsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Interviews</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Every interview found in the inbox, with its student and notification status. Click a row to see the process
-          checklist. Approve or reject student notifications under Review.
-        </p>
-      </div>
-
-      {/* Upcoming interviews: always shown, so an empty list is explained */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="bg-gray-200 px-6 py-3 flex items-center justify-between">
-          <h2 className="text-base font-bold text-gray-800">Upcoming interviews (next 7 days)</h2>
-          {later > 0 && <span className="text-xs text-gray-600">{later} more later</span>}
-        </div>
-        <div className="px-4 py-4 sm:p-6">
-          {thisWeek.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    {['Student', 'Company', 'Position', 'Date', 'Time', 'Format'].map((h) => (
-                      <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {thisWeek.map((iv) => (
-                    <tr key={iv.interview_event_id}>
-                      <td className="px-3 py-2 font-medium text-gray-900">{iv.student_name || 'Unknown'}</td>
-                      <td className="px-3 py-2 text-gray-700">{iv.company_name || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{iv.position || '—'}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{iv.interview_date}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{[iv.interview_time, iv.interview_timezone].filter(Boolean).join(' ') || '—'}</td>
-                      <td className="px-3 py-2 capitalize">{iv.interview_format || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500 text-center py-4">
-              No interview has a confirmed date in the next 7 days. Interview requests that do not state a date yet appear
-              in the list below.
-            </p>
-          )}
-        </div>
-      </div>
+      {!embedded && <h1 className="text-2xl font-bold text-gray-900">Interviews</h1>}
+      <p className="text-sm text-gray-600">
+        Every interview found in the inbox, with its student and notification status. Click a row to see the process
+        checklist. Approve or reject student notifications under Review. Interviews coming up in the next 7 days are on the Dashboard.
+      </p>
 
       {/* All interviews */}
       <div className="bg-white shadow rounded-lg overflow-hidden">

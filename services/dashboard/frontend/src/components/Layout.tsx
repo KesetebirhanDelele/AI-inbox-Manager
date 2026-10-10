@@ -1,13 +1,22 @@
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import CountdownTimer from './CountdownTimer';
 
 const Layout = () => {
   const { user, logout } = useAuth();
+  const location = useLocation();
+  // Same data the Review screen uses: tells every page when the student-notification flow is only logging.
+  const { data: queue } = useQuery({
+    queryKey: ['reviewQueue', false],
+    queryFn: () => apiClient.getReviewQueue(false),
+    refetchInterval: 5 * 60 * 1000,
+  });
+  const showShadowBanner = !!queue?.escalation_enabled && !queue?.delivery_live && location.pathname !== '/review';
 
   const navigation = [
     { name: 'Dashboard', path: '/' },
-    { name: 'Interviews', path: '/interviews' },
     { name: 'Reports', path: '/reports' },
     { name: 'Review', path: '/review' },
     { name: 'Settings', path: '/settings' },
@@ -99,6 +108,11 @@ const Layout = () => {
       </nav>
 
       {/* Main content */}
+      {showShadowBanner && (
+        <div className="bg-red-50 border-b border-red-300 text-red-800 text-sm px-4 py-2 text-center">
+          <strong>Shadow mode:</strong> nothing is delivered to students yet. "Notified" and "Sent" numbers on these pages mean the plan was logged, not that a student was reached.
+        </div>
+      )}
       <main className="mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Outlet />
       </main>

@@ -87,6 +87,18 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: Dashboard = act today, Reports = look back (Kes: "Option C ... do it now")
+
+Redundancy review found the same lists and numbers on Dashboard, Reports and Interviews. Consolidated (frontend only, no API or notification change):
+- **Dashboard** keeps what needs action today: Run Now, 4 tiles (Emails Today, Interview Requests, Offers Today, Last run), approvals and student-notification banners, the ONE Upcoming Interviews table, Emails Processed Today. Removed from it: This Week card, 7-day chart, category donut, engineering KPIs, runs table.
+- **Reports** now has tabs (URL `?tab=`): Overview (weekly tiles, category mix with the real categories, 7-day trend, offers goal), Interviews (the old Interviews page, now embedded), Pipeline, Students, Companies, **System** (AI cost, run time, failure rate, database storage, last 25 runs).
+- **Nav:** the Interviews item is gone; `/interviews` and `/interview-events` redirect to `/reports?tab=interviews`. The duplicate Upcoming table on the Interviews page is removed.
+- **Shadow banner** (red) now shows on every page except Review (which has its own) while escalation is on and delivery is not live.
+- Stale five-category list on the donut and category chips replaced (donut shows top 10 real categories, rest grouped).
+- Dropped: the weekly "Top Companies" chart (the Companies tab covers it, all-time).
+- **Deferred:** week/all-time switch for Pipeline and Companies (needs API change); Students "Notified/Pending" still counts the old draft flow, not escalation sequences (needs API change, do after live testing); Notifications report once real notices flow.
+- Files: `DashboardPage.tsx`, `ReportsPage.tsx`, `InterviewsPage.tsx`, `Layout.tsx`, `App.tsx`. Checked in a real browser locally (all tabs, redirects, no console errors); type check and build pass.
+
 ### 2026-10-10: health check understands shadow mode; interview-type re-filing switched LIVE (Kes: "proceed for both")
 
 Kes got "UNHEALTHY: 3 problems" at 07:30 UTC. Cause of each: (1) "1 draft approved over 60 minutes ago but never sent" = Fikru Cheklie's draft: in shadow mode nothing is delivered, so a draft never reaches "sent" (false alarm); (2) "3 attempts failed" = his three email attempts, "no GHL contact matches this student's email" (real; the first reaches the approver as a "Cannot reach" alert, planned: simulation S10); (3) "3 of 8 events used the fallback label" = three real interviews classified "Interview Confirmation" (a retired category that skips the sub-classifier by design, label "confirmed"): not the sub-classifier failing (10 of 102 events in 30 days did this).
