@@ -1780,6 +1780,16 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     if from_addr.strip() == "info@school.colaberry.com":
         return "Other"
 
+    # ── OpenAI account mail (Kes 2026-10-10): "Check your route before you go" and similar, never job-related. Exact address only. ──
+    if from_addr.strip() == "noreply@email.openai.com":
+        return "Other"
+
+    # ── Confirming a job-alert subscription ("confirm that you agree to receive: Job Alerts") ──
+    # The email talks about job alerts but is a consent step, not a job posting and not an interview. Needs the consent wording AND no interview wording.
+    if (re.search(r"\bjob alerts?\b", body) and re.search(r"\b(confirm|opt[- ]?in|subscribe|agree to receive)\b", body)
+            and not re.search(r"\b(interview|screening|phone screen|availability|schedule a|reschedul)", body + " " + subject)):
+        return "Job Alert"
+
     # ── Marketing and newsletter senders — never job-related ──────────────────
     # 2026-10-10: Kes asked for these to classify themselves. Checked on production: 0 interview events ever from any of them (65, 221, 17, 9 mails).
     # "Other" goes to Spam Review, then Quarantine on the next run; nothing is deleted.

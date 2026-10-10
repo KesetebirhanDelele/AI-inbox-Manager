@@ -87,6 +87,12 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: OpenAI account mail is Other; job-alert subscription confirmations are Job Alerts (Kes: "should have been moved to other already")
+
+- **Why they were in review at all:** the AI answered "Other" at only 50 to 65% confidence, and an "Other" below 70% (but above 0) is queued for a person by design (`needs_human_review`); only exact 0.0 "Other" files itself. Rules skip that step, so `noreply@email.openai.com` (exact address) now returns `Other` before the AI is asked.
+- **Does Inbox Genius read the body? Yes:** the classifier gets the subject and the first 1,500 characters of the body, and the deterministic rules see the first 500. The NOV "Confirm Your Options" mail was missed because the Job Alert definition only described digests, so the model had no class for "confirm that you agree to receive Job Alerts". Fixed twice: a prompt line (job-alert subscriptions, "confirm your options", opt-ins are Job Alerts) and a narrow rule (body says job alert(s) AND confirm/opt-in/subscribe/agree to receive AND no interview wording). Not a sender rule on purpose: the same Oracle Recruiting sender also sends real interview mail (tested that the rule leaves it alone).
+- **Open decision for Kes:** "Other" at 50 to 69% confidence still goes to a person. Auto-filing it (to Spam Review, then Quarantine, reversible) would empty most of the review list but trades away the safety net for a real mail the AI mislabelled. Not changed.
+
 ### 2026-10-10: Kes's test mail removed from Classification review (data only, no code)
 
 Kes had already deleted his test emails (sent from kes@colaberry.com) from the inbox. The 7 still open in Classification review were closed as `rejected` (reviewed_by "kes (test mail removed)", note says why); Gmail untouched. No student-notification cards were involved (0). 28 emails ever came from that address; only the 7 open review items were changed. Review list then held 57 pending.

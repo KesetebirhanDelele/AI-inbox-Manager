@@ -149,6 +149,7 @@ You are an AI classifier for an automated inbox management system that processes
 **9. Job Alert**
 - **Job Alert vs Job Invite**: Job Alert = automated, bulk, recurring digest or "jobs near you" list from a platform or system (many listings, not about this candidate). Job Invite = a recruiter or staffing firm writing about ONE specific role (location, contract/W2, rate, "send your resume"). Neither is an interview.
 - **Automated job posting notification - NOT a personal interview request**
+- **Job-alert subscriptions**: an email asking the reader to confirm, update or opt in to receive job alerts or recruiting marketing ("confirm your options", "agree to receive: Job Alerts") is a Job Alert. It is a subscription step, not an interview and not "Other".
 - **SENDER RULE**: If the sender email domain is @indeed.com, @jobleads.com, @ziprecruiter.com, @glassdoor.com, @monster.com, @dice.com, @careerbuilder.com, @simplyhired.com, @lensa.com, @linkedin.com (job digest), or any job board aggregator → ALWAYS "Job Alert" regardless of subject content
 - Signals: "jobs matching your criteria", "new opportunities", "job alert", "jobs just posted", job recommendations, hiring alerts, "X more jobs"
 - Confidence: Very High if from job board domain; High if job alert language present

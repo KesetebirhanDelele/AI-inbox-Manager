@@ -471,3 +471,30 @@ def test_real_interview_mail_is_not_treated_as_self_sent():
     assert pre_classify_by_sender(employer) is None
     staff = {"sender_email": "c_interviews@colaberry.com", "subject": "x", "to_addresses": ["c_interviews@colaberry.com"]}
     assert pre_classify_by_sender(staff) is None                  # Colaberry's own address is never "self-sent"
+
+
+NOV_BODY = ("View in Browser Hello Omolola, One final step to update your options. Please read and confirm below. You agree that NOV may collect, "
+            "use and disclose your personal data which you have provided in this form, for providing job alerts and recruiting marketing material "
+            "that you have agreed to receive. Click the below link to confirm that you agree to receive: Job Alerts (CX_4001) Confirm your options")
+
+
+def test_openai_account_mail_is_other_and_nothing_else_from_openai():
+    from process_inbox_auto import pre_classify_by_sender
+    assert pre_classify_by_sender({"sender_email": "noreply@email.openai.com", "subject": "Check your route before you go"}) == "Other"
+    assert pre_classify_by_sender({"sender_email": "recruiting@openai.com", "subject": "Interview next week"}) is None   # only that address
+
+
+def test_job_alert_subscription_confirmation_is_a_job_alert():
+    from process_inbox_auto import pre_classify_by_sender
+    mail = {"sender_email": "egay.fa.sender@workflow.email.us-ashburn-1.ocs.oraclecloud.com", "subject": "NOV Careers : Confirm Your Options", "body_content": NOV_BODY}
+    assert pre_classify_by_sender(mail) == "Job Alert"
+
+
+def test_the_consent_rule_never_swallows_an_interview():
+    from process_inbox_auto import pre_classify_by_sender
+    same_sender = "egay.fa.sender@workflow.email.us-ashburn-1.ocs.oraclecloud.com"
+    interview = {"sender_email": same_sender, "subject": "NOV Careers: interview availability",
+                 "body_content": "Please confirm your availability for a phone screen. You can also sign up for job alerts."}
+    assert pre_classify_by_sender(interview) is None
+    plain = {"sender_email": same_sender, "subject": "Update", "body_content": "We have job alerts for you."}   # no confirm/opt-in wording
+    assert pre_classify_by_sender(plain) is None
