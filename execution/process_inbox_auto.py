@@ -402,6 +402,9 @@ def import_email_to_db(email_data: Dict[str, Any], classification: Dict[str, Any
         return None
 
 
+OTHER_NO_REVIEW_CONFIDENCE = 0.50
+
+
 def needs_human_review(category: str, confidence: float) -> bool:
     """
     True when a classification should land in the dashboard approvals queue.
@@ -415,6 +418,10 @@ def needs_human_review(category: str, confidence: float) -> bool:
     if confidence >= ROUTING_CONFIDENCE_THRESHOLD:
         return False
     if category == "Other" and confidence <= 0.0:
+        return False
+    # Kes 2026-10-10: "Other" at OTHER_NO_REVIEW_CONFIDENCE or more needs no person. The pipeline has already parked that mail in Spam Review
+    # (then Quarantine), reversibly, so queueing it only buried the list (about 100 of the 126 open items). A weak "Other" below it still goes to a person.
+    if category == "Other" and confidence >= OTHER_NO_REVIEW_CONFIDENCE:
         return False
     return True
 
