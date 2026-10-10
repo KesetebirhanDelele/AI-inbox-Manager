@@ -17,73 +17,58 @@ Newest first.
 
 ---
 
-## RESUME HERE (state at the end of 2026-10-04; read this first after a compact)
+## RESUME HERE (state at the end of 2026-10-09 / early 2026-10-10; read this first after a compact)
 
-**One-line state:** InboxGenius is live on Hetzner (`master` == `origin` == server). The student-notification feature (call + text + email, follow-ups until the student
-acknowledges) is BUILT and DEPLOYED but still SWITCHED OFF for real students: escalation disabled, every channel a dry run, GHL writes in shadow. The voice call path is
-PROVEN on one live call to Kes's own contact. What remains is mostly testing, a few GHL settings, and people tasks. Older detail is in the dated entries below
-(newest first) and in `directives/student-notification-escalation.md`, `docs/test-plan-student-notifications.md`, `docs/voice-agent-outbound-interview-prompt.md`,
-`docs/ghl-conversations-and-calls.md`, `docs/use-cases.html`.
+**One-line state:** InboxGenius is live on Hetzner (`master` == `origin` == server; check with `git rev-parse --short master` and `/opt/ai-inbox-manager/.deployed_commit`). The student-notification flow (call + text + email,
+follow-ups until the student confirms) is BUILT, deployed and ON IN SHADOW: escalation enabled, channels `ghl`, but NO `GHL_WRITE_*` switch is set (Kes, 2026-10-10: "keep production in shadow mode for now"), so the app only
+LOGS what it would send and nothing reaches a student. The old one-email Approve is OFF. Nothing has been approved or sent to a real student. Detail: the dated log right below this block, `directives/student-notification-escalation.md`,
+`docs/test-plan-student-notifications.md`, `docs/voice-agent-outbound-interview-prompt.md`, `docs/use-cases.html` (artifact https://claude.ai/artifact/FRzyZVP1uBnsvMPEViEZiw; not yet updated for the plan-stops-at-interview rule).
 
-### Done and live (production)
+### State of production
 | Area | State |
 |---|---|
-| Pipeline fixes | Interview events for every interview-related email (+ backfill of 16); email bodies repaired (31); the faulty dashboard IMAP sync deleted; student identified from the delivery Gmail (greeting name = display name) |
-| Approval screen | Review > Student notifications: contact details, real-interview check, previews, verify-the-student step, Approve/Reject/Edit; Interviews page merged with the old Events Report; Reports/Dashboard/Settings cleaned of redundant tiles/tabs |
-| Roles (Settings page, database) | escalation = jackie@colaberry.com; approver AND callback owner = robelyn@colaberry.com; no person is named in the code (a test enforces it); pilot limit 3 |
-| Alerts | stale drafts (2 business hours) -> escalation role, host cron every 15 min (`/etc/cron.d/inboxgenius-stale`); callbacks -> callback owner, overdue after 1 business hour -> escalation role (cron every 5 min, `/etc/cron.d/inboxgenius-callbacks`) |
-| Run Now | works in production (request file + one-minute host watcher `/etc/cron.d/inboxgenius-runnow`), proven live |
-| Server GHL settings | `GHL_API_KEY`, `GHL_LOCATION_ID`, `GHL_RECEPTIONIST_AGENT_ID` in the server `.env` (read use; `GHL_WRITE_MODE` unset = shadow, so nothing can be written or sent) |
-| Business hours | Mon-Fri 09:00-17:00 America/Chicago (confirmed by Kes) |
+| Mailbox folders | Follow Ali's "Email Management - Labels" workbook (22 folders) + Needs Review / Quarantine / Spam Review. "More Information Request" keeps its name (3,000+ mails). Kes renamed/merged the Gmail labels by hand (Offers, Rejections, Interview follow up ...). Left alone on purpose: Position on hold, Potential Scam, Recruiter Connect, Received Resume, Interview Confirmation / Final / First Interview Scheduled (re-file by type once `CATEGORY_REMAP_MODE=live`, after about a week of shadow labels) |
+| Classification | Sender rules match subdomains (rules now fire on 55% of mail, was 26%) and cover Basecamp and more job boards (incl. job-assist-now.com, job-matches.com); new categories Technical Interview and Interview Follow-up; Client Screen and Technical Interview create events; Job Machine creates one only for real interview notices; Interview Request must be a DIRECT interview offer (a job posting, even "Immediate Interview Role", is a Job Invite); Job Alert = automated digest, Job Invite = a recruiter writing about ONE role; Assessment notice wording approved (a test, not an interview; reply "done"); retired categories remapped in SHADOW |
+| Approval screen (Review) | Tabs: Student notifications (only what can be decided today), **Verify students (N)** (not identified or not verified), Classification review. Card shows when the email arrived. Mail older than 14 days only under "Show finished". Teams/Zoom links no longer flagged as tracking. Approve refuses: no student, no contact, unverified student, an interview that already happened, the pilot limit (3), and the one-email path (off) |
+| Drafts | 96 rejected and 1 pending (draft 100) after the cleanup of 2026-10-09 (reasons saved on each; nothing deleted; reopen = set `email_status` back to `draft`). Draft 100 (Fikru Cheklie, Focus GTS, Mon 2026-10-12 11:00 EDT) was reopened after Kes verified him |
+| Verify Student (Gmail) | Label on the original emails of students that had to be guessed (new mail: in place; 9 older ones moved; `execution/label_verify_students.py`); 9 job-posting emails were also put there by the backfill and should be tidied (decision pending); 5 stub events have no Gmail message (in Trash) |
+| Notification flow (shadow) | `NOTIFY_ESCALATION_ENABLED=true`, `NOTIFY_CHANNEL_EMAIL/SMS/CALL=ghl`, `GHL_WRITE_*` unset; 5-minute host cron `/etc/cron.d/inboxgenius-notify` (log `/opt/ai-inbox-manager/logs/notify_tick.log`); `GHL_CONVERSATIONS_API_KEY` (read-only) on the server; the plan STOPS AT THE INTERVIEW (no notices after it, final text+email 2 h before for short notice, past interviews refused); 0 sequences exist |
+| Alerts | Stale-draft alert is OFF (cron moved to `/opt/ai-inbox-manager/disabled-cron/`, one `mv` to switch back on). Callback alerts ON (cron every 5 min): the callback owner's alert and the escalation role's overdue email both carry why the student called, their interviews and what the app already sent them |
+| Roles | escalation = jackie@colaberry.com; callback owner = robelyn@colaberry.com; **approver is TEMPORARILY kes@colaberry.com** (so rehearsal alerts do not reach Rob): RESTORE robelyn@colaberry.com after the rehearsal. Rob checks only her email for now (callback alerts); Kes verifies everything in the app and wants timed reminders |
+| Tests | 868 root + 229 dashboard. Tests can no longer send email (autouse guard in both `conftest.py`); `execution/simulate_notifications.py` (13 made-up students, 29 checks) guards the cadence |
 
 ### What remains (in order)
-1. **Kes, GHL (outbound agent):** confirm the saved prompt, custom AI disclosure ("Hi <first>, this is Colaberry's AI assistant calling about your interview. You can say "stop calling" at any time.") and one-line welcome
-   message ("Am I speaking with <first>?"); add an action so a STOP request tags the contact `do not call` (not built; our own app already remembers a STOP per channel).
-2. **Kes, GHL (AI Receptionist):** paste the NEW callbacks wording (take name + best number, "within one business hour during working hours", never offer to call back; the screenshot still showed the old "shortly"
-   text). The optional "Update contact field" action is NOT needed (the app reads the call time from the call log); remove it or its field if unused.
-3. **Callback test (Kes):** one callback from his phone ("I'm returning a call about an interview"). It emails the callback owner (Rob) a REAL alert: tell her first, or temporarily put Kes's own email on the callback
-   owner role in Settings and restore it after. Then check with Claude how the call reads in the log (detection is UNPROVEN: 0 of 153 earlier receptionist calls mentioned an interview).
-4. **Call tests with Kes's phone (GHL: ONE call per number per day):** Mon 2026-10-05 09:00 EDT greeting + a "yes" (check the app reads it as confirmed: `python execution/ghl_test_call.py --email <kes> --send` then `--readback`);
-   text test and email test the same day (`--channel sms|email --send`); wrong person, voicemail, STOP on three separate days or with a second number. Plan: `docs/test-plan-student-notifications.md`.
-5. **Server shadow rehearsal:** `NOTIFY_CHANNEL_EMAIL/SMS/CALL=ghl`, `GHL_WRITE_MODE=shadow`, `NOTIFY_ESCALATION_ENABLED=true`; install the 5-minute host cron for `execution/notification_tick.py` (NOT installed);
-   read the `[GHL shadow]` log lines; then a human approves the three `GHL_WRITE_*` switches. Nothing is written until then.
-6. **Pilot (live):** the approver approves 3 notices by hand; candidates with a phone number and no verification step: Rutendo Bwerazuva, Senayit Berhane, Aisha Hobbs (only 4 of 19 students have a phone). Then lift the pilot limit
-   on Settings if it runs clean. Ali agreed to this order. Students have consented (Kes, 2026-10-04): note where that is recorded.
-7. **Rob's tasks:** verify the 11 students the pipeline created from a Gmail (orange "Verify who this student is" box; trace them in the roster sheet/Drive, correct name/phone/email); trace candidates who may have changed email.
-8. **Data left behind:** 208 stub emails (no body/sender/event; 158 with no Message-ID) from the old sync were NOT deleted (decide with Rob/Ali); the roster file `config/students.py` is overwritten by every deploy
-   (the pipeline auto-adds students into it): the roster should live in the database.
-9. **Not built:** the GHL `do not call` tag action; a Google-Sheet roster lookup (Kes to say where the roster sheet lives and share it with the service account); the primary classifier mislabels application notices
-   ("Thank you for applying") as "Interview Cancelled" (6 seen); "In Inbox"-style sync is gone for good; a backup escalation holder (Ali: escalation is only one person).
-10. **Parked:** who may undo a STOP request (Ali has not answered; Kes: leave for now); AI reading of replies stays in SHADOW until 2026-10-16 and needs `REPLY_AI_MODE=live`; use-case HTML/artifact not yet updated for roles,
-    callbacks, verification and the merged pages (artifact https://claude.ai/artifact/FRzyZVP1uBnsvMPEViEZiw, tracked copy `docs/use-cases.html`).
+1. **Fikru Cheklie, interview Mon 2026-10-12 11:00 EDT** (verified, no phone on file): in shadow the app delivers nothing, so he must be told by hand (his Gmail fcheklie@gmail.com). His reopened draft (100) can serve as the real-case shadow rehearsal (Approve = logs only).
+2. **Monday 2026-10-12, staff test** (3 Colaberry staff with GHL contacts; Kes gives names, email, phone, consent): shadow first (read `notify_tick.log`), then Kes approves the three `GHL_WRITE_*` switches AFTER validating, then live tests. GHL allows ONE call per number per day, so wrong person / voicemail / STOP need separate days. Each staff member needs a student record + interview event (no "fake account tool", Kes's decision).
+3. **Live tests on Kes's own contact once shadow looks right:** greeting re-test + "yes" read-back (`python execution/ghl_test_call.py --email <kes> --send` then `--readback`), text and email tests, ONE test callback to the AI receptionist (detection still unproven on a real callback; put Kes's email on the callback-owner role first).
+4. **Kes, GHL:** add the action that tags a stopped contact `do not call` (not built; the app already remembers STOP per channel); confirm the outbound prompt, custom AI disclosure and one-line welcome.
+5. **Decisions open:** pause follow-ups after a "needs help" reply (the simulation shows they continue for four days); hold emails at night (an approval at 10 PM sends emails at 10 PM, 12 AM, 2 AM; Ali's rule says email any time); tidy the 7 job postings out of the Verify Student label; audit Job Invite (17 of 40 sampled were really Job Alerts); whether to build a "Told by hand" button (Kes: not now, revisit if the flow has not started by about 20 Oct or he rejects many cards); a backup escalation holder; who may undo a STOP (parked).
+6. **Cleanup and reminders:** click "Called back" on the Oct 5 unknown-caller card; 5 students still unverified (Kenya, Olukayode, Nabour, Shahadalijawad, Priyan); Gmail label is not removed automatically when a student is verified; the four Qs to Ali were "considered resolved" by Kes but Claude never saw the answers: do NOT delete the 208 stub emails or change the pilot students without Kes confirming; AI reading of replies stays in shadow until 2026-10-16; the roster file `config/students.py` is overwritten by every deploy (move it to the database); the primary classifier still mislabels some application notices.
+7. **Emails drafted in Gmail (Claude never sends):** Ali (4 questions, sent by Kes), Rob (alerts and folder list), Rob ("Verify Student" label, sent by Kes), Jackie (callback escalation incl. what the email contains). Check which were sent before writing follow-ups.
 
 ### How to work here (hard-won)
-- Branch from `master` -> tests (`python -m pytest tests -q --no-cov`, `python -m pytest services/dashboard/tests -q --no-cov`) -> fast-forward merge -> `git push origin master` -> delete branch -> deploy -> sync check
-  (tree clean, master == origin, `.deployed_commit` == master). **Frontend changes need `scripts/deploy_hetzner.sh --build-web`** (a plain deploy leaves the old screens); the deploy refuses minutes 00-11 of an even UTC hour.
-- Prove things yourself: run the stack locally (`docker compose up -d --build api frontend` in `services/dashboard`; login admin/admin123) and drive it with Playwright; query production with aggregates only (no student data
-  in output); never print secrets. Long shell heredocs with quotes break: write files with the Write tool and run patch scripts.
-- A health-check run EMAILS Kes unless `ALERT_EMAIL_TO=` is blanked. A dry run must never edit `config/students.py` (the pipeline's name lookup can auto-add students by rewriting it).
-- Roles, not people: addresses come from the Settings page (`execution/roles.py`); never write a person's name or address into code.
+- Branch from `master` -> tests (`python -m pytest tests -q --no-cov`, `python -m pytest services/dashboard/tests -q --no-cov`) -> fast-forward merge -> `git push origin master` -> delete the branch -> **deploy FROM master**
+  -> sync check (tree clean, master == origin, `.deployed_commit` == master). **`scripts/deploy_hetzner.sh` deploys the CURRENT checkout**: it once deployed a feature branch (2026-10-09); always `git checkout master` first.
+  Frontend changes need `--build-web`; the deploy refuses minutes 00-11 of an even UTC hour.
+- Settings reach the containers only through the repo `.env` loaded with `load_dotenv` (`printenv` in a container is misleading: the API HAS the SMTP login). After changing an import path, grep every `patch(...)` target for the old path.
+  A test that reaches an unmocked send emails for real (it did, 4 times): the conftest guard now fails such a test.
+- Prove things yourself: local stack (`docker compose up -d --build api frontend` in `services/dashboard`, admin/admin123) + Playwright; query production with aggregates (no student data in output); never print secrets. Production writes and mailbox changes need
+  Kes's explicit go and are sometimes blocked by the permission system: say what was blocked, never work around it. Shell heredocs with backslashes mangle `\n`: use the Write/Edit tools for such files.
+- A health-check run EMAILS Kes unless `ALERT_EMAIL_TO=` is blanked. A dry run must never edit `config/students.py`. Roles, not people: addresses come from the Settings page; never write a person's name or address into code.
 
 ---
 
+## 2026-10-09 to 2026-10-10 log (newest first)
 
-## 2026-10-01 — Interview sub-classifier wired in; spam pass quarantines instead of deleting
+### 2026-10-10: Fikru Cheklie verified; this log brought up to date
 
-**Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
-The detail below is in the order the work happened; this block is the summary.
-
-### 2026-10-09 (evening): workbook categories (Technical Interview, Interview Follow-up), Client Screen and Job Machine events, retired categories in shadow
-
-**Changed:** `execution/classify_email.py`: new categories Technical Interview and Interview Follow-up (prompt definitions and disambiguation vs Assessment / Interview Request / Rejection); a confirmed interview is now filed
-by its TYPE (client, technical, phone) and Job Invite explicitly covers staffing-firm outreach for one open role; `remap_retired_category` re-files the retired Interview Schedule / Confirmation / Final Interview Scheduled
-(`CATEGORY_REMAP_MODE=off|shadow|live`, default **shadow**: only `category_shadow` is recorded). `execution/process_inbox_auto.py`: folders "Technical Interview" and "Interview follow up"; Technical Interview and Client Screen
-now create interview events (Client Screen created none before); Job Machine mail creates an event only when the interview sub-classifier reads it as an interview, reschedule or cancellation (before: never);
-Interview Follow-up creates no event and no student notice. `execution/subclassify_interview.py`: reads the new categories. `validate_classification.py`: the two new names (that list was already out of step with the classifier).
-**Evidence (re-classified 273 real emails from the last 90 days with the new prompt, counts only):** 215 same label, 58 different. All 8 Phone Screens and 5 of 7 Interview Cancelled stayed (the other 2 were application notices);
-17 of 61 stored "Interview Request" came back as Job Invite / Job Alert / Other and are staffing-firm job blasts ("Contract Opportunity - Power BI Developer"), so fewer false interview events; "Interview Cancelled" mislabels
-of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
-**Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
+Kes verified Fikru Cheklie in the app (student 9, admin, 2026-10-10 00:56 UTC). His draft (100) had been closed while he was unverified, so it was set back to `draft`
+(Focus GTS, Phone Screen, Mon 2026-10-12 11:00 EDT, no phone on file, personal email and Gmail present). Production is in shadow, so approving his card would only log: he has to be told by hand.
+Five students are still unverified. **Decisions Kes made this session** (all reflected in the entries below): Gmail folders follow the workbook, "More Information Request" keeps its name; Assessment notice wording approved;
+Interview Request = a direct interview offer only; Position on hold / Potential Scam / Recruiter Connect left as they are; leave the Trash emails in Trash; stale-draft alert OFF; Rob checks only email and Kes verifies in the app;
+shadow rehearsal first and staff test on Monday after validation, no fake accounts, three `GHL_WRITE_*` switches only after validation, production stays in shadow; plan stops at the interview; conversations key on the server.
+**Mistakes of this session, now fixed:** Approve crashed with a 500 (wrong import path); then the opposite risk: the API could read the real SMTP login so Approve could have emailed a real student (now off by default); a stale test patch emailed
+student@example.com four times (guard added); the follow-up job ignored `.env`; a deploy took a feature branch instead of `master`. Summary and rules: the RESUME block at the top of this file.
 
 ### 2026-10-10: GHL conversations key on the server; production stays in shadow
 
@@ -128,6 +113,7 @@ Kes still saw 6 "entries that need verification": the 5 events with no student p
 ### 2026-10-09 (night): "No student identified" emails moved to the Verify Student label
 
 Kes asked to move the emails of the "No student identified" cards to "Verify Student" in Gmail. `execution/label_verify_students.py --no-student` (plan only without `--apply`) selects interview events whose `student_id` is empty: 5 in production (3 in INBOX, 1 Interview Confirmation, 1 Phone Screen), all older than 14 days, no drafts. Same safe method as before (label found by Message-ID in All Mail, then removed from the old folder only, `current_folder` updated). 1 new test.
+**Follow-up finding (Kes asked why):** the 5 events (Sept 18 to 25) and 4 emails the backfill skipped earlier are all in Gmail's TRASH (found by Message-ID: 9 of 9; none in All Mail or Spam), so they cannot be labelled. Nobody knows who deleted them (the pipeline never deletes; most likely cleared by hand). **Kes: leave them in Trash** (Gmail empties Trash after 30 days, the oldest around 2026-10-18).
 
 ### 2026-10-09 (night): approval list cleared for next week (production database, no deletions)
 
@@ -197,6 +183,18 @@ Technical Interview / follow-up / Job Machine / Client Screen events and the sta
 **Gmail filters (Kes's screenshot):** server-side Gmail filters already file LinkedIn "You applied for" and Indeed applications to Application Notification, Indeed alerts to Job Alerts, applytojob "we've received your resume" to
 Received Resume, LinkedIn security mail to Account Recovery; most skip the inbox or mark read, so the pipeline never sees them. "Received Resume" is an application receipt. Labels Position on hold, Potential Scam, Recruiter Connect left as they are for now (Kes).
 
+### 2026-10-09 (evening): workbook categories (Technical Interview, Interview Follow-up), Client Screen and Job Machine events, retired categories in shadow
+
+**Changed:** `execution/classify_email.py`: new categories Technical Interview and Interview Follow-up (prompt definitions and disambiguation vs Assessment / Interview Request / Rejection); a confirmed interview is now filed
+by its TYPE (client, technical, phone) and Job Invite explicitly covers staffing-firm outreach for one open role; `remap_retired_category` re-files the retired Interview Schedule / Confirmation / Final Interview Scheduled
+(`CATEGORY_REMAP_MODE=off|shadow|live`, default **shadow**: only `category_shadow` is recorded). `execution/process_inbox_auto.py`: folders "Technical Interview" and "Interview follow up"; Technical Interview and Client Screen
+now create interview events (Client Screen created none before); Job Machine mail creates an event only when the interview sub-classifier reads it as an interview, reschedule or cancellation (before: never);
+Interview Follow-up creates no event and no student notice. `execution/subclassify_interview.py`: reads the new categories. `validate_classification.py`: the two new names (that list was already out of step with the classifier).
+**Evidence (re-classified 273 real emails from the last 90 days with the new prompt, counts only):** 215 same label, 58 different. All 8 Phone Screens and 5 of 7 Interview Cancelled stayed (the other 2 were application notices);
+17 of 61 stored "Interview Request" came back as Job Invite / Job Alert / Other and are staffing-firm job blasts ("Contract Opportunity - Power BI Developer"), so fewer false interview events; "Interview Cancelled" mislabels
+of "Thank you for applying" came back as Rejection (still not Application Notification). The two new categories had no real examples in the sample, so they were tested on 9 synthetic emails: 9 of 9 right.
+**Not done:** go-live decision for the prompt change (it moves about 1 in 5 stored labels); `CATEGORY_REMAP_MODE=live`; Assessment-notice wording with Ali; the audit of Job Invite (22 of 40 stayed Job Invite, 17 became Job Alert).
+
 ### 2026-10-09 (later): sender rules match subdomains (step 1 of the classification rework, first part)
 
 **Measured on 4,000 real emails from the last 9 days (metadata only, scratch copy, nothing printed per row):** the rule layer `pre_classify_by_sender` fired on only 26% of mail because it matched
@@ -220,6 +218,13 @@ Quarantine (563). "Needs Review" has 1 unread, so it is not the pile-up that the
 **Next (not done):** step 1 shadow rewrite (category list = workbook, fixed rules by sender/subject before the AI, add Technical Interview and Interview follow up, wire Job Machine into events,
 Assessment notice on the same three channels, Background Check merged); step 3 re-file Interview Confirmation / Final Interview Scheduled / First Interview Scheduled by type; audit sample of
 Job Invite and Quarantine; ask Ali about Position on hold, Potential Scam, Received Resume, Recruiter Connect (labels not in code or workbook; check Gmail filters).
+
+---
+
+## 2026-10-01 — Interview sub-classifier wired in; spam pass quarantines instead of deleting
+
+**Status: deployed to production and merged to `master` (deployed commit == `master` HEAD).**
+The detail below is in the order the work happened; this block is the summary.
 
 ### 2026-10-02 (night): prompt fix, call rules, own opt-out record, channel test tool, test plan
 - **Prompt** (`docs/voice-agent-outbound-interview-prompt.md`): the first test call showed the agent skipped "Am I speaking with ...?"
