@@ -87,6 +87,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: Classification review shows the email body (Kes: "nothing comes up... I don't want to go back to the email")
+
+Clicking a card on Review > Classification review opened only Action / Notes / Approve, with no email text. `ApprovalsContent.tsx` now shows the same collapsible `EmailBodyPanel` the student cards use (body, long emails truncated with "Show full email", classification chips), and the right-hand panel scrolls so Approve stays reachable. Production check: 119 of the 120 pending items have the body stored (9,597 of 9,824 emails overall). Checked in a browser locally; frontend only.
+
 ### 2026-10-10: Classification review list filed by rule; bare job links auto-classified (Kes: "move them... classified automatically from now on")
 
 Kes saw bare job links (subject is only a LinkedIn URL, from a student's Gmail, 65% "Other") sitting in Review > Classification review.

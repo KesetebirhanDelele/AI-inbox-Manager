@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
 import { format } from 'date-fns';
 import type { Approval } from '../types';
+import EmailBodyPanel from './EmailBodyPanel';
 
 const ApprovalsContent = () => {
   const queryClient = useQueryClient();
@@ -182,9 +183,14 @@ const ApprovalsContent = () => {
 
         {/* Approval Actions */}
         {selectedApproval && (
-          <div className="bg-white shadow rounded-lg p-6 sticky top-6">
+          <div className="bg-white shadow rounded-lg p-6 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
             <h3 className="text-lg font-medium text-gray-900 mb-1">Review Email</h3>
             <p className="text-sm text-gray-500 mb-4 truncate">{selectedApproval.email_subject}</p>
+
+            {/* The email itself, so a decision never needs a trip back to Gmail */}
+            <div className="mb-5">
+              <EmailBodyPanel key={selectedApproval.email_id} emailId={selectedApproval.email_id} />
+            </div>
 
             <div className="space-y-4">
               <div>
