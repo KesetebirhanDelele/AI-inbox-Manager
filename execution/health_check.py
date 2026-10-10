@@ -53,6 +53,9 @@ WEEKLY_ALL_CLEAR_WEEKDAY = 0     # Monday
 MAX_RUN_AGE_HOURS = 3.0         # runs are every 2 hours
 MIN_EVENTS_FOR_RATES = 3         # a rate over 1-2 events is noise
 MAX_FALLBACK_RATE = 0.30
+# Events of the retired interview categories (Confirmation, Schedule, Final) skip the sub-classifier BY DESIGN and carry these fallback labels, so they
+# are not "the sub-classifier failing". They disappear once CATEGORY_REMAP_MODE=live re-files those categories by interview type.
+RETIRED_CATEGORY_LABELS = {"confirmed", "interview_schedule", "final_round"}
 MAX_NO_STUDENT_RATE = 0.50
 STUCK_APPROVED_MINUTES = 60
 
@@ -106,7 +109,8 @@ def evaluate(m: Dict[str, Any]) -> List[Finding]:
     if m["drafts_failed"] > 0:
         out.append(Finding("CRITICAL", "notification sends",
                            f"{m['drafts_failed']} notification draft(s) failed to send."))
-    if m["drafts_stuck"] > 0:
+    if m["drafts_stuck"] > 0 and not m.get("shadow"):
+        # In shadow mode nothing is delivered on purpose, so an approved draft that never reaches "sent" is expected (see the numbers line).
         out.append(Finding("CRITICAL", "notification sends",
                            f"{m['drafts_stuck']} draft(s) approved over {STUCK_APPROVED_MINUTES} minutes ago but never sent."))
 
@@ -128,6 +132,18 @@ def evaluate(m: Dict[str, Any]) -> List[Finding]:
                                f"{m['events_no_student']} of {n} new interview events ({ns:.0%}) have no student "
                                f"attached, so header parsing may be failing."))
     return out
+
+
+def _shadow_mode() -> bool:
+    """True while the notification flow is on but every send is only logged (the three GHL write switches are not all live)."""
+    import os
+    if os.getenv("NOTIFY_ESCALATION_ENABLED", "").strip().lower() not in ("1", "true", "yes"):
+        return False
+    try:
+        import ghl_client
+        return not ghl_client.GhlConfig.from_env().is_live
+    except Exception:
+        return True
 
 
 def collect_metrics(db, log_text: str, now: datetime) -> Dict[str, Any]:
@@ -153,7 +169,9 @@ def collect_metrics(db, log_text: str, now: datetime) -> Dict[str, Any]:
     )
 
     events = db.query(InterviewEvent).filter(InterviewEvent.created_at >= since).all()
-    fallback = sum(1 for e in events if (e.raw_extraction or {}).get("sub_type_source") == "category_fallback")
+    fallback_all = [e for e in events if (e.raw_extraction or {}).get("sub_type_source") == "category_fallback"]
+    fallback = sum(1 for e in fallback_all if (e.sub_type or "") not in RETIRED_CATEGORY_LABELS)
+    retired_fallback = len(fallback_all) - fallback
     no_student = sum(1 for e in events if e.student_id is None)
 
     failed = db.query(NotificationDraft).filter(
@@ -168,6 +186,8 @@ def collect_metrics(db, log_text: str, now: datetime) -> Dict[str, Any]:
         NotificationAttempt.status == "failed", NotificationAttempt.created_at >= since).count()
 
     return {
+        "shadow": _shadow_mode(),
+        "events_retired_fallback": retired_fallback,
         "attempts_failed": attempts_failed,
         "permanent_deletes": count_permanent_deletes(log_text, max(since, NO_DELETE_SINCE)),
         "approvals_missing": missing,
@@ -196,6 +216,12 @@ def format_report(findings: List[Finding], m: Dict[str, Any], now: datetime) -> 
         f"deletes: {m['permanent_deletes']}; queue gaps: {m['approvals_missing']}; "
         f"failed drafts: {m['drafts_failed']}"
     )
+    if m.get("events_retired_fallback"):
+        numbers += (f"\n  {m['events_retired_fallback']} new event(s) from the retired interview categories used the generic label "
+                    f"(not counted as a sub-classifier failure)")
+    if m.get("shadow"):
+        numbers += (f"\n  SHADOW MODE: nothing is delivered to students by design; {m.get('drafts_stuck', 0)} approved draft(s) are not 'sent' "
+                    f"for that reason (not counted as a problem)")
     return f"{head}  ({now:%Y-%m-%d %H:%M} UTC)\n\n{body}\n\nNumbers:\n{numbers}\n"
 
 

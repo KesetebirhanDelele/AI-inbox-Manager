@@ -146,3 +146,57 @@ def test_problems_and_explicit_requests_always_email():
     tuesday = datetime(2026, 10, 6, 7, 30)
     assert hc.should_email([hc.Finding("CRITICAL", "x", "y")], tuesday) is True
     assert hc.should_email([], tuesday, always=True) is True
+
+
+# --- shadow mode and retired-category fallbacks (2026-10-10) -------------------------------------------------------------------------
+
+def test_an_approved_draft_that_is_not_delivered_is_critical_only_when_delivery_is_live():
+    assert ("CRITICAL", "notification sends") in checks(healthy(drafts_stuck=1))
+    assert ("CRITICAL", "notification sends") in checks(healthy(drafts_stuck=1, shadow=False))
+    assert checks(healthy(drafts_stuck=1, shadow=True)) == set()          # shadow: nothing is delivered on purpose
+
+
+def test_failed_attempts_stay_critical_even_in_shadow_mode():
+    assert ("CRITICAL", "escalation attempts") in checks(healthy(attempts_failed=3, shadow=True))
+
+
+def test_the_report_explains_shadow_mode_and_the_retired_category_events():
+    m = healthy(drafts_stuck=1, shadow=True, events_retired_fallback=3)
+    text = hc.format_report(hc.evaluate(m), m, NOW)
+    assert "SHADOW MODE" in text and "not counted as a problem" in text and "retired interview categories" in text
+    assert text.startswith("HEALTHY")
+
+
+def test_shadow_mode_detection_follows_the_switches(monkeypatch):
+    for k in ("GHL_WRITE_MODE", "GHL_WRITE_SHADOW_LOG_ONLY", "GHL_WRITE_NOTIFY_FIELDS"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.delenv("NOTIFY_ESCALATION_ENABLED", raising=False)
+    assert hc._shadow_mode() is False                                      # flow off: not "shadow", just off
+    monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "true")
+    assert hc._shadow_mode() is True
+    monkeypatch.setenv("GHL_WRITE_MODE", "live")
+    monkeypatch.setenv("GHL_WRITE_SHADOW_LOG_ONLY", "false")
+    monkeypatch.setenv("GHL_WRITE_NOTIFY_FIELDS", "true")
+    assert hc._shadow_mode() is False
+
+
+def test_retired_category_events_are_not_counted_as_the_subclassifier_failing(monkeypatch):
+    api_dir = _EXECUTION_DIR.parents[0] / "services" / "dashboard" / "api"
+    monkeypatch.syspath_prepend(str(api_dir))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import models
+
+    engine = create_engine("sqlite://")
+    models.Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    recent = NOW - timedelta(hours=1)
+    e = models.Email(email_id="1", subject="s", from_address="a@b.com", received_date=recent)
+    db.add(e); db.flush()
+    for sub_type, src in (("confirmed", "category_fallback"), ("confirmed", "category_fallback"), ("interview_request", "category_fallback"),
+                          ("Phone Screen", "subclassifier")):
+        db.add(models.InterviewEvent(email_id=e.id, sub_type=sub_type, confidence=0.9, raw_extraction={"sub_type_source": src}, created_at=recent))
+    db.commit()
+    m = hc.collect_metrics(db, "", NOW)
+    assert m["events"] == 4 and m["events_fallback"] == 1 and m["events_retired_fallback"] == 2
