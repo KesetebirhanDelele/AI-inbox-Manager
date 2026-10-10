@@ -87,6 +87,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: Kes's test mail removed from Classification review (data only, no code)
+
+Kes had already deleted his test emails (sent from kes@colaberry.com) from the inbox. The 7 still open in Classification review were closed as `rejected` (reviewed_by "kes (test mail removed)", note says why); Gmail untouched. No student-notification cards were involved (0). 28 emails ever came from that address; only the 7 open review items were changed. Review list then held 57 pending.
+
 ### 2026-10-10: info@school.colaberry.com goes to Other (Kes: "move all coming from info@school.colaberry.com to other folder")
 
 Production check: 6 emails ever from that address ("New Project Request" / "Final Project Request"), all already in Spam Review, 0 interview events, 5 still open in Classification review. `pre_classify_by_sender` now returns `Other` for that EXACT address (not the whole school.colaberry.com domain, tested), and `file_review_items.py --apply` closed the 5 open review items (already at their destination, so no Gmail change).
