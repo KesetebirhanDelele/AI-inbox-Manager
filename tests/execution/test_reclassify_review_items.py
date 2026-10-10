@@ -17,6 +17,7 @@ import reclassify_review_items as rri  # noqa: E402
     ("Application Notification", 0.90, "file"),
     ("Other", 0.55, "close"),
     ("Other", 0.40, "keep"),
+    ("Other", 0.0, "close"),                      # the model's normal answer for plain junk
     ("Interview Request", 0.99, "keep"),          # a person always decides interviews
     ("Offer", 0.99, "keep"),
     ("Rejection", 0.95, "keep"),
@@ -89,3 +90,15 @@ def test_new_answers_are_recorded_as_new_rows(db_models):
     rri.record_new_answers(db, [{"email_id": e.id, "category": "Job Alert", "confidence": 0.9, "raw": {"category": "Job Alert"}}])
     cats = [c.category for c in db.query(M.Classification).filter_by(email_id=e.id).order_by(M.Classification.id)]
     assert cats == ["Other", "Job Alert"]                                      # the old answer is kept
+
+
+@pytest.mark.parametrize("sender, subject, expected", [
+    ("news@hiringourheroes.org", "Week Ahead", "close"),
+    ("kenyasbogans@gmail.com", "Audio", "keep"),                          # a person, not a mailer
+    ("cai@colaberry.com", "Logging Interviews", "keep"),                  # Colaberry staff
+    ("jgosa@aum.edu", "Re: [EXTERNAL] Kenya Means Transcripts", "keep"),  # a reply
+    ("<charliezinger@aol.com>", "Join Us Thursday", "keep"),
+    ("ashwin@mobiusengine.ai", "Fwd: New roles", "keep"),
+])
+def test_mail_from_a_person_is_left_for_a_person(sender, subject, expected):
+    assert rri.decide("Other", 0.85, sender, subject) == expected

@@ -39,11 +39,27 @@ MIN_FILE_CONFIDENCE = 0.70      # same bar the pipeline uses to route
 MIN_OTHER_CONFIDENCE = 0.50     # "Other" at or above this needs no person
 
 
-def decide(category: str, confidence: float) -> str:
+# Mail written by a person (not a mailer) is never closed or filed by this script: a real message could be in it.
+PERSONAL_DOMAINS = ("gmail.com", "googlemail.com", "yahoo.com", "aol.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "msn.com")
+
+
+def written_by_a_person(sender: str, subject: str) -> bool:
+    """A personal mailbox, a Colaberry address, or a reply/forward: left for a human to read."""
+    addr = (sender or "").strip().strip("<>").lower()
+    domain = addr.rsplit("@", 1)[-1]
+    if domain in PERSONAL_DOMAINS or domain.endswith("colaberry.com"):
+        return True
+    return (subject or "").strip().lower().startswith(("re:", "fw:", "fwd:"))
+
+
+def decide(category: str, confidence: float, sender: str = "", subject: str = "") -> str:
     """'file', 'close' or 'keep' for a new answer. Pure."""
+    if written_by_a_person(sender, subject):
+        return "keep"
     if category in AUTO and confidence >= MIN_FILE_CONFIDENCE:
         return "file"
-    if category == "Other" and confidence >= MIN_OTHER_CONFIDENCE:
+    # "Other" at 0% is the model's normal answer for plain junk (the queue has never held those).
+    if category == "Other" and (confidence >= MIN_OTHER_CONFIDENCE or confidence <= 0.0):
         return "close"
     return "keep"
 
@@ -70,7 +86,7 @@ def analyse(db, classify) -> List[Dict[str, Any]]:
             new = {}
         category = str(new.get("category") or "")
         confidence = float(new.get("confidence") or 0.0)
-        action = decide(category, confidence) if category else "keep"
+        action = decide(category, confidence, email.from_address or "", email.subject or "") if category else "keep"
         target = (SPAM_REVIEW_FOLDER if category == "Other" else CATEGORY_TO_FOLDER.get(category)) if action != "keep" else None
         if action == "file" and not target:
             action = "keep"
