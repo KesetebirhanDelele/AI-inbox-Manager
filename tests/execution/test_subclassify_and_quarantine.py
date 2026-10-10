@@ -452,3 +452,20 @@ def test_a_guessed_student_is_flagged_and_a_verified_one_is_never_downgraded(ide
     db.commit()
     assert log_interview.mark_unverified(db, student.id, "gmail_guess", "Other", "x") is False
     assert db.query(models.StudentVerification).one().status == "verified"
+
+
+def test_a_student_mailing_their_own_account_is_other():
+    from process_inbox_auto import pre_classify_by_sender
+    mine = {"sender_email": "opcrowne@gmail.com", "subject": "American National", "to_addresses": ["opcrowne@gmail.com"], "body_content": ""}
+    assert pre_classify_by_sender(mine) == "Other"
+    via_header = {"sender_email": "opcrowne@gmail.com", "subject": "Interview Fri 2pm", "headers": {"Delivered-To": "OpCrowne@gmail.com"}}
+    assert pre_classify_by_sender(via_header) == "Other"          # the sender is the recipient, whatever the subject says
+
+
+def test_real_interview_mail_is_not_treated_as_self_sent():
+    from process_inbox_auto import pre_classify_by_sender
+    employer = {"sender_email": "hr@acme.com", "subject": "Interview request", "to_addresses": ["student@gmail.com"],
+                "headers": {"Delivered-To": "student@gmail.com"}}
+    assert pre_classify_by_sender(employer) is None
+    staff = {"sender_email": "c_interviews@colaberry.com", "subject": "x", "to_addresses": ["c_interviews@colaberry.com"]}
+    assert pre_classify_by_sender(staff) is None                  # Colaberry's own address is never "self-sent"

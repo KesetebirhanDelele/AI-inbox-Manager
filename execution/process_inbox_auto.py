@@ -1717,6 +1717,22 @@ _BARE_JOB_LINK = re.compile(
     r"|dice\.com/(?:job-detail|jobs/detail)|monster\.com/job-openings|careerbuilder\.com/job/|simplyhired\.com/job/)", re.I)
 
 
+_ADDR = re.compile(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def _is_self_sent(email_data: Dict[str, Any], from_addr: str) -> bool:
+    """True when a student mailed their own account: the sender is also one of the recipients (To/Cc or the delivery headers).
+    Employers never send mail to themselves, so this is a note-to-self (a screenshot, a saved link, proof of an application), never news about an interview.
+    Colaberry's own addresses are excluded: staff mail to the central inbox is not a student note-to-self."""
+    sender = from_addr.strip().lower()
+    if not sender or sender.endswith("colaberry.com"):
+        return False
+    recipients = {a.lower() for a in (email_data.get("to_addresses") or []) if isinstance(a, str)}
+    for value in (email_data.get("headers") or {}).values():
+        recipients.update(a.lower() for a in _ADDR.findall(str(value)))
+    return sender in recipients
+
+
 def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     """
     Apply deterministic sender-domain rules BEFORE the AI classification call.
@@ -1731,6 +1747,10 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     from_addr = (email_data.get("sender_email") or email_data.get("from") or "").lower()
     subject   = (email_data.get("subject") or "").lower()
     body      = (email_data.get("body_content") or email_data.get("body") or "").lower()[:500]
+
+    # ── A student mailing their own account — a note to self, never an interview notice ──
+    if _is_self_sent(email_data, from_addr):
+        return "Other"
 
     # ── LinkedIn ────────────────────────────────────────────────────────────
     domain = _sender_domain(from_addr)
