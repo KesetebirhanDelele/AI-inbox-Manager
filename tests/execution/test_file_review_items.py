@@ -40,9 +40,10 @@ def test_plan_picks_only_rule_certain_non_interview_items(db_models):
     _pending(db, M, 2, "https://www.indeed.com/viewjob?jk=abc")
     _pending(db, M, 3, "Interview request: Data Analyst", sender="recruiter@acme.com")      # a person decides this
     _pending(db, M, 4, "https://www.linkedin.com/jobs/view/9/", status="approved")           # already closed
+    _pending(db, M, 5, "1 event happening tomorrow", sender="noreply@skool.com")             # not job related: Spam Review
     items = fri.plan(db)
-    assert sorted(i["email_id"] for i in items) == [1, 2]
-    assert {i["target"] for i in items} == {"Job Alerts"}
+    assert sorted(i["email_id"] for i in items) == [1, 2, 5]
+    assert {i["email_id"]: i["target"] for i in items} == {1: "Job Alerts", 2: "Job Alerts", 5: "Spam Review"}
 
 
 def test_apply_closes_the_approval_and_records_the_folder(db_models, monkeypatch):

@@ -87,6 +87,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-10: non-job mailers classify themselves (Kes: "classify these types automatically as they are not job related")
+
+Skool event reminders were already a rule (`Other`). Checked the rest of the Classification review list on production: dataengineeracademy.com (65 mails ever), arcamax.com (221), irelaunch.com (17), propertymeld.com (9) are marketing/newsletters with **0 interview events ever**, so `pre_classify_by_sender` now returns `Other` for them (Spam Review, then Quarantine on the next run; nothing deleted); experteer.com (headhunter network, 14 mails) joined the job-board list (Job Alert). `file_review_items.py` now also files rule "Other" items into Spam Review. Left alone on purpose: colaberry.com / school.colaberry.com (internal, may carry real interview info), Handshake (employers can send real invitations), Gmail senders. Tests added (look-alike domain stays unmatched).
+
 ### 2026-10-10: Classification review shows the email body (Kes: "nothing comes up... I don't want to go back to the email")
 
 Clicking a card on Review > Classification review opened only Action / Notes / Approve, with no email text. `ApprovalsContent.tsx` now shows the same collapsible `EmailBodyPanel` the student cards use (body, long emails truncated with "Show full email", classification chips), and the right-hand panel scrolls so Approve stays reachable. Production check: 119 of the 120 pending items have the body stored (9,597 of 9,824 emails overall). Checked in a browser locally; frontend only.

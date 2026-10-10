@@ -10,6 +10,7 @@ before the rule existed. For every PENDING approval whose email a rule now class
   3. closes the approval as "approved" (human_action move_to_folder, target_folder, human_category, reviewed_by "rule-filing").
 
 Dry-run by default: prints counts per destination folder only. Nothing in Gmail or the database changes without --apply.
+A rule answer of "Other" (marketing, community and social mail) goes to Spam Review, where the pipeline's own second pass sends it to Quarantine; nothing is deleted.
 Interview-type results are never filed here: a person still decides those.
 
 Usage (inside the cron container on the server):
@@ -33,14 +34,14 @@ for p in (_ROOT / "execution", _ROOT, _ROOT / "services" / "dashboard" / "api"):
 logger = logging.getLogger("file_review_items")
 
 # Only rule answers that are never about an interview.
-FILEABLE = ("Job Alert", "LinkedIn Notification", "Basecamp", "Gmail Notification")
+FILEABLE = ("Job Alert", "LinkedIn Notification", "Basecamp", "Gmail Notification", "Other")
 REVIEWER = "rule-filing"
 
 
 def plan(db) -> List[Dict[str, Any]]:
     """One row per pending approval whose email a rule classifies as FILEABLE."""
     import models as M
-    from process_inbox_auto import CATEGORY_TO_FOLDER, pre_classify_by_sender
+    from process_inbox_auto import CATEGORY_TO_FOLDER, SPAM_REVIEW_FOLDER, pre_classify_by_sender
 
     rows = (db.query(M.Approval, M.Email).join(M.Email, M.Email.id == M.Approval.email_id)
             .filter(M.Approval.status == "pending").order_by(M.Email.received_date).all())
@@ -52,7 +53,7 @@ def plan(db) -> List[Dict[str, Any]]:
         if category not in FILEABLE:
             continue
         items.append({"approval_id": approval.id, "email_id": email.id, "message_id": (email.message_id or "").strip(),
-                      "folder": email.current_folder or "INBOX", "category": category, "target": CATEGORY_TO_FOLDER[category]})
+                      "folder": email.current_folder or "INBOX", "category": category, "target": CATEGORY_TO_FOLDER.get(category, SPAM_REVIEW_FOLDER)})
     return items
 
 

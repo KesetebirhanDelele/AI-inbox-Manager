@@ -1750,9 +1750,17 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
         "refer.io", "adzuna.com", "jobs2web.com", "jobs2careers.com", "theladders.com", "postjobfree.com",
         # Lead-generation mailers whose subjects read like interview invitations ("confirm your interview availability").
         "job-assist-now.com", "job-matches.com",
+        # Headhunter network mailers (14 mails, none an interview).
+        "experteer.com",
     ]
     if _domain_is(domain, *JOB_BOARD_DOMAINS):
         return "Job Alert"
+
+    # ── Marketing and newsletter senders — never job-related ──────────────────
+    # 2026-10-10: Kes asked for these to classify themselves. Checked on production: 0 interview events ever from any of them (65, 221, 17, 9 mails).
+    # "Other" goes to Spam Review, then Quarantine on the next run; nothing is deleted.
+    if _domain_is(domain, "dataengineeracademy.com", "arcamax.com", "irelaunch.com", "propertymeld.com"):
+        return "Other"
 
     # ── Community platform reminders (Skool) — never interview-related ───────
     # 2026-10-01: "1 event happening tomorrow" reminders were landing in the review
