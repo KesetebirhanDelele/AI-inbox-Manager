@@ -21,6 +21,14 @@ for p in (_ROOT / "execution", _ROOT, _ROOT / "services" / "dashboard" / "api"):
 
 logger = logging.getLogger("notification_tick")
 
+# The repo's .env must be read BEFORE `enabled()` looks at NOTIFY_ESCALATION_ENABLED: this script is started by cron with only the container's own
+# environment, so without this the job answered "disabled" and did nothing even after the switch was turned on (found 2026-10-10).
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.getenv("NOTIFY_TICK_ENV_FILE") or (_ROOT / ".env"))     # the override is only for tests
+except Exception:                      # python-dotenv missing: fall back to whatever the process already has
+    pass
+
 
 def enabled() -> bool:
     return os.getenv("NOTIFY_ESCALATION_ENABLED", "").strip().lower() in ("1", "true", "yes")
