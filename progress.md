@@ -87,6 +87,11 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-11: more not-job rules; Classification review is empty
+
+Kes picked out five more: (1) Ali's "Questions About Colaberry?" Mailchimp campaign, (2) the Mobius Engine reply (a firm selling interview volume; closed as "keep in inbox" by mistake), (3) Kenya Bogans's "Audio" (a phone attachment path mailed to self), (4) the Southlake career-networking invitation, (5) Helen Asfaw's bare link with no subject. New narrow rules in `pre_classify_by_sender` (all `Other`): no subject plus body that is only a URL, or a body starting `file:///`; sender exactly `ali@colaberry.com` plus "view this email in your browser" (other Colaberry senders, e.g. cai@ "Logging Interviews", are NOT covered, tested); domain `mobiusengine.ai`; sender exactly `charliezinger@aol.com`. Tests cover the look-alike and real-mail cases. Applied on production: the 3 open items closed; approval 24 (Mobius) corrected from keep_inbox to Other in the record (Gmail had it parked all along). **Classification review now has 0 pending.**
+**Found while checking (needs Kes):** approval 67, "RE: Rights to Represent for Power Bi Lead" from vishal.c@westcoastllc.com, body "Hi Sehrish, Kindly join below zoom link: Join Zoom Meeting...", is in Gmail's **Quarantine** (labels: Important, Quarantine), has NO interview event and no student notice, and was closed as "keep in inbox". The AI read it as Interview Request 95%. If it is a real meeting for Sehrish, nobody has been told.
+
 ### 2026-10-10 (night): Classification review re-read and reclassified; "Other" at 50% or more no longer queued (Kes: "Yes proceed, analyse and reclassify")
 
 - **Finding:** "Other" mail is already parked physically (Spam Review, then Quarantine) whatever its confidence; the review queue only gave a person a chance to look. Kes agreed to stop queueing the confident ones.
