@@ -52,29 +52,61 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
 @media (max-width:520px){.stories li{grid-template-columns:auto 1fr}.stories .st{grid-column:2}}
 .foot{color:var(--muted);font-size:.85rem;margin-top:24px}
 .foot code{font-family:var(--font-mono);font-size:.8rem}
+
+/* Tabs and the walkthrough */
+.tabbar{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 22px}
+.tabbar button{border:0;border-bottom:3px solid transparent;background:transparent;color:var(--muted);font:inherit;font-weight:500;padding:10px 16px;cursor:pointer}
+.tabbar button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.deck{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.deck-top{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:.78rem;color:var(--muted)}
+.bar{height:4px;background:var(--line)} .bar i{display:block;height:100%;background:var(--accent);width:0}
+.slide{padding:26px 28px 22px;min-height:320px}
+.slide .kicker{font-family:var(--font-mono);font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.slide h2{font-family:var(--font-display);font-size:1.7rem;line-height:1.15;margin:6px 0 14px;text-wrap:balance}
+.slide ul{margin:0 0 16px;padding-left:20px;display:grid;gap:8px;font-size:1.02rem} .slide li{min-width:0}
+.facts{display:flex;flex-wrap:wrap;gap:8px}
+.fact{background:var(--accent-soft);border-radius:6px;padding:6px 10px;font-size:.85rem}
+.fact b{font-family:var(--font-display);font-size:1.15rem;margin-right:4px;font-variant-numeric:tabular-nums}
+.notes{border-top:1px solid var(--line);padding:14px 28px 18px;display:grid;gap:10px;background:var(--bg)}
+.notes h3{margin:0 0 2px;font-family:var(--font-mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.notes p{margin:0;max-width:75ch}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
+.btn.alt{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.btn:disabled{opacity:.4;cursor:default}
+.dots{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.dots button{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-family:var(--font-mono);font-size:.72rem;cursor:pointer}
+.dots button[aria-current="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.runtotal{font-family:var(--font-mono);font-size:.82rem;color:var(--muted)}
 </style>
 
 <div class="wrap">
   <h1>InboxGenius: use cases and user stories</h1>
-  <p class="lede">InboxGenius reads the shared interview inbox, labels every email, and gives staff a dashboard to check the work. The newest part tells each student about their interview by call, text and email, and keeps following up until they confirm. Status as of 9 Oct 2026, after the deploy of commit 215d9e3. Roles replace people: the approver, the callback owner and the escalation contact are set on the dashboard Settings page (today: Rob, Rob, Jackie).</p>
+  <p class="lede">InboxGenius reads the shared interview inbox, labels every email, and gives staff a dashboard to check the work. The newest part tells each student about their interview by call, text and email, and keeps following up until they confirm. Status as of 11 Oct 2026, after the deploy of commit b525ca7. Production runs the student notifications in shadow mode: the app does everything except deliver, so no student has been contacted yet. Roles replace people: the approver, the callback owner and the escalation contact are set on the dashboard Settings page (today: Kes for the rehearsal, Rob, Jackie).</p>
 
-  <div class="summary">
+  <div class="tabbar" role="tablist">
+    <button role="tab" id="tabUse" aria-selected="true" aria-controls="paneUse">Use cases and stories</button>
+    <button role="tab" id="tabDeck" aria-selected="false" aria-controls="paneDeck">Walkthrough (about 4 minutes)</button>
+  </div>
+  <div id="paneUse" role="tabpanel">
+<div class="summary">
     <span><strong>11</strong>working</span>
     <span><strong>5</strong>partial</span>
-    <span><strong>5</strong>built, switched off</span>
-    <span>The student-notification feature (UC12 to UC17) is built and deployed but off: every channel is a dry run and GHL writes are in shadow. The voice call itself was proven on a live test call on 2 Oct; text, email, voicemail, wrong-person and STOP tests are still to do (see the test plan).</span>
+    <span><strong>5</strong>in shadow mode or off</span>
+    <span>The student-notification feature (UC12 to UC17) has run in shadow mode on the server since 9 Oct: it finds the real GHL contact and logs what it would send. The three GHL write switches stay off until Kes has checked that log; the staff test with three Colaberry staff is planned for Mon 12 Oct. The voice call itself was proven on a live test call on 2 Oct; text, email, voicemail, wrong-person and STOP tests are still to do (see the test plan).</span>
   </div>
   <div class="legend">
     <span><span class="pill ok">Working</span> running, checked on real mail or data</span>
     <span><span class="pill part">Partial</span> built, something unproven or open</span>
-    <span><span class="pill off">Built, off</span> deployed but switched off, nothing sent</span>
+    <span><span class="pill off">Shadow</span> running on real data, nothing delivered (also: built and switched off)</span>
     <span><span class="pill draft">Drafted</span> written, not yet configured</span>
     <span><span class="pill new">New</span> added since the last version</span>
   </div>
 
   <div class="actors">
     <div class="actor"><b>Ali (Ops lead)</b><span>Owns label quality and approves what is switched on.</span></div>
-    <div class="actor"><b>Approver and callback owner (today: Rob)</b><span>Verifies students, approves the first sends, calls back students who ring in.</span></div>
+    <div class="actor"><b>Approver and callback owner (today: Kes approves during the rehearsal, Rob calls back)</b><span>Verifies students, approves the first sends, calls back students who ring in.</span></div>
     <div class="actor"><b>Escalation contact (today: Jackie)</b><span>Told when a draft waits more than 2 business hours or a callback is late.</span></div>
     <div class="actor"><b>Student / candidate</b><span>Receives interview news and confirms it.</span></div>
     <div class="actor"><b>Kes (Engineer)</b><span>Builds, deploys and monitors.</span></div>
@@ -92,6 +124,10 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">1.4</span><p>As <em>Rob</em>, I want mail the model is unsure about moved to "Needs Review".</p><span class="st pill ok">Working</span></li>
       <li><span class="id">1.5</span><p>As <em>Ali</em>, I want every email filed into the folders of the Email Management labels workbook (22 folders), plus the safety folders Needs Review, Quarantine and Spam Review, so Gmail and the app agree.</p><span class="st pill ok">Working (9 Oct)</span></li>
       <li><span class="id">1.6</span><p>As <em>Rob</em>, I want sender rules to recognise job-board subdomains (alert.indeed.com, alert.refer.io), so more mail clears without the AI: rules now cover 55% of mail, up from 26%.</p><span class="st pill ok">Working (9 Oct)</span></li>
+      <li><span class="id">1.8</span><p>As <em>Rob</em>, I want newsletters, course marketing, account mail and other clearly non-job senders (an AI vendor, a Mailchimp campaign, a services firm that sells interview volume, a networking list) classified as Other by narrow rules, so they leave my queue without an AI call.</p><span class="st pill ok">Working (10 Oct)</span></li>
+      <li><span class="id">1.9</span><p>As <em>Ali</em>, I want mail a student sends to herself (her own address as sender and recipient, a bare link with no subject, a saved phone attachment path) treated as a note to self and never as an interview.</p><span class="st pill ok">Working (new mail, 11 Oct)</span></li>
+      <li><span class="id">1.10</span><p>As <em>Ali</em>, I want an email whose text part is really an HTML page read as text, so the AI sees the message and not the CSS. Found 10 Oct: 1,161 of 9,844 stored bodies were raw HTML, which is why a job-alert confirmation was missed.</p><span class="st pill ok">Working (10 Oct)</span></li>
+      <li><span class="id">1.11</span><p>As <em>Ali</em>, I want a request to confirm a job-alert subscription filed as a Job Alert, and a bare link to a posting on Indeed, Glassdoor, ZipRecruiter, Dice and similar sites filed the same way as a LinkedIn one.</p><span class="st pill ok">Working (10 Oct)</span></li>
       <li><span class="id">1.7</span><p>As <em>Ali</em>, I want to know that some Gmail filters (LinkedIn and Indeed applications, "we've received your resume") sort mail before the app sees it, so those never appear in the app's counts.</p><span class="st pill part">Known gap</span></li>
     </ul>
   </section>
@@ -122,7 +158,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">3.6</span><p>As <em>Ali</em>, I want Technical Interview and Client Screen mail to create interview events and student notices (Client Screen created none before).</p><span class="st pill part">Tests and samples</span></li>
       <li><span class="id">3.7</span><p>As <em>a student</em>, I want a thank-you or "checking on the outcome" email after an interview to get its own folder (Interview follow up) and no notice about an interview that already happened.</p><span class="st pill part">Tested on samples</span></li>
       <li><span class="id">3.8</span><p>As <em>Ali</em>, I want Job Machine mail to create an event only when it is really an interview, reschedule or cancellation notice (it never created one before).</p><span class="st pill part">Tests only</span></li>
-      <li><span class="id">3.9</span><p>As <em>Ali</em>, I want the retired categories (Schedule, Confirmation, Final Interview) re-filed by interview type, tried in shadow for a week before it goes live.</p><span class="st pill off">Shadow mode</span></li>
+      <li><span class="id">3.9</span><p>As <em>Ali</em>, I want the retired categories (Schedule, Confirmation, Final Interview) re-filed by interview type. Tried in shadow, switched live on 10 Oct for newly classified mail; mail already in those Gmail folders is not moved.</p><span class="st pill part">Live, watch the next runs</span></li>
     </ul>
   </section>
 
@@ -153,13 +189,15 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
 
   <section class="uc">
     <div class="uc-head"><h2><small>UC6</small>Review low-confidence classifications</h2><span class="pill ok">Working</span></div>
-    <p class="meta"><b>Actor:</b> Ali, Rob &nbsp;·&nbsp; <b>Result:</b> uncertain items surface in an approvals queue.</p>
-    <p class="note ok"><b>Proven on real mail.</b> Anything under 0.70 confidence is queued once per email (15 pending now). The first queued items were all noise at a flat 0.65 (forwarded LinkedIn links, Skool reminders), so sender rules now catch those before they reach the model. "Other" at exactly 0.0 is not queued.</p>
+    <p class="meta"><b>Actor:</b> Ali, Rob, Kes &nbsp;·&nbsp; <b>Result:</b> mail the AI was unsure about is checked by a person, from one screen (Review > Classification review).</p>
+    <p class="note ok"><b>Fixed and cleared (10 to 11 Oct).</b> The list went from 126 open items to 0. Each card now shows the email text, so nobody goes back to Gmail to decide. A manual move finds the email by its Message-ID wherever Gmail has it now (the pipeline had often moved it already, which made every earlier move fail). The folder list is the real workbook folders with "Other (not job related)" first, and Delete is gone because the system quarantines mail and never deletes it. "Other" at 50% or more is no longer queued, because that mail is already parked in Spam Review. A one-off re-read of every open item with the cleaned text closed 41 as Other, filed 4 and left 9 for a person.</p>
     <ul class="stories">
-      <li><span class="id">6.1</span><p>As <em>Ali</em>, I want anything under 0.70 confidence in the approvals queue.</p><span class="st pill ok">Working</span></li>
-      <li><span class="id">6.2</span><p>As <em>Rob</em>, I want to approve, override or reject a label with one click.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">6.1</span><p>As <em>Ali</em>, I want anything under 0.70 confidence in the queue, except an "Other" the AI is at least 50% sure of, so Rob sees real doubts and not junk.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">6.2</span><p>As <em>Rob</em>, I want to read the email in the card and then keep it, or move it to a real folder or to "Other (not job related)", with one click.</p><span class="st pill ok">Working (10 Oct)</span></li>
       <li><span class="id">6.3</span><p>As <em>Ali</em>, I want my corrections turned into an accuracy figure.</p><span class="st pill part">Partial</span></li>
-      <li><span class="id">6.4</span><p>As <em>Ali</em>, I want the queue to skip plain junk, so Rob sees a handful of items a day, not hundreds.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">6.4</span><p>As <em>Ali</em>, I want mail written by a person (a personal mailbox, Colaberry staff, a reply) never closed automatically, so a real message is not lost.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">6.5</span><p>As <em>Rob</em>, I want a failed move to say why on the screen and keep the card, never to look as if nothing happened.</p><span class="st pill ok">Working (10 Oct)</span></li>
+      <li><span class="id">6.6</span><p>As <em>Ali</em>, I want a recruiter message that reads like a real interview (a "kindly join the zoom link" reply) seen by a person and not left in Quarantine. One such mail, for a student, was found in Quarantine with no student notice and is waiting for Kes.</p><span class="st pill part">Open</span></li>
     </ul>
   </section>
 
@@ -179,13 +217,17 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
   <h2 class="band">Watching and running the system</h2>
 
   <section class="uc">
-    <div class="uc-head"><h2><small>UC8</small>Watch the system on the dashboard</h2><span class="pill ok">Working</span></div>
-    <p class="meta"><b>Actor:</b> Ali, Kes &nbsp;·&nbsp; <b>Result:</b> a live picture of volume, categories and accuracy.</p>
+    <div class="uc-head"><h2><small>UC8</small>Watch the system: Dashboard for today, Reports for looking back</h2><span class="pill ok">Working</span></div>
+    <p class="meta"><b>Actor:</b> Ali, Rob, Kes &nbsp;·&nbsp; <b>Result:</b> the Dashboard shows what needs action today; Reports (Overview, Interviews, Pipeline, Students, Companies, System) shows how things went.</p>
+    <p class="note ok"><b>Reorganised and given date filters (10 to 11 Oct).</b> The interface is settled and will not change further. The old Interviews page is now a Reports tab, and the engineering numbers moved to Reports > System.</p>
     <ul class="stories">
-      <li><span class="id">8.1</span><p>As <em>Ali</em>, I want totals, category breakdown and trends.</p><span class="st pill ok">Working</span></li>
-      <li><span class="id">8.2</span><p>As <em>Ali</em>, I want each processing run and its outcome.</p><span class="st pill ok">Working</span></li>
-      <li><span class="id">8.3</span><p>As <em>Ali</em>, I want an accuracy view.</p><span class="st pill ok">Working</span></li>
-      <li><span class="id">8.4</span><p>As <em>Rob</em>, I want to trigger a run on demand.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">8.1</span><p>As <em>Rob</em>, I want the Dashboard to open on today: Run Now and the last run, emails today, interview requests today, offers today, the approvals waiting, the student notifications needing a decision, and the emails processed today.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">8.2</span><p>As <em>Rob</em>, I want Upcoming Interviews to show today to one week ahead by default, and a From and To date picker to extend it as I need, with a count of the ones after my end date.</p><span class="st pill ok">Working (11 Oct)</span></li>
+      <li><span class="id">8.3</span><p>As <em>Ali</em>, I want Reports > Overview to summarise a date range I choose (default: the current week, Monday to Sunday), with the category mix, the 7-day trend and the offers goal.</p><span class="st pill ok">Working (11 Oct)</span></li>
+      <li><span class="id">8.4</span><p>As <em>Kes</em>, I want Reports > System to show the AI cost, the average run time, the failure rate, the database storage and the last 25 runs.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">8.5</span><p>As <em>Rob</em>, I want to trigger a run on demand.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">8.6</span><p>As <em>anyone reading a number</em>, I want a red banner on every page while the notification flow only logs, so "Notified" is never mistaken for "a student was reached".</p><span class="st pill ok">Working (10 Oct)</span></li>
+      <li><span class="id">8.7</span><p>As <em>Ali</em>, I want an accuracy view.</p><span class="st pill ok">Working</span></li>
     </ul>
   </section>
 
@@ -194,7 +236,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
     <p class="meta"><b>Actor:</b> Ali, Rob &nbsp;·&nbsp; <b>Result:</b> interviews, offers and preparation steps per student.</p>
     <p class="note"><b>Cleaner.</b> The 20 non-interview rows that inflated the list were exported and deleted. Matching events to students is still incomplete (UC4).</p>
     <ul class="stories">
-      <li><span class="id">9.1</span><p>As <em>Rob</em>, I want a list of upcoming interviews.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">9.1</span><p>As <em>Rob</em>, I want every interview found in the inbox in one list (Reports > Interviews), searchable, filterable by type and status, with each student's notification state and the process checklist one click away.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">9.2</span><p>As <em>Rob</em>, I want a checklist per interview.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">9.3</span><p>As <em>Ali</em>, I want per-student activity, company tracker, offers and missed interviews.</p><span class="st pill part">Partial</span></li>
       <li><span class="id">9.4</span><p>As <em>Ali</em>, I want checklists that fit the interview type.</p><span class="st pill part">Untested</span></li>
@@ -211,7 +253,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
       <li><span class="id">10.2</span><p>As <em>Kes</em>, I want the connection to reconnect after a drop.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">10.3</span><p>As <em>Ali</em>, I want the deployed code in a reviewable GitHub repository.</p><span class="st pill part">Unconfirmed</span></li>
       <li><span class="id">10.4</span><p>As <em>Kes</em>, I want the deploy to refuse unsafe times.</p><span class="st pill ok">Working</span></li>
-      <li><span class="id">10.5</span><p>As <em>Ali</em>, I want a daily health check that emails only when something breaks, plus a Monday all-clear so a dead check cannot look healthy.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">10.5</span><p>As <em>Ali</em>, I want a daily health check that emails only when something breaks, plus a Monday all-clear so a dead check cannot look healthy. It knows shadow mode: an approved notice that is not delivered is expected while nothing is delivered by design, and is not reported as a fault (changed 10 Oct).</p><span class="st pill ok">Working</span></li>
       <li><span class="id">10.6</span><p>As <em>Kes</em>, I want git, the repository and the server to always match.</p><span class="st pill ok">Working</span></li>
     </ul>
   </section>
@@ -228,60 +270,62 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
   <h2 class="band">Telling the student, and making sure they know <span class="pill new">New</span></h2>
 
   <section class="uc">
-    <div class="uc-head"><h2><small>UC12</small>Notify the student by call, text and email</h2><span class="pill off">Built, off</span></div>
+    <div class="uc-head"><h2><small>UC12</small>Notify the student by call, text and email</h2><span class="pill off">Shadow</span></div>
     <p class="meta"><b>Actor:</b> Rob approves, system sends &nbsp;·&nbsp; <b>Result:</b> the student hears about the interview the same day, on three channels.</p>
-    <p class="note off"><b>Switched off.</b> Nothing reaches a student until three GHL write switches are set. Every channel defaults to a dry run that only logs. Email, text and call are each sent by writing a field on the student's GHL contact (Support Issue Ticket #2 and Message for email, Ticket #4 for text, <code>interview_notification</code> for the call), and a GHL workflow does the sending.</p>
+    <p class="note off"><b>Shadow mode on the server since 9 Oct.</b> Approving a card starts the plan and looks up the real GHL contact, but only logs what it would send. Nothing reaches a student until three GHL write switches are set, and Kes sets them only after checking that log. A past interview is refused at Approve. Email, text and call are each sent by writing a field on the student's GHL contact (Support Issue Ticket #2 and Message for email, Ticket #4 for text, <code>interview_notification</code> for the call), and a GHL workflow does the sending.</p>
     <ul class="stories">
-      <li><span class="id">12.1</span><p>As <em>Ali</em>, I want nothing sent to a student before Rob approves the first send.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">12.2</span><p>As <em>a student</em>, I want a call, a text and an email at once when Rob approves, so I know today.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">12.3</span><p>As <em>the voice agent</em>, I want the interview facts (type, company, position, date, time, format, contact) passed on each call, so I can tell the student.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">12.4</span><p>As <em>Kes</em>, I want every message to differ slightly, because GHL only runs a workflow when the field changes.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">12.5</span><p>As <em>Kes</em>, I want sends to stay in a rehearsal mode until a human approves going live.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">12.1</span><p>As <em>Ali</em>, I want nothing sent to a student before Rob approves the first send.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">12.2</span><p>As <em>a student</em>, I want a call, a text and an email at once when Rob approves, so I know today.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">12.3</span><p>As <em>the voice agent</em>, I want the interview facts (type, company, position, date, time, format, contact) passed on each call, so I can tell the student.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">12.4</span><p>As <em>Kes</em>, I want every message to differ slightly, because GHL only runs a workflow when the field changes.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">12.5</span><p>As <em>Kes</em>, I want sends to stay in a rehearsal mode until a human approves going live.</p><span class="st pill off">Shadow</span></li>
       <li><span class="id">12.6</span><p>As <em>the escalation contact</em>, I want to be told when a draft has waited more than 2 business hours (Mon-Fri 9 to 5 Central), so no student waits on one person. Checked every 15 minutes.</p><span class="st pill ok">Working</span></li>
     </ul>
   </section>
 
   <section class="uc">
-    <div class="uc-head"><h2><small>UC13</small>Keep following up until the student confirms</h2><span class="pill off">Built, off</span></div>
+    <div class="uc-head"><h2><small>UC13</small>Keep following up until the student confirms</h2><span class="pill off">Shadow</span></div>
     <p class="meta"><b>Actor:</b> System &nbsp;·&nbsp; <b>Result:</b> no student is left not knowing.</p>
     <p class="note off"><b>Schedule (Ali approved, GHL rules applied).</b> Day 1: call, text and email at approval; email at +2 hours; text and email at +4 hours. Then, for three more days, one call, one text and one email at 9 AM in the student's time zone. There is no second call on day 1 because GHL allows one call per number per day.</p>
     <ul class="stories">
-      <li><span class="id">13.1</span><p>As <em>Ali</em>, I want the sequence to keep going for up to four days until the student confirms.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">13.2</span><p>As <em>Ali</em>, I want Rob told after day 1 goes unanswered, without that ending the sequence.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">13.3</span><p>As <em>Rob</em>, I want to be told when the sequence ends with no confirmation, so I can call them myself.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">13.4</span><p>As <em>Rob</em>, I want to close a sequence myself when a student tells me directly.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">13.5</span><p>As <em>Kes</em>, I want a failed or skipped attempt recorded with a reason, never silently dropped.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">13.1</span><p>As <em>Ali</em>, I want the sequence to keep going for up to four days until the student confirms.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">13.2</span><p>As <em>Ali</em>, I want Rob told after day 1 goes unanswered, without that ending the sequence.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">13.3</span><p>As <em>Rob</em>, I want to be told when the sequence ends with no confirmation, so I can call them myself.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">13.4</span><p>As <em>Rob</em>, I want to close a sequence myself when a student tells me directly.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">13.5</span><p>As <em>Kes</em>, I want a failed or skipped attempt recorded with a reason, never silently dropped.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">13.6</span><p>As <em>a student</em>, I want no call, text or email after my interview has started. A follow-up less than an hour before it is dropped, and an interview within 36 hours gets a final text and email 2 hours before. In all the plan is 15 notices over four days.</p><span class="st pill off">Built, shadow</span></li>
+      <li><span class="id">13.7</span><p>As <em>Ali</em>, I want a student whose interview has already passed never notified, and the card to say so, not to offer Approve.</p><span class="st pill off">Built, shadow</span></li>
     </ul>
   </section>
 
   <section class="uc">
-    <div class="uc-head"><h2><small>UC14</small>Know the student actually received it</h2><span class="pill off">Built, off</span></div>
+    <div class="uc-head"><h2><small>UC14</small>Know the student actually received it</h2><span class="pill off">Shadow</span></div>
     <p class="meta"><b>Actor:</b> System, AI &nbsp;·&nbsp; <b>Result:</b> an acknowledgement that stops the follow-ups.</p>
     <p class="note off"><b>Read from GHL.</b> Replies and calls are read from the student's GHL Conversations and Voice AI call logs. The AI sees only the student's own words (the <code>human:</code> lines of a call), never the agent's or ours. For the first two weeks (to 16 Oct) it only records its judgement and stops nothing.</p>
     <ul class="stories">
-      <li><span class="id">14.1</span><p>As <em>a student</em>, I want to reply YES to the text, and have that count.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">14.2</span><p>As <em>a student</em>, I want a one-tap "I got this" button in the email.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.1</span><p>As <em>a student</em>, I want to reply YES to the text, and have that count.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">14.2</span><p>As <em>a student</em>, I want a one-tap "I got this" button in the email.</p><span class="st pill off">Shadow</span></li>
       <li><span class="id">14.3</span><p>As <em>Ali</em>, I want the AI to read the student's own reply or call and recognise they understood, even without a click, so follow-ups stop.</p><span class="st pill off">Shadow mode</span></li>
-      <li><span class="id">14.4</span><p>As <em>Ali</em>, I want to see how often the AI was right before it may stop anything.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">14.5</span><p>As <em>Rob</em>, I want a question, a "can't attend" or a confused reply sent to me, not auto-handled.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">14.6</span><p>As <em>a student</em>, I want a STOP reply to end all contact immediately.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">14.8</span><p>As <em>Ali</em>, I want a plain "yes" to the agent's question "Can you confirm you got this information?" to count as confirmed, even in shadow mode. "Yes, but I can't make it" does not.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">14.9</span><p>As <em>a student</em>, I want "don't call me again" said on a call to end all calls, same as a STOP text.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">14.7</span><p>As <em>Kes</em>, I want each reply or call handled exactly once, and our own emails that GHL logs back as inbound ignored.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">14.4</span><p>As <em>Ali</em>, I want to see how often the AI was right before it may stop anything.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">14.5</span><p>As <em>Rob</em>, I want a question, a "can't attend" or a confused reply sent to me, not auto-handled.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">14.6</span><p>As <em>a student</em>, I want a STOP reply to end all contact immediately.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">14.8</span><p>As <em>Ali</em>, I want a plain "yes" to the agent's question "Can you confirm you got this information?" to count as confirmed, even in shadow mode. "Yes, but I can't make it" does not.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">14.9</span><p>As <em>a student</em>, I want "don't call me again" said on a call to end all calls, same as a STOP text.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">14.7</span><p>As <em>Kes</em>, I want each reply or call handled exactly once, and our own emails that GHL logs back as inbound ignored.</p><span class="st pill off">Shadow</span></li>
     </ul>
   </section>
 
   <section class="uc">
-    <div class="uc-head"><h2><small>UC15</small>Contact students only when allowed</h2><span class="pill off">Built, off</span></div>
+    <div class="uc-head"><h2><small>UC15</small>Contact students only when allowed</h2><span class="pill off">Shadow</span></div>
     <p class="meta"><b>Actor:</b> System &nbsp;·&nbsp; <b>Result:</b> no call at 6 AM, no message to someone who opted out, no crowding out Cora.</p>
     <ul class="stories">
-      <li><span class="id">15.1</span><p>As <em>Ali</em>, I want quiet hours in each student's own time zone (worked out from the phone area code, Central only as a last resort).</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">15.2</span><p>As <em>a student</em>, I want no texts between 9 PM and 8 AM and no calls between 8 PM and 8 AM; emails can come any time.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">15.3</span><p>As <em>Kes</em>, I want never more than one call to a number per day, as GHL requires.</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">15.4</span><p>As <em>a student</em>, I want my Do-Not-Disturb setting and any "do not call" tag respected before every send (GHL does not check).</p><span class="st pill off">Built, off</span></li>
-      <li><span class="id">15.5</span><p>As <em>Ali</em>, I want our texts capped (150 a day of the shared 999) so Cora is never starved, with extra texts moved to the next morning.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">15.1</span><p>As <em>Ali</em>, I want quiet hours in each student's own time zone (worked out from the phone area code, Central only as a last resort).</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">15.2</span><p>As <em>a student</em>, I want no texts between 9 PM and 8 AM and no calls between 8 PM and 8 AM; emails can come any time.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">15.3</span><p>As <em>Kes</em>, I want never more than one call to a number per day, as GHL requires.</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">15.4</span><p>As <em>a student</em>, I want my Do-Not-Disturb setting and any "do not call" tag respected before every send (GHL does not check).</p><span class="st pill off">Shadow</span></li>
+      <li><span class="id">15.5</span><p>As <em>Ali</em>, I want our texts capped (150 a day of the shared 999) so Cora is never starved, with extra texts moved to the next morning.</p><span class="st pill off">Shadow</span></li>
       <li><span class="id">15.6</span><p>As <em>Kes</em>, I want a student matched to their GHL contact by an exact phone number, so details never reach the wrong person.</p><span class="st pill ok">Checked live</span></li>
-      <li><span class="id">15.8</span><p>As <em>a student</em>, I want my STOP remembered by the app for that channel even if GHL is never updated. A stopped call does not stop texts.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">15.8</span><p>As <em>a student</em>, I want my STOP remembered by the app for that channel even if GHL is never updated. A stopped call does not stop texts.</p><span class="st pill off">Shadow</span></li>
       <li><span class="id">15.7</span><p>As <em>Ali</em>, I want to know whether students agreed to receive texts and calls.</p><span class="st pill part">Asked Ali</span></li>
     </ul>
   </section>
@@ -304,16 +348,18 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
   </section>
 
   <section class="uc">
-    <div class="uc-head"><h2><small>UC17</small>Prove it works before anyone is contacted</h2><span class="pill off">Built, off</span></div>
+    <div class="uc-head"><h2><small>UC17</small>Prove it works before anyone is contacted</h2><span class="pill off">Shadow</span></div>
     <p class="meta"><b>Actor:</b> Kes, Ali &nbsp;·&nbsp; <b>Result:</b> confidence before the first real send.</p>
-    <p class="note off"><b>Checked read-only against the real GHL account.</b> The four trigger fields exist, the call-log permission works (152 live calls), the conversations key works, and the parser kept the agent's words out of the student's. The first live test call was placed on 2 Oct on the tester's own contact and read back. A one-contact test tool (call, text, email) and a written test plan with a go-live checklist now exist. Text, email, voicemail, wrong person and STOP tests are next.</p>
+    <p class="note off"><b>Checked read-only against the real GHL account.</b> The four trigger fields exist, the call-log permission works (152 live calls), the conversations key works, and the parser kept the agent's words out of the student's. The first live test call was placed on 2 Oct on the tester's own contact and read back. A one-contact test tool (call, text, email) and a written test plan with a go-live checklist now exist. A shadow rehearsal on the server (9 to 10 Oct) showed the plan end to end on real cases and found that a real student, Fikru Cheklie (interview Mon 12 Oct), had no GHL contact matching his email, so every student needs a GHL contact before a live notice. Text, email, voicemail, wrong person and STOP tests come with the staff test on Mon 12 Oct.</p>
     <ul class="stories">
-      <li><span class="id">17.1</span><p>As <em>Kes</em>, I want to rehearse against real contacts with writes switched off, and read what would have been sent.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">17.1</span><p>As <em>Kes</em>, I want to rehearse against real contacts with writes switched off, and read what would have been sent.</p><span class="st pill off">Shadow</span></li>
       <li><span class="id">17.2</span><p>As <em>Ali</em>, I want the health check to flag a failed student attempt, so a student cannot silently go unnotified.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">17.3</span><p>As <em>Kes</em>, I want one real test call to my own contact, and to see how the interview facts reach the agent.</p><span class="st pill ok">Done for the call</span></li>
       <li><span class="id">17.5</span><p>As <em>Kes</em>, I want one tool that tests a call, a text or an email on a single exact-match contact, refusing anyone on Do-Not-Disturb.</p><span class="st pill ok">Working (call used live)</span></li>
       <li><span class="id">17.6</span><p>As <em>Ali</em>, I want a written test plan with pass criteria and a go-live checklist, so nothing reaches a real student until each step is proven.</p><span class="st pill ok">Written</span></li>
       <li><span class="id">17.7</span><p>As <em>Ali</em>, I want to decide the remaining go-live questions: the AI disclosure wording, the authoritative student and phone list, the three pilot students, deleting about 200 stub emails, and who may undo a STOP (parked). Consent, the callback owner and the alerts are decided.</p><span class="st pill part">Emailed to Ali</span></li>
+      <li><span class="id">17.8</span><p>As <em>Kes</em>, I want the app to say plainly when a student has no GHL contact, and to have a contact created before the student is notified.</p><span class="st pill part">Open (Fikru, 12 Oct)</span></li>
+      <li><span class="id">17.9</span><p>As <em>Ali</em>, I want the first live tests run with three Colaberry staff as the recipients (their own details and consent), shadow first, then live only after Kes has checked the log.</p><span class="st pill part">Planned Mon 12 Oct</span></li>
       <li><span class="id">17.4</span><p>As <em>Ali</em>, I want to confirm with Rob what he does today before anything is switched on, so nothing he relies on disappears.</p><span class="st pill part">Open</span></li>
     </ul>
   </section>
@@ -326,7 +372,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
     <ul class="stories">
       <li><span class="id">18.1</span><p>As <em>Ali</em>, I want the approver, callback owner and escalation contact set on the Settings page, so a change of staff needs no deploy.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">18.2</span><p>As <em>Ali</em>, I want a draft nobody approves within 2 business hours reported to the escalation contact, once per draft.</p><span class="st pill ok">Working</span></li>
-      <li><span class="id">18.3</span><p>As <em>Ali</em>, I want the pilot limited to 3 approved notices (a setting) before everyone is notified.</p><span class="st pill off">Built, off</span></li>
+      <li><span class="id">18.3</span><p>As <em>Ali</em>, I want the pilot limited to 3 approved notices (a setting) before everyone is notified.</p><span class="st pill off">Shadow</span></li>
       <li><span class="id">18.4</span><p>As <em>Kes</em>, I want no person's name or address written into the code, enforced by a test.</p><span class="st pill ok">Working</span></li>
     </ul>
   </section>
@@ -337,7 +383,7 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
     <p class="note"><b>Detection is unproven.</b> The app reads the receptionist's call log every 5 minutes. None of the 153 earlier calls was an interview callback, so a real test callback is still needed, and the new wording must first be pasted into the GHL AI Receptionist.</p>
     <ul class="stories">
       <li><span class="id">19.1</span><p>As <em>a student</em>, I want to be told that Interview Support will call me back within one business hour, and have my name and best number taken.</p><span class="st pill part">Wording to paste</span></li>
-      <li><span class="id">19.2</span><p>As <em>the callback owner</em>, I want an email alert and a "Callbacks waiting" list, then one click on "Called back".</p><span class="st pill part">Built, unproven</span></li>
+      <li><span class="id">19.2</span><p>As <em>the callback owner</em>, I want an email alert and a "Callbacks waiting" list, then one click on "Called back". The alert says why the student called, how to reach them, their last three interviews and what the app has already sent them.</p><span class="st pill part">Built, unproven</span></li>
       <li><span class="id">19.3</span><p>As <em>Ali</em>, I want a callback not answered within one business hour sent to the escalation contact.</p><span class="st pill part">Built, unproven</span></li>
     </ul>
   </section>
@@ -345,10 +391,11 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
   <section class="uc">
     <div class="uc-head"><h2><small>UC20</small>Check who the student is before notifying</h2><span class="pill ok">Working</span></div>
     <p class="meta"><b>Actor:</b> Approver &nbsp;·&nbsp; <b>Result:</b> no notice goes to a guessed student.</p>
-    <p class="note ok"><b>Live.</b> 11 students the system had to guess are flagged. The approver sees an orange "Verify who this student is" box with the evidence, corrects name, phone and email, and clicks Verify. Approve is refused until then.</p>
+    <p class="note ok"><b>Live.</b> Students the system had to guess are flagged. The approver sees an orange "Verify who this student is" box with the evidence, corrects name, phone and email, and clicks Verify. Approve is refused until then. Kes verified most of them on 10 Oct; 5 remain. They have their own tab (Review > Verify students) and, for their mail, a Gmail label "Verify Student".</p>
     <ul class="stories">
       <li><span class="id">20.1</span><p>As <em>the approver</em>, I want guessed names flagged, with the greeting name ("Hi Omolola") preferred over the Gmail username.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">20.2</span><p>As <em>the approver</em>, I want candidates who changed their email traced, since the delivery Gmail may not match the roster.</p><span class="st pill part">Open</span></li>
+      <li><span class="id">20.4</span><p>As <em>the approver</em>, I want mail of students still to verify labelled "Verify Student" in Gmail (new mail automatically, past mail by a one-off), so I can find it without the app.</p><span class="st pill ok">Working (10 Oct)</span></li>
       <li><span class="id">20.3</span><p>As <em>Ali</em>, I want Approve refused with no student, no contact details or no verification.</p><span class="st pill ok">Working</span></li>
     </ul>
   </section>
@@ -357,11 +404,138 @@ h2.band{font-family:var(--font-display);font-size:1.15rem;margin:30px 0 4px}
     <div class="uc-head"><h2><small>UC21</small>One screen to review and approve</h2><span class="pill ok">Working</span></div>
     <p class="meta"><b>Actor:</b> Approver &nbsp;·&nbsp; <b>Result:</b> everything needed to decide, in one place.</p>
     <ul class="stories">
-      <li><span class="id">21.1</span><p>As <em>the approver</em>, I want Review > Student notifications to show contact details, a real-interview check, the email body (collapsible), previews, and Approve, Reject or Edit.</p><span class="st pill ok">Working</span></li>
-      <li><span class="id">21.2</span><p>As <em>Ali</em>, I want the Interviews page to replace the old Events Report, and redundant tiles and tabs removed.</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">21.1</span><p>As <em>the approver</em>, I want Review to have three tabs: Student notifications (contact details, a real-interview check, the email body, previews, Approve, Reject or Edit, with the time the email arrived), Verify students (with a count), and Classification review (UC6).</p><span class="st pill ok">Working</span></li>
+      <li><span class="id">21.2</span><p>As <em>Ali</em>, I want the navigation to be Dashboard, Reports, Review and Settings, with the interviews list inside Reports.</p><span class="st pill ok">Working</span></li>
       <li><span class="id">21.3</span><p>As <em>the approver</em>, I want Run Now to work in production.</p><span class="st pill ok">Working</span></li>
     </ul>
   </section>
 
-  <p class="foot">Sources: <code>progress.md</code>, <code>directives/student-notification-escalation.md</code>, <code>docs/ghl-conversations-and-calls.md</code>, <code>docs/voice-agent-outbound-interview-prompt.md</code>, the production database and cron log. "Working" means seen on real mail or data. "Built, off" means deployed and tested but switched off, so nothing is sent. "Tests only" means covered by automated tests but not yet seen live.</p>
+  <p class="foot">Sources: <code>progress.md</code>, <code>directives/student-notification-escalation.md</code>, <code>docs/ghl-conversations-and-calls.md</code>, <code>docs/voice-agent-outbound-interview-prompt.md</code>, the production database and cron log. "Working" means seen on real mail or data. "Shadow" means running on real data but delivering nothing, so no student is contacted. "Built, off" means deployed and tested but switched off. "Tests only" means covered by automated tests but not yet seen live.</p>
+  </div><!-- /paneUse -->
+
+  <div id="paneDeck" role="tabpanel" hidden>
+    <p class="lede">Seven short steps for a live walkthrough of the app, about four minutes in all. Use the arrow keys or the buttons. Each step has what to say and what to show on screen. Status labels are honest: where something is still in shadow mode or not yet proven, say so.</p>
+    <div class="deck">
+      <div class="deck-top"><span id="dkStep">Step 1 of 7</span><span id="dkTime">0:30 for this step</span><span id="dkTotal">Running time 0:30 of 4:20</span></div>
+      <div class="bar"><i id="dkBar"></i></div>
+      <div class="slide" id="dkSlide" aria-live="polite"></div>
+      <div class="notes" id="dkNotes"></div>
+      <div class="controls">
+        <button class="btn alt" id="dkPrev">Back</button>
+        <button class="btn" id="dkNext">Next</button>
+        <button class="btn alt" id="dkClock">Start timer</button>
+        <span class="runtotal" id="dkClockOut" role="timer">0:00</span>
+        <div class="dots" id="dkDots"></div>
+      </div>
+    </div>
+  </div>
+
 </div>
+
+<script>
+/* Use-case page: Use cases / Walkthrough tabs, and the walkthrough deck (7 steps, 260 seconds). */
+(function () {
+  var STEPS = [
+    { sec: 30, kicker: "The idea", status: "Working", title: "One inbox, every email understood, every student told",
+      bullets: ["Colaberry's interview inbox receives every student's mail. InboxGenius reads it, files it, and tells students about their interviews.",
+                "Two jobs: keep the inbox clean and correct, and make sure no student misses an interview."],
+      facts: [["~9,800", "emails processed so far"], ["25", "categories"], ["22", "Gmail folders, plus safety folders"]],
+      say: "Students forward their job mail to one shared inbox. InboxGenius reads each email, decides what it is, files it in the right folder, and when it is an interview, makes sure the student actually hears about it. There are two jobs here: a clean inbox, and no missed interviews.",
+      show: "Open the Dashboard. Point at the four tiles and the Run Now button." },
+    { sec: 40, kicker: "Sorting", status: "Working", title: "Rules first, then AI, and nothing is ever deleted",
+      bullets: ["Every 2 hours: clear senders (job boards, newsletters, account mail) are sorted by rule; the rest are read by the AI with a confidence score.",
+                "Real interview emails stay in the inbox. Unclear or junk mail goes to Spam Review, then Quarantine: parked, never deleted.",
+                "Interview mail is typed (phone screen, client, technical) and linked to the right student."],
+      facts: [["0", "emails permanently deleted since 1 Oct"], ["22", "folders from Ali's labels workbook"]],
+      say: "Obvious senders are handled by simple rules, which are free and predictable. Everything else goes to the AI, which also gives a confidence score. Real interview emails are never moved away. Anything junk or unclear is parked in Quarantine, never deleted, so a wrong guess can always be recovered.",
+      show: "Reports > Overview: the category mix and the 7-day trend. Mention the From and To date pickers." },
+    { sec: 30, kicker: "Dashboard", status: "Working", title: "The Dashboard is for what needs you today",
+      bullets: ["Upcoming Interviews: today to a week ahead by default. Change the From and To dates to look further.",
+                "Approvals waiting, students needing a decision, callbacks waiting: each links to where you act.",
+                "A red banner on every page says when the system is only logging, not delivering."],
+      facts: [["7 days", "default window, any range allowed"]],
+      say: "The Dashboard is just today's work. Upcoming interviews show the next seven days, and the two date pickers let you stretch that to any range you like. The boxes below link straight to the things waiting for a decision.",
+      show: "Dashboard: change the To date on Upcoming Interviews, then press Reset. Point at the red shadow-mode banner." },
+    { sec: 45, kicker: "Review", status: "Working", title: "You decide: three short queues",
+      bullets: ["Student notifications: see the email, the student's contact details and a real-interview check, then Approve or Reject.",
+                "Verify students: where the system had to guess who the student is, confirm before anyone is notified.",
+                "Classification review: mail the AI was unsure about, with its text shown; move it to a folder or to Other. The list stands at zero."],
+      facts: [["126 to 0", "classification items cleared"], ["3", "pilot notices before the limit lifts"]],
+      say: "Review has three queues. First, student notices: you see the email and who it is for, and you approve or reject. Second, any student the system had to guess is held until you verify them. Third, mail the AI was unsure about: the text is right there, so you decide without going back to Gmail. Nothing reaches a student until a person approves.",
+      show: "Review > Student notifications: open a card. Then Verify students, then Classification review." },
+    { sec: 55, kicker: "Telling the student", status: "Shadow mode", title: "Call, text and email together, then follow-ups until they confirm",
+      bullets: ["On Approve: a call, a text and an email at once, through GHL. Then an email after 2 hours, a text and email after 4, and a call, text and email at 9 AM on each of the next three days.",
+                "It stops when the student confirms (a reply, a yes on the call, or the AI reading their words), asks to stop, or the interview starts.",
+                "Quiet hours in the student's own time zone, one call per number per day, opt-outs always respected."],
+      facts: [["15", "notices over four days at most"], ["1", "call per number per day"], ["0", "students contacted so far: shadow mode"]],
+      say: "When you approve, the student gets a call, a text and an email together. If they do not confirm, we keep following up for up to four days: more emails and texts today, then a call, text and email every morning. It stops the moment they confirm, ask us to stop, or the interview begins, and it never calls at night. Today this runs in shadow mode: it does everything except actually send, so we can check it on real cases first.",
+      show: "Review: an approved card showing the planned notices. Be clear that nothing is delivered yet." },
+    { sec: 30, kicker: "When a student calls back", status: "Built, not yet proven", title: "A person calls back within one business hour",
+      bullets: ["The AI receptionist only takes the name, number and reason. A person calls back, never the AI.",
+                "The callback owner gets an email with the student's own words, how to reach them and their recent interviews.",
+                "If nobody calls back in an hour, the escalation contact is told."],
+      facts: [["1 hour", "business hours, Mon to Fri 9 to 5 Central"]],
+      say: "If a student rings back, the AI receptionist only takes a message. A real person calls back within one business hour, and gets an email with everything they need. If it is late, the escalation contact is told. This part is built, but we still need one real test call to prove the detection.",
+      show: "Dashboard: the callbacks line in the student notifications box. Settings: the three roles." },
+    { sec: 30, kicker: "Where we are", status: "Next: Monday", title: "Safe by design, and the next step is a staff test",
+      bullets: ["A daily health check emails only when something breaks, with a Monday all-clear. Reports > System shows runs, cost and failures.",
+                "Roles (approver, callback owner, escalation contact) are set on a page, not in code.",
+                "Next: Monday 12 Oct, a test with three Colaberry staff as the recipients, shadow first. Live switches only after the log is checked."],
+      facts: [["Mon 12 Oct", "staff test"], ["3", "GHL write switches, off until validated"]],
+      say: "To finish: it is monitored by a daily health check, the people in each role are set on a page, and nothing goes live until it is proven. The next step is Monday, a test with three of our own staff as the recipients, in shadow mode first. Only after we check the log do we switch on real sending.",
+      show: "Reports > System, then Settings. End on the Dashboard." }
+  ];
+
+  var total = STEPS.reduce(function (n, x) { return n + x.sec; }, 0);
+  var cur = 0, timer = null, elapsed = 0;
+  var $ = function (id) { return document.getElementById(id); };
+  var fmt = function (sec) { return Math.floor(sec / 60) + ":" + ("0" + (sec % 60)).slice(-2); };
+  var pill = { "Working": "ok", "Shadow mode": "off", "Built, not yet proven": "part", "Next: Monday": "new" };
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+
+  function render() {
+    var st = STEPS[cur], run = STEPS.slice(0, cur + 1).reduce(function (n, x) { return n + x.sec; }, 0);
+    $("dkStep").textContent = "Step " + (cur + 1) + " of " + STEPS.length;
+    $("dkTime").textContent = fmt(st.sec) + " for this step";
+    $("dkTotal").textContent = "Running time " + fmt(run) + " of " + fmt(total);
+    $("dkBar").style.width = (run / total * 100) + "%";
+    var sl = $("dkSlide"); sl.textContent = "";
+    var k = el("div", "kicker", st.kicker + "  "); k.appendChild(el("span", "pill " + (pill[st.status] || "ok"), st.status)); sl.appendChild(k);
+    sl.appendChild(el("h2", null, st.title));
+    var ul = el("ul"); st.bullets.forEach(function (b) { ul.appendChild(el("li", null, b)); }); sl.appendChild(ul);
+    var f = el("div", "facts"); st.facts.forEach(function (x) { var d = el("div", "fact"); d.appendChild(el("b", null, x[0])); d.appendChild(document.createTextNode(x[1])); f.appendChild(d); }); sl.appendChild(f);
+    var n = $("dkNotes"); n.textContent = "";
+    var a = el("div"); a.appendChild(el("h3", null, "Say")); a.appendChild(el("p", null, st.say)); n.appendChild(a);
+    var b = el("div"); b.appendChild(el("h3", null, "Show on screen")); b.appendChild(el("p", null, st.show)); n.appendChild(b);
+    $("dkPrev").disabled = cur === 0; $("dkNext").disabled = cur === STEPS.length - 1;
+    Array.prototype.forEach.call($("dkDots").children, function (d, i) { if (i === cur) d.setAttribute("aria-current", "true"); else d.removeAttribute("aria-current"); });
+  }
+  function go(i) { cur = Math.max(0, Math.min(STEPS.length - 1, i)); render(); }
+
+  STEPS.forEach(function (x, i) { var d = el("button", null, String(i + 1)); d.type = "button"; d.setAttribute("aria-label", "Step " + (i + 1) + ": " + x.title); d.onclick = function () { go(i); }; $("dkDots").appendChild(d); });
+  $("dkPrev").onclick = function () { go(cur - 1); };
+  $("dkNext").onclick = function () { go(cur + 1); };
+  $("dkClock").onclick = function () {
+    if (timer) { clearInterval(timer); timer = null; $("dkClock").textContent = "Start timer"; return; }
+    if (elapsed >= total * 2) elapsed = 0;
+    $("dkClock").textContent = "Pause timer";
+    timer = setInterval(function () { elapsed += 1; $("dkClockOut").textContent = fmt(elapsed) + (elapsed > total ? " (over plan)" : ""); }, 1000);
+  };
+
+  function show(which) {
+    var deck = which === "deck";
+    $("paneUse").hidden = deck; $("paneDeck").hidden = !deck;
+    $("tabUse").setAttribute("aria-selected", String(!deck)); $("tabDeck").setAttribute("aria-selected", String(deck));
+    try { history.replaceState(null, "", deck ? "#walkthrough" : "#use-cases"); } catch (e) {}
+  }
+  $("tabUse").onclick = function () { show("use"); };
+  $("tabDeck").onclick = function () { show("deck"); };
+  document.addEventListener("keydown", function (e) {
+    if ($("paneDeck").hidden) return;
+    if (e.key === "ArrowRight") go(cur + 1); else if (e.key === "ArrowLeft") go(cur - 1);
+  });
+  render();
+  if (location.hash === "#walkthrough") show("deck");
+})();
+</script>

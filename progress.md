@@ -87,6 +87,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-11: use-case page brought up to date and a walkthrough tab added (artifact FRzyZVP1uBnsvMPEViEZiw, `docs/use-cases.html`)
+
+Status now dated 11 Oct (commit b525ca7). Updated: shadow mode on the server (UC12, 13, 17 now say "Shadow", plus the Fikru no-GHL-contact finding and the Mon 12 Oct staff test); the plan stops at the interview (13.6, 13.7); retired categories live (3.9); new classification rules and the HTML-body fix (1.8 to 1.11); UC6 rewritten for the cleaned-up Classification review (email shown, real folder list with Other, no Delete, moves by Message-ID, list at 0); UC8 rewritten for Dashboard (today) and Reports tabs with From/To date filters and the shadow banner; health check knows shadow mode; callback alerts carry context (19.2); Verify students tab and the "Verify Student" Gmail label (UC20); Review has three tabs. New **Walkthrough tab**: 7 steps, 4:20 in all, each with what to say and what to show, a timer, arrow-key navigation; statuses are honest (Shadow mode, Built not yet proven). Open item shown on the page: the westcoastllc "kindly join below zoom link" mail in Quarantine awaiting Kes (6.6). Docs only, no code.
+
 ### 2026-10-11: date filters on Upcoming Interviews and the Reports summary (Kes: "I like the current interface and we will not be changing it anymore")
 
 Decision: the current interface stays; the Dashboard/Reports/Review consolidation proposed in the screen-plan artifact is DROPPED (nothing from it is pending).
