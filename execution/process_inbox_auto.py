@@ -1787,6 +1787,18 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     if from_addr.strip() == "info@school.colaberry.com":
         return "Other"
 
+    # ── Not job mail (Kes 2026-10-10), each narrow on purpose ──────────────────
+    # A note a student sent to herself: a bare link with no subject, or a phone attachment path ("file:///var/mobile/...").
+    flat_body = " ".join(body.split())
+    if (subject.strip() in ("", "no subject") and re.fullmatch(r"https?://\S+", flat_body)) or flat_body.startswith("file:///"):
+        return "Other"
+    # Ali's Colaberry marketing campaign ("Questions About Colaberry?"): a Mailchimp mailing, never an interview. Only that sender, only a campaign page.
+    if from_addr.strip("<> ") == "ali@colaberry.com" and "view this email in your browser" in body:
+        return "Other"
+    # A company selling more applications and interviews to job seekers (Mobius Engine), and a recurring career-networking invitation (Southlake).
+    if _domain_is(domain, "mobiusengine.ai") or from_addr.strip("<> ") == "charliezinger@aol.com":
+        return "Other"
+
     # ── OpenAI account mail (Kes 2026-10-10): "Check your route before you go" and similar, never job-related. Exact address only. ──
     if from_addr.strip() == "noreply@email.openai.com":
         return "Other"

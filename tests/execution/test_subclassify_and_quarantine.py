@@ -513,3 +513,19 @@ def test_html_inside_the_text_part_is_turned_into_text():
     plain = EmailMessage()
     plain.set_content("Hi, can you interview on Friday at 2 < 3 pm?")          # a stray < in real text is left alone
     assert fetch_emails.extract_email_body(plain).startswith("Hi, can you interview")
+
+
+@pytest.mark.parametrize("sender, subject, body, expected", [
+    ("helenasfaw334@gmail.com", "No Subject", "https://lnkd.in/p/gVQ6HjhH", "Other"),                       # a bare link a student mailed herself
+    ("helenasfaw334@gmail.com", "Check this role", "https://lnkd.in/p/gVQ6HjhH", None),                    # a subject means a message: the model reads it
+    ("kenyasbogans@gmail.com", "Audio", "file:///var/mobile/Library/SMS/Attachments/42/02/B06F", "Other"),
+    ("ali@colaberry.com", "Questions About Colaberry? Let Us Help!", "View this email in your browser The Answers to Your Questions", "Other"),
+    ("ali@colaberry.com", "Quick question about Friday", "Can you join the interview prep call?", None),     # Ali's real mail is never caught
+    ("cai@colaberry.com", "Logging Interviews", "View this email in your browser SEVERITY LEVEL: HIGH", None),   # other Colaberry senders are not covered
+    ("ashwinagrawal@mobiusengine.ai", "Re: New SQL & Power BI Developer opportunities", "We can help you land your next role", "Other"),
+    ("<charliezinger@aol.com>", "Join Us Thursday - Southlake Focus Group Networking", "Join Us In Person This Week", "Other"),
+    ("someone@aol.com", "Interview Friday", "Please confirm your interview", None),
+])
+def test_not_job_mail_rules(sender, subject, body, expected):
+    from process_inbox_auto import pre_classify_by_sender
+    assert pre_classify_by_sender({"sender_email": sender, "subject": subject, "body_content": body}) == expected
