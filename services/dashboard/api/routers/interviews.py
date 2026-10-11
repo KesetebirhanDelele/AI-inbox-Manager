@@ -95,15 +95,17 @@ class UpcomingInterview(BaseModel):
 
 @router.get("/upcoming", response_model=List[UpcomingInterview])
 async def get_upcoming_interviews(
+    start_date: Optional[date] = Query(None, description="First day to include (default: today). Earlier dates let the dashboard look back."),
     db: Session = Depends(get_db),
     user: UserSession = Depends(get_current_user)
 ):
     """
-    Get interviews scheduled for today or in the future (have an interview_date set).
+    Get interviews scheduled from `start_date` (default: today) onward (have an interview_date set).
 
-    Returns events ordered by interview_date ascending so the soonest appears first.
+    Returns events ordered by interview_date ascending so the soonest appears first. The dashboard applies its own end date,
+    so it can also say how many more come after the range.
     """
-    today_str = date.today().isoformat()  # "YYYY-MM-DD"
+    today_str = (start_date or date.today()).isoformat()  # "YYYY-MM-DD"
 
     results = db.query(InterviewEvent, Student).outerjoin(
         Student, InterviewEvent.student_id == Student.id

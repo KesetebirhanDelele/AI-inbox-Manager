@@ -220,8 +220,8 @@ class ApiClient {
     return response.data;
   }
 
-  async getUpcomingInterviews(): Promise<UpcomingInterview[]> {
-    const response = await this.client.get('/api/interviews/upcoming');
+  async getUpcomingInterviews(startDate?: string): Promise<UpcomingInterview[]> {
+    const response = await this.client.get('/api/interviews/upcoming', { params: { start_date: startDate } });
     return response.data;
   }
 
@@ -398,8 +398,8 @@ class ApiClient {
     return response.data;
   }
 
-  async getWeeklySummary(): Promise<any> {
-    const response = await this.client.get('/api/stats/weekly-summary');
+  async getWeeklySummary(startDate?: string, endDate?: string): Promise<any> {
+    const response = await this.client.get('/api/stats/weekly-summary', { params: { start_date: startDate, end_date: endDate } });
     return response.data;
   }
 

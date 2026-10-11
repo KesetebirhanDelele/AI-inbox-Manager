@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { TYPE_LABELS } from '../constants/interviewTypes';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import CountdownTimer from '../components/CountdownTimer';
 
@@ -89,9 +89,18 @@ const DashboardPage = () => {
     refetchInterval: 5 * 60 * 1000,
   });
 
+  // Upcoming Interviews range: from today to one week ahead (Central time) until the user picks other dates.
+  const defaultFrom = format(toZonedTime(new Date(), 'America/Chicago'), 'yyyy-MM-dd');
+  const defaultTo = format(addDays(toZonedTime(new Date(), 'America/Chicago'), 7), 'yyyy-MM-dd');
+  const [rangeFrom, setRangeFrom] = useState(defaultFrom);
+  const [rangeTo, setRangeTo] = useState(defaultTo);
+  const rangeIsDefault = rangeFrom === defaultFrom && rangeTo === defaultTo;
+  const shortDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
   const { data: upcomingInterviews, isLoading: upcomingLoading } = useQuery({
-    queryKey: ['upcomingInterviews'],
-    queryFn: () => apiClient.getUpcomingInterviews(),
+    queryKey: ['upcomingInterviews', rangeFrom],
+    queryFn: () => apiClient.getUpcomingInterviews(rangeFrom),
+    placeholderData: (previous) => previous,
     staleTime: 0,
     refetchOnMount: 'always',
     refetchInterval: 5 * 60 * 1000,
@@ -103,11 +112,10 @@ const DashboardPage = () => {
     staleTime: 0,
     refetchOnMount: 'always',
   });
-  const upcomingWindowMs = 7 * 24 * 60 * 60 * 1000;
   const upcomingThisWeek = (upcomingInterviews ?? []).filter(
-    (iv) => !!iv.interview_date && new Date(`${iv.interview_date}T23:59:59`).getTime() - Date.now() <= upcomingWindowMs,
+    (iv) => !!iv.interview_date && iv.interview_date >= rangeFrom && iv.interview_date <= rangeTo,
   );
-  const upcomingLater = (upcomingInterviews ?? []).length - upcomingThisWeek.length;
+  const upcomingLater = (upcomingInterviews ?? []).filter((iv) => !!iv.interview_date && iv.interview_date > rangeTo).length;
   const queueReady = reviewQueue ? reviewQueue.items.filter((i) => i.state === 'ready').length : 0;
   const queueFix = reviewQueue
     ? reviewQueue.items.filter((i) => ['needs_verification', 'blocked', 'needs_student', 'no_draft'].includes(i.state)).length
@@ -318,11 +326,50 @@ const DashboardPage = () => {
         </div>
       )}
 
-      {/* Upcoming Interviews: next 7 days, always shown so an empty list is explained */}
+      {/* Upcoming Interviews: today to a week ahead by default; the dates can be changed. Always shown so an empty list is explained */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="bg-gray-200 px-6 py-3 text-center">
-          <h2 className="text-base font-bold text-gray-800">Upcoming Interviews (next 7 days)</h2>
-          {upcomingLater > 0 && <p className="text-xs text-gray-500 mt-0.5">{upcomingLater} more later</p>}
+          <h2 className="text-base font-bold text-gray-800">
+            Upcoming Interviews ({rangeIsDefault ? 'next 7 days' : `${shortDate(rangeFrom)} to ${shortDate(rangeTo)}`})
+          </h2>
+          {upcomingLater > 0 && <p className="text-xs text-gray-500 mt-0.5">{upcomingLater} more after {shortDate(rangeTo)}</p>}
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-700">
+            <label className="flex items-center gap-1">
+              From
+              <input
+                type="date"
+                value={rangeFrom}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setRangeFrom(v);
+                  if (v > rangeTo) setRangeTo(v);
+                }}
+                className="rounded-md border-gray-300 text-sm py-1"
+                aria-label="Show interviews from this date"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              To
+              <input
+                type="date"
+                value={rangeTo}
+                min={rangeFrom}
+                onChange={(e) => { if (e.target.value) setRangeTo(e.target.value); }}
+                className="rounded-md border-gray-300 text-sm py-1"
+                aria-label="Show interviews up to this date"
+              />
+            </label>
+            {!rangeIsDefault && (
+              <button
+                type="button"
+                onClick={() => { setRangeFrom(defaultFrom); setRangeTo(defaultTo); }}
+                className="text-primary-600 hover:underline"
+              >
+                Reset to next 7 days
+              </button>
+            )}
+          </div>
         </div>
         <div className="px-4 py-5 sm:p-6">
           {upcomingLoading ? (
@@ -379,7 +426,7 @@ const DashboardPage = () => {
             </div>
           ) : (
             <p className="text-sm text-gray-500 text-center py-8">
-              No interview has a confirmed date in the next 7 days. Requests that do not state a date yet are under Reports, Interviews tab.
+              No interview has a confirmed date between {shortDate(rangeFrom)} and {shortDate(rangeTo)}. Requests that do not state a date yet are under Reports, Interviews tab.
             </p>
           )}
         </div>

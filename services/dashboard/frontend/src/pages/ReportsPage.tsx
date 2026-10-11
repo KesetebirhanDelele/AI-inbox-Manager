@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -112,9 +113,12 @@ const Overview = () => {
 // ── Weekly Summary ─────────────────────────────────────────────────────────
 
 const WeeklySummary = () => {
-  const { data, isLoading } = useQuery({
-    queryKey: ['weeklySummary'],
-    queryFn: () => apiClient.getWeeklySummary(),
+  // null = the current week (the server picks Monday to Sunday); the user can pick any range.
+  const [range, setRange] = useState<{ start: string; end: string } | null>(null);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['weeklySummary', range?.start ?? null, range?.end ?? null],
+    queryFn: () => apiClient.getWeeklySummary(range?.start, range?.end),
+    placeholderData: (previous) => previous,
   });
 
   if (isLoading) return <Spinner />;
@@ -135,8 +139,41 @@ const WeeklySummary = () => {
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="bg-gray-200 px-6 py-3 text-center">
           <h2 className="text-base font-bold text-gray-800">
-            Week of {data.week_start} — {data.week_end}
+            {range ? `${data.week_start} — ${data.week_end}` : `Week of ${data.week_start} — ${data.week_end}`}
           </h2>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-sm text-gray-700">
+            <label className="flex items-center gap-1">
+              From
+              <input
+                type="date"
+                value={data.week_start}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setRange({ start: v, end: v > data.week_end ? v : data.week_end });
+                }}
+                className="rounded-md border-gray-300 text-sm py-1"
+                aria-label="Summarise from this date"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              To
+              <input
+                type="date"
+                value={data.week_end}
+                min={data.week_start}
+                onChange={(e) => { if (e.target.value) setRange({ start: data.week_start, end: e.target.value }); }}
+                className="rounded-md border-gray-300 text-sm py-1"
+                aria-label="Summarise up to this date"
+              />
+            </label>
+            {range && (
+              <button type="button" onClick={() => setRange(null)} className="text-primary-600 hover:underline">
+                Reset to this week
+              </button>
+            )}
+          </div>
+          {error && <p className="mt-2 text-sm text-red-700" role="alert">{(error as any)?.response?.data?.detail || 'Could not load this range.'}</p>}
         </div>
         <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
           {stats.map(s => (

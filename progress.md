@@ -87,6 +87,13 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-11: date filters on Upcoming Interviews and the Reports summary (Kes: "I like the current interface and we will not be changing it anymore")
+
+Decision: the current interface stays; the Dashboard/Reports/Review consolidation proposed in the screen-plan artifact is DROPPED (nothing from it is pending).
+- **Dashboard, Upcoming Interviews:** From and To date pickers in the card header. Default: today to one week ahead (Central time), titled "(next 7 days)"; a changed range shows the dates, "N more after <date>" counts what lies beyond, and "Reset to next 7 days" appears. API `GET /api/interviews/upcoming` takes an optional `start_date` (default today) so the range can reach back; the end date is applied on the screen.
+- **Reports, Overview weekly summary:** From and To pickers under "Week of ...". Default: the current week, Monday to Sunday in Central time (it used to be a rolling last 7 days). API `GET /api/stats/weekly-summary` takes `start_date` and `end_date` (inclusive, Central-time days converted for the database); an end before the start, or a range over a year, is refused with a plain 400 message shown on the screen. "Reset to this week" returns to the default. Only that summary follows the dates; the category chart (30 days) and 7-day trend are unchanged.
+- Tests: `services/dashboard/tests/test_date_filters.py` (default week, range counting, the end day included through its last hour, bad ranges, look-back). Checked in a real browser locally.
+
 ### 2026-10-11: more not-job rules; Classification review is empty
 
 Kes picked out five more: (1) Ali's "Questions About Colaberry?" Mailchimp campaign, (2) the Mobius Engine reply (a firm selling interview volume; closed as "keep in inbox" by mistake), (3) Kenya Bogans's "Audio" (a phone attachment path mailed to self), (4) the Southlake career-networking invitation, (5) Helen Asfaw's bare link with no subject. New narrow rules in `pre_classify_by_sender` (all `Other`): no subject plus body that is only a URL, or a body starting `file:///`; sender exactly `ali@colaberry.com` plus "view this email in your browser" (other Colaberry senders, e.g. cai@ "Logging Interviews", are NOT covered, tested); domain `mobiusengine.ai`; sender exactly `charliezinger@aol.com`. Tests cover the look-alike and real-mail cases. Applied on production: the 3 open items closed; approval 24 (Mobius) corrected from keep_inbox to Other in the record (Gmail had it parked all along). **Classification review now has 0 pending.**

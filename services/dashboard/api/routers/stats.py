@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, select
 from pydantic import BaseModel
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 _CENTRAL = ZoneInfo("America/Chicago")
@@ -649,17 +649,35 @@ async def get_missed_interviews(
     ]
 
 
+def _current_week_central() -> tuple:
+    """Monday and Sunday of the current week in Central time (the dashboard's default range)."""
+    today = datetime.now(_CENTRAL).date()
+    monday = today - timedelta(days=today.weekday())
+    return monday, monday + timedelta(days=6)
+
+
 @router.get("/weekly-summary")
 async def get_weekly_summary(
+    start_date: Optional[date] = Query(None, description="First day of the range (default: Monday of this week, Central time)"),
+    end_date: Optional[date] = Query(None, description="Last day of the range, inclusive (default: Sunday of this week)"),
     db: Session = Depends(get_db),
     user: UserSession = Depends(get_current_user)
 ):
-    """One-page weekly summary for stakeholders."""
-    from datetime import date
-    today = datetime.utcnow()
-    week_start = today - timedelta(days=7)
+    """Summary of a chosen date range (default: the current week) for stakeholders."""
+    default_start, default_end = _current_week_central()
+    start = start_date or default_start
+    end = end_date or default_end
+    if end < start:
+        raise HTTPException(status_code=400, detail="The end date is before the start date.")
+    if (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="Choose a range of one year or less.")
+    # Central-time days, as naive UTC datetimes for the database: [start 00:00, end + 1 day 00:00)
+    utc = ZoneInfo("UTC")
+    range_start = datetime(start.year, start.month, start.day, tzinfo=_CENTRAL).astimezone(utc).replace(tzinfo=None)
+    next_day = end + timedelta(days=1)
+    range_end = datetime(next_day.year, next_day.month, next_day.day, tzinfo=_CENTRAL).astimezone(utc).replace(tzinfo=None)
 
-    runs = db.query(ProcessRun).filter(ProcessRun.run_timestamp >= week_start).all()
+    runs = db.query(ProcessRun).filter(ProcessRun.run_timestamp >= range_start, ProcessRun.run_timestamp < range_end).all()
 
     total_emails = sum(r.total_emails for r in runs)
     total_interviews = sum(r.interview_requests for r in runs)
@@ -667,24 +685,25 @@ async def get_weekly_summary(
     total_deleted = sum(r.spam_deleted for r in runs)
     successful_runs = sum(1 for r in runs if r.status == "success")
 
-    # Notifications sent this week
+    # Notifications sent in the range
     sent_count = db.query(NotificationDraft).filter(
-        NotificationDraft.sent_at >= week_start
+        NotificationDraft.sent_at >= range_start, NotificationDraft.sent_at < range_end
     ).count()
 
-    # Top companies this week
+    # Top companies in the range
     top_companies = db.query(
         Classification.company_name,
         func.count(Classification.id).label("cnt")
     ).join(Email, Email.id == Classification.email_id).filter(
         Classification.category == "Interview Request",
-        Email.received_date >= week_start,
+        Email.received_date >= range_start,
+        Email.received_date < range_end,
         Classification.company_name != None,
     ).group_by(Classification.company_name).order_by(func.count(Classification.id).desc()).limit(5).all()
 
     return {
-        "week_start": week_start.date().isoformat(),
-        "week_end": today.date().isoformat(),
+        "week_start": start.isoformat(),
+        "week_end": end.isoformat(),
         "total_emails_processed": total_emails,
         "interview_requests_found": total_interviews,
         "emails_organized": total_organized,
