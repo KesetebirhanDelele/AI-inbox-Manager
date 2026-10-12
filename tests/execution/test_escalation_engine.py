@@ -431,3 +431,70 @@ def test_an_ordinary_failure_does_not_page_rob_about_contact_details(db):
     al = recording_alerts()
     eng.tick(db, T0, channels(call=Rec("call", status=nc.FAILED)), al)
     assert not any("Cannot reach" in k["subject"] for k in al.record)
+
+
+# -- spacing between students (Kes 2026-10-12: do not stack contacts on the shared phone line) -------------
+
+def _two_students(db):
+    d1, s1 = make_draft(db, phone="(972) 555-0101", email="a@example.com", name="First Student")
+    M = db.models
+    mail2 = M.Email(email_id="2", subject="s2", from_address="hr@acme.com", received_date=T0)
+    s2 = M.Student(username="second.student", full_name="Second Student", phone_number="(972) 555-0102", is_active=True)
+    db.add_all([mail2, s2]); db.flush()
+    ev2 = M.InterviewEvent(email_id=mail2.id, student_id=s2.id, sub_type="Interview Request", company_name="Beta",
+                           position_title="Analyst", confidence=0.9)
+    db.add(ev2); db.flush()
+    d2 = M.NotificationDraft(interview_event_id=ev2.id, recipient_email="b@example.com", email_subject="Interview",
+                             email_body="Body", email_status="approved")
+    db.add(d2); db.commit()
+    return (d1, s1), (d2, s2)
+
+
+def test_the_next_student_waits_three_minutes_but_one_student_gets_call_text_and_email_together(db):
+    (d1, s1), (d2, s2) = _two_students(db)
+    q1 = eng.start_sequence(db, d1, s1, T0)
+    q2 = eng.start_sequence(db, d2, s2, T0 + timedelta(seconds=1))
+    ch, al = channels(), alerts()
+
+    r = eng.tick(db, T0 + timedelta(minutes=1), ch, al)
+    assert r.sent == 3 and r.spaced == 3                                  # the first student: all three channels; the second is held
+    assert len(ch["call"].calls) == len(ch["sms"].calls) == len(ch["email"].calls) == 1
+
+    r = eng.tick(db, T0 + timedelta(minutes=3), ch, al)                   # only 2 minutes after the first contact: still held
+    assert r.sent == 0 and r.spaced == 3
+
+    r = eng.tick(db, T0 + timedelta(minutes=4), ch, al)                   # 3 minutes after the first contact: the second student goes
+    assert r.sent == 3 and r.spaced == 0
+    assert len(ch["call"].calls) == 2
+
+
+def test_a_burst_of_students_goes_out_one_per_spacing_oldest_first(db):
+    (d1, s1), (d2, s2) = _two_students(db)
+    q2 = eng.start_sequence(db, d2, s2, T0)                               # the second student's notice was approved first
+    q1 = eng.start_sequence(db, d1, s1, T0 + timedelta(minutes=1))
+    ch, al = channels(), alerts()
+    eng.tick(db, T0 + timedelta(minutes=2), ch, al)
+    first = {a.sequence_id for a in q2.attempts + q1.attempts if a.status == "sent"}
+    assert first == {q2.id}                                               # the one who waited longest went first
+
+
+def test_spacing_counts_logged_shadow_sends_too_and_can_be_switched_off(db, monkeypatch):
+    (d1, s1), (d2, s2) = _two_students(db)
+    eng.start_sequence(db, d1, s1, T0)
+    eng.start_sequence(db, d2, s2, T0)
+    dry = {"call": Rec("call", status=nc.DRY_RUN), "sms": Rec("sms", status=nc.DRY_RUN), "email": Rec("email", status=nc.DRY_RUN)}
+    r = eng.tick(db, T0, dry, alerts())
+    assert r.dry_run == 3 and r.spaced == 3                               # shadow rehearsal behaves like the real thing
+
+    monkeypatch.setenv("NOTIFY_LEAD_SPACING_MINUTES", "0")
+    r = eng.tick(db, T0, dry, alerts())
+    assert r.dry_run == 3 and r.spaced == 0                               # 0 minutes = no spacing
+
+
+def test_the_setting_is_read_from_the_environment_with_a_safe_default(monkeypatch):
+    monkeypatch.delenv("NOTIFY_LEAD_SPACING_MINUTES", raising=False)
+    assert eng.lead_spacing() == timedelta(minutes=3)
+    monkeypatch.setenv("NOTIFY_LEAD_SPACING_MINUTES", "5")
+    assert eng.lead_spacing() == timedelta(minutes=5)
+    monkeypatch.setenv("NOTIFY_LEAD_SPACING_MINUTES", "garbage")
+    assert eng.lead_spacing() == timedelta(minutes=3)

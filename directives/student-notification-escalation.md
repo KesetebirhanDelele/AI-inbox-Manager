@@ -235,9 +235,14 @@ to the repo root), so put the settings there once; restart the API after changin
 | `NOTIFY_ESCALATION_ENABLED` | off | Approve starts the escalation instead of sending one email |
 | `NOTIFY_CHANNEL_EMAIL` / `_SMS` / `_CALL` | `dry_run` | `dry_run` logs only; `ghl` writes the GHL field (shadow-gated); email can also be `smtp` |
 | the approver role (Settings page; `APPROVER_ALERT_EMAIL` fallback) | unset | Where the approver's alerts go; unset = logged only |
+| `NOTIFY_LEAD_SPACING_MINUTES` | `3` | Minimum minutes between contact with one student and contact with the NEXT student (a call, text and email together count as one contact; shadow-mode logged sends count too). `0` = off. Held attempts stay pending and go out on a later tick, oldest waiting student first. The tick runs every 5 minutes, so in practice students go out about 5 minutes apart. |
 | `NOTIFY_ACK_BASE_URL` | `https://2-29-47-89.nip.io/api/notifications/ack` | Base of the email "I got this" link |
 | `NOTIFY_INBOUND_SECRET` | unset | Secret for the inbound-reply endpoint; unset = endpoint closed |
 | `REPLY_AI_MODE` / `REPLY_AI_SHADOW_UNTIL` | shadow / 2026-10-16 | Live needs both the setting and the date to have passed |
+
+## Spacing between students (2026-10-12, Kes)
+
+To keep calls and texts from stacking on the shared phone line (Twilio concurrency limits), `escalation_engine.tick` lets only one student's batch go out per spacing window: when another student was contacted less than `NOTIFY_LEAD_SPACING_MINUTES` ago, a student's due attempts are held (left pending, nothing changed) and sent on a later tick. The student who has waited longest goes first. This spaces OUR sends only. It cannot see Cora's calls and texts, calls that last longer than the spacing, or inbound calls to the receptionist, all of which use the same account. The real concurrency limits of the Twilio account and of GHL Voice AI are not verified yet (see progress.md).
 
 ## Related
 `directives/interview-processing.md`, `execution/send_notification.py`, `execution/alert.py`,

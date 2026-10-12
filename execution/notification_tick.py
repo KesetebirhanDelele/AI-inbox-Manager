@@ -50,7 +50,7 @@ def run(now: datetime = None):
     alerts = engine.RoleAlerts(db=db)
     report = engine.tick(db, now, notify_channels.channels_from_env(), alerts, base)
     print(f"tick: sent={report.sent} dry_run={report.dry_run} failed={report.failed} skipped={report.skipped} "
-          f"deferred={report.deferred} no_response_alerts={report.no_response_alerts} ended={report.ended}")
+          f"deferred={report.deferred} spaced={report.spaced} no_response_alerts={report.no_response_alerts} ended={report.ended}")
     for line in report.details:
         print(f"  problem: {line}")
 

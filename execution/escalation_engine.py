@@ -232,6 +232,7 @@ class TickReport:
     failed: int = 0
     skipped: int = 0
     deferred: int = 0
+    spaced: int = 0          # attempts held back because another student was contacted less than the spacing ago
     no_response_alerts: int = 0
     ended: int = 0
     details: List[str] = field(default_factory=list)
@@ -283,6 +284,33 @@ def _held_attempt_collides(attempt, siblings) -> bool:
     return sched.collides_with_neighbour(attempt.scheduled_for, others)
 
 
+# Contact with one student (a call, a text and an email together count as ONE contact) is kept this far from contact with the NEXT student,
+# so a burst of notices never stacks calls and texts on the shared phone line (Twilio limits). Kes 2026-10-12. 0 switches it off.
+LEAD_SPACING_DEFAULT_MINUTES = 3
+
+
+def lead_spacing() -> timedelta:
+    import os
+    raw = os.getenv("NOTIFY_LEAD_SPACING_MINUTES")
+    try:
+        minutes = LEAD_SPACING_DEFAULT_MINUTES if raw in (None, "") else max(0.0, float(raw))
+    except ValueError:
+        minutes = LEAD_SPACING_DEFAULT_MINUTES
+    return timedelta(minutes=minutes)
+
+
+def _another_student_contacted_recently(db, seq_id: int, now: datetime, spacing: timedelta) -> bool:
+    """True when any OTHER sequence made a contact (sent, or logged in shadow mode) less than `spacing` before `now`."""
+    if spacing <= timedelta(0):
+        return False
+    M = _m()
+    return db.query(M.NotificationAttempt).filter(
+        M.NotificationAttempt.sequence_id != seq_id,
+        M.NotificationAttempt.sent_at != None,          # noqa: E711
+        M.NotificationAttempt.sent_at > now - spacing,
+    ).first() is not None
+
+
 def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RoleAlerts] = None,
          ack_base_url: str = "") -> TickReport:
     """Send every attempt that is due, send the approver's alerts, and end sequences that have run out."""
@@ -290,6 +318,12 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RoleAlert
     alerts = alerts or RoleAlerts(db=db)
     report = TickReport()
     sequences = db.query(M.NotificationSequence).filter(M.NotificationSequence.status == "active").all()
+    spacing = lead_spacing()
+
+    def _waiting_since(sq):                       # the student who has waited longest goes first, so nobody is starved
+        times = [a.scheduled_for for a in sq.attempts if a.status == "pending" and a.scheduled_for <= now]
+        return min(times) if times else datetime.max
+    sequences.sort(key=_waiting_since)
     for seq in sequences:
         draft_for_seq = db.get(M.NotificationDraft, seq.draft_id)
         interview_utc, _known = _interview_utc(db, draft_for_seq, seq.timezone) if draft_for_seq is not None else (None, False)
@@ -300,6 +334,11 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RoleAlert
             continue
         due = sorted((a for a in seq.attempts if a.status == "pending" and a.scheduled_for <= now),
                      key=lambda a: a.scheduled_for)
+        if due and _another_student_contacted_recently(db, seq.id, now, spacing):
+            # Another student was contacted less than the spacing ago: wait. Nothing is changed, so the next tick sends these.
+            report.spaced += len(due)
+            logger.info(f"seq {seq.id}: {len(due)} due attempt(s) held, another student was contacted less than {int(spacing.total_seconds() // 60)} min ago")
+            due = []
         for attempt in due:
             held = attempt.scheduled_for != attempt.planned_for
             if held and attempt.channel in PHONE_CHANNELS and _held_attempt_collides(attempt, seq.attempts):
