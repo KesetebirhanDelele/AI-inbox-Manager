@@ -217,14 +217,41 @@ class GhlClient:
         return exact[0] if exact else None
 
     def search_contact_by_email(self, email: str) -> Optional[dict]:
-        """The contact whose PRIMARY or ADDITIONAL email EXACTLY matches (case-insensitive), or None; two exact matches are refused."""
-        result = self._request("GET", "/contacts/", params={"locationId": self.config.location_id, "query": email})
-        contacts = result.get("contacts", []) if isinstance(result, dict) else []
+        """
+        The contact whose PRIMARY or ADDITIONAL email EXACTLY matches (case-insensitive), or None.
+
+        GHL's free-text contact search (`GET /contacts/?query=`) looks only at the primary email: a contact found by its additional email
+        returned 0 results (verified live, 2026-10-12). The duplicate-contact search (`GET /contacts/search/duplicate?email=`) matches
+        primary and additional emails exactly and returns the contact (with its additionalEmails), or none. It is tried first; the
+        free-text search is kept as a fallback, where two exact matches are refused as ambiguous.
+        """
         wanted = email.strip().lower()
-        exact = [c for c in contacts if wanted in contact_emails(c)]
+        try:
+            res = self._request("GET", "/contacts/search/duplicate", params={"locationId": self.config.location_id, "email": email.strip()})
+            found = res.get("contact") if isinstance(res, dict) else None
+            if found:
+                if wanted not in contact_emails(found):
+                    found = self.get_contact(found.get("id"))            # the duplicate answer may omit the additional emails: read them
+                if wanted in contact_emails(found):
+                    # The duplicate search returns ONE contact. A second contact that has this address as its primary email would make
+                    # the student ambiguous, and details must never reach the wrong person: the free-text search shows primary matches.
+                    others = self._exact_by_free_text(email, wanted)
+                    if any(str(o.get("id")) != str(found.get("id")) for o in others):
+                        raise GhlError("2 GHL contacts share this email; refusing to guess")
+                    return found
+        except GhlError as exc:
+            if "refusing to guess" in str(exc):
+                raise
+            logger.info(f"GHL duplicate search unavailable ({exc}); using the free-text search")
+        exact = self._exact_by_free_text(email, wanted)
         if len(exact) > 1:
             raise GhlError(f"{len(exact)} GHL contacts share this email; refusing to guess")
         return exact[0] if exact else None
+
+    def _exact_by_free_text(self, email: str, wanted: str) -> List[dict]:
+        result = self._request("GET", "/contacts/", params={"locationId": self.config.location_id, "query": email})
+        contacts = result.get("contacts", []) if isinstance(result, dict) else []
+        return [c for c in contacts if wanted in contact_emails(c)]
 
     def search_contacts_by_name(self, query: str, limit: int = 5) -> List[dict]:
         """Contacts whose name or details match a free-text query (near matches included). Read-only; used only to suggest where a student went."""

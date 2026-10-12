@@ -27,8 +27,14 @@ class FakeGhl(gc.GhlClient):
     def _request(self, method, path, **kw):
         if method == "GET" and path == "/contacts/":
             q = kw["params"]["query"].lower()
-            hits = [c for c in self.contacts.values() if q in " ".join(gc.contact_emails(c)) or q in str(c.get("firstName", "")).lower()]
+            hits = [c for c in self.contacts.values() if q in str(c.get("email", "")).lower() or q in str(c.get("firstName", "")).lower()]   # primary only, like the real search
             return {"contacts": hits}
+        if method == "GET" and path == "/contacts/search/duplicate":
+            if getattr(self, "duplicate_down", False):
+                raise gc.GhlError("GHL HTTP 404 on /contacts/search/duplicate")
+            e = kw["params"]["email"].lower()
+            hits = [c for c in self.contacts.values() if e in gc.contact_emails(c)]
+            return {"contact": hits[0] if hits else None, "traceId": "t"}
         cid = path.rsplit("/", 1)[-1]
         if method == "GET":
             return {"contact": self.contacts[cid]}
@@ -125,3 +131,16 @@ def test_the_command_line_tool_dry_runs_by_default_and_needs_a_confirmer(monkeyp
     assert holder["g"].puts and any("WRITTEN" in l for l in lines)
     with pytest.raises(SystemExit):                                               # --confirmed-by is required
         tool.run(["--contact-id", "c1", "--email", GMAIL], client_factory=factory, out=lines.append)
+
+
+def test_the_free_text_search_alone_would_miss_an_additional_email_but_the_lookup_finds_it():
+    g = FakeGhl([{**ISAAC, "additionalEmails": [{"email": GMAIL}]}])
+    assert g._request("GET", "/contacts/", params={"query": GMAIL})["contacts"] == []            # what GHL really does (verified live)
+    assert g.search_contact_by_email(GMAIL)["id"] == "c1"                                         # the duplicate search finds it
+
+
+def test_when_the_duplicate_search_is_unavailable_the_free_text_search_still_finds_a_primary_email():
+    g = FakeGhl([ISAAC])
+    g.duplicate_down = True
+    assert g.search_contact_by_email("isaackpakpavi@gmail.com")["id"] == "c1"
+    assert g.search_contact_by_email("nobody@example.com") is None
