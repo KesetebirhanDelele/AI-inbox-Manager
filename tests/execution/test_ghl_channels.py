@@ -421,3 +421,22 @@ def test_a_found_contact_with_no_phone_cannot_take_a_call_or_text_but_can_take_a
     assert channel("call", g).send(with_student(ctx(), personal_email="t@example.com")).detail.startswith(nc.UNREACHABLE)
     assert channel("sms", g).send(with_student(ctx(), personal_email="t@example.com")).status == nc.FAILED
     assert channel("email", g).send(with_student(ctx(), personal_email="t@example.com")).status == nc.SENT
+
+
+def test_when_no_contact_matches_the_message_suggests_near_matches_by_name():
+    class WithNames(FakeGhl):
+        def search_contacts_by_name(self, query):
+            return [{"id": "c9", "firstName": "kwadjossan", "lastName": "issac kpakpavi", "email": "isaackpakpavi@gmail.com", "phone": "+12404869243"}]
+    student = type("S", (), {"full_name": "Kwadjossan Isaac", "personal_email": "wrong@example.com", "assigned_gmail": "", "phone_number": "2404869244"})()
+    contact, how, problem = nc.find_ghl_contact(WithNames(contact=False), student)
+    assert contact is None and "no GHL contact matches" in problem
+    assert "Possible matches in GHL by name" in problem and "isaackpakpavi@gmail.com" in problem and "phone ending 9243" in problem
+
+
+def test_a_failing_name_search_never_changes_the_result():
+    class Broken(FakeGhl):
+        def search_contacts_by_name(self, query):
+            raise RuntimeError("GHL down")
+    student = type("S", (), {"full_name": "Kwadjossan Isaac", "personal_email": "a@example.com", "assigned_gmail": "", "phone_number": ""})()
+    contact, how, problem = nc.find_ghl_contact(Broken(contact=False), student)
+    assert contact is None and "no GHL contact matches" in problem and "Possible matches" not in problem

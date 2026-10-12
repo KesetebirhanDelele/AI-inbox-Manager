@@ -317,6 +317,25 @@ def _first_names_agree(student_name: Optional[str], ghl_first_name: Optional[str
     return x.startswith(y) or y.startswith(x)
 
 
+def possible_ghl_matches(client: Any, student: Any, limit: int = 3) -> str:
+    """Near matches by NAME in GHL, for the message that tells a person the student could not be found (name, email, last 4 of the phone).
+    Read-only and best effort: a failure here never changes the result."""
+    search = getattr(client, "search_contacts_by_name", None)
+    if search is None:
+        return ""
+    words = [w for w in re.split(r"\s+", (getattr(student, "full_name", None) or "").strip()) if len(w) >= 4]
+    seen: Dict[str, str] = {}
+    for word in (words[-1:] + words[:1]):                        # the family name first, then the first name
+        try:
+            for c in search(word):
+                name = " ".join(x for x in ((c.get("firstName") or ""), (c.get("lastName") or "")) if x) or (c.get("contactName") or "")
+                seen.setdefault(str(c.get("id")), f"{name or 'no name'} <{c.get('email') or 'no email'}>, phone ending "
+                                                  f"{str(c.get('phone') or '')[-4:] or 'none'}")
+        except Exception:
+            return "; ".join(list(seen.values())[:limit])
+    return "; ".join(list(seen.values())[:limit])
+
+
 def find_ghl_contact(client: "ghl_client.GhlClient", student: Any) -> tuple:
     """
     The student's GHL contact, as (contact, how, problem). Exactly one of contact / problem is set.
@@ -351,8 +370,10 @@ def find_ghl_contact(client: "ghl_client.GhlClient", student: Any) -> tuple:
 
     if not found:
         tried = " and ".join(x for x in ("email" if emails else "", "phone" if phone else "") if x)
+        near = possible_ghl_matches(client, student)
+        hint = f" Possible matches in GHL by name: {near}." if near else ""
         return None, "", (f"no GHL contact matches this student's {tried}; the student may have changed their "
-                          f"email or phone, so GHL or the student record needs updating")
+                          f"email or phone, so GHL or the student record needs updating.{hint}")
     if len(found) > 1:
         return None, "", "this student's email and phone point to different GHL contacts; refusing to guess which"
     contact_id, contact = next(iter(found.items()))

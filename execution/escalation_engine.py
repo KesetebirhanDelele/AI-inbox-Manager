@@ -182,7 +182,8 @@ class RoleAlerts:
         if send is None:
             from send_notification import send_email
             send = send_email
-        result = send(recipient_email=to, subject=f"[InboxGenius] {subject}", body=body)
+        # bcc="": these are internal alerts to the person holding a role, not student mail, so they are NOT copied to the interviews mailbox
+        result = send(recipient_email=to, subject=f"[InboxGenius] {subject}", body=body, bcc="")
         return result.get("status") == "sent"
 
     def stale_drafts(self, subject: str, body: str) -> bool:
@@ -208,7 +209,8 @@ class RoleAlerts:
             f"Cannot reach {student_name}: their contact details need fixing",
             f"The interview notice for {student_name} could not be delivered: {reason}. "
             f"A student may have changed their email or phone number, so please check the student record and their "
-            f"GHL contact and fix whichever is out of date. Until then nothing reaches them automatically, so please "
+            f"GHL contact and fix whichever is out of date. The student is now listed under Review > Verify students, "
+            f"where you can correct their details. Until then nothing reaches them automatically, so please "
             f"contact them yourself.")
 
     def student_reply(self, seq, student_name: str, text: str, outcome: str) -> bool:
@@ -311,6 +313,22 @@ def _another_student_contacted_recently(db, seq_id: int, now: datetime, spacing:
     ).first() is not None
 
 
+def _flag_for_verification(db, seq, reason: str) -> None:
+    """A student GHL cannot find has details that need checking, whatever way they entered the system (the roster is not always right).
+    Listing them under Review > Verify students gives the approver the form to correct them. Never downgrades a student who already has a record."""
+    if "no GHL contact matches" not in reason:
+        return
+    M = _m()
+    student = db.get(M.Student, seq.student_id) if seq.student_id else None
+    if student is None:
+        return
+    try:
+        from log_interview import mark_unverified
+        mark_unverified(db, student.id, "no_ghl_contact", student.full_name or "", reason[:500])
+    except Exception as exc:                       # never let a flagging problem stop the follow-ups
+        logger.warning(f"Could not flag student {student.id} for verification: {exc}")
+
+
 def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RoleAlerts] = None,
          ack_base_url: str = "") -> TickReport:
     """Send every attempt that is due, send the approver's alerts, and end sequences that have run out."""
@@ -381,6 +399,8 @@ def tick(db, now: datetime, channels: Dict[str, Any], alerts: Optional[RoleAlert
             else:
                 report.failed += 1
                 report.details.append(f"seq {seq.id} {attempt.channel}/{attempt.step}: {result.detail}")
+                if (result.detail or "").startswith(nc.UNREACHABLE):
+                    _flag_for_verification(db, seq, result.detail[len(nc.UNREACHABLE):])
                 if (result.detail or "").startswith(nc.UNREACHABLE) and not any(
                         o is not attempt and (o.detail or "").startswith(nc.UNREACHABLE) for o in seq.attempts):
                     alerts.cannot_reach(seq, _student_name(db, seq), result.detail[len(nc.UNREACHABLE):])

@@ -200,6 +200,12 @@ class GhlClient:
             raise GhlError(f"{len(exact)} GHL contacts share this email; refusing to guess")
         return exact[0] if exact else None
 
+    def search_contacts_by_name(self, query: str, limit: int = 5) -> List[dict]:
+        """Contacts whose name or details match a free-text query (near matches included). Read-only; used only to suggest where a student went."""
+        result = self._request("GET", "/contacts/", params={"locationId": self.config.location_id, "query": query})
+        contacts = result.get("contacts", []) if isinstance(result, dict) else []
+        return contacts[:limit]
+
     def get_contact(self, contact_id: str) -> dict:
         result = self._request("GET", f"/contacts/{contact_id}")
         return result.get("contact", result) if isinstance(result, dict) else {}

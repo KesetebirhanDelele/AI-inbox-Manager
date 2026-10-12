@@ -258,9 +258,15 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
           <div className="p-3 bg-orange-50 border border-orange-200 rounded space-y-2 text-sm">
             <div className="font-semibold text-orange-900">Verify who this student is</div>
             <div className="text-orange-900">
-              The pipeline created this student from the email, so the name is a{' '}
-              {s.verification.basis === 'greeting_name' ? 'guess from the greeting' : 'guess from the Gmail address'}
-              . A candidate may have changed their email: trace them in the roster sheet or Drive and correct the details.
+              {s.verification.basis === 'no_ghl_contact' ? (
+                <>GHL has no contact that matches this student&apos;s email or phone, so nothing can reach them. The student may have changed their email or phone, or a detail here has a typo: compare with GHL and correct the details below.</>
+              ) : (
+                <>
+                  The pipeline created this student from the email, so the name is a{' '}
+                  {s.verification.basis === 'greeting_name' ? 'guess from the greeting' : 'guess from the Gmail address'}
+                  . A candidate may have changed their email: trace them in the roster sheet or Drive and correct the details.
+                </>
+              )}
             </div>
             {s.verification.evidence && <div className="text-xs text-orange-800">{s.verification.evidence}</div>}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">

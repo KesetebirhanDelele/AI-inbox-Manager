@@ -498,3 +498,40 @@ def test_the_setting_is_read_from_the_environment_with_a_safe_default(monkeypatc
     assert eng.lead_spacing() == timedelta(minutes=5)
     monkeypatch.setenv("NOTIFY_LEAD_SPACING_MINUTES", "garbage")
     assert eng.lead_spacing() == timedelta(minutes=3)
+
+
+# -- staff alerts are not copied to the interviews mailbox; an unreachable student is surfaced for verification --------
+
+def test_role_alerts_are_not_bcc_ed_to_the_interviews_mailbox():
+    seen = []
+    al = eng.RoleAlerts(to="rob@example.com", send_fn=lambda **k: seen.append(k) or {"status": "sent"})
+    assert al.cannot_reach(None, "Test Student", "no GHL contact matches") is True
+    assert seen[0]["bcc"] == ""                                              # an empty bcc switches the default audit copy off
+    assert seen[0]["recipient_email"] == "rob@example.com" and "Review > Verify students" in seen[0]["body"]
+
+
+def test_a_student_ghl_cannot_find_is_listed_for_verification_once_and_a_verified_one_is_not_downgraded(db):
+    M = db.models
+    draft, student = make_draft(db)
+    seq = eng.start_sequence(db, draft, student, T0)
+    lost = {"call": Rec("call"), "sms": Rec("sms"), "email": Rec("email")}
+
+    class Unreachable(Rec):
+        def send(self, ctx):
+            self.calls.append((ctx.attempt.step, ctx.now))
+            return nc.ChannelResult(nc.FAILED, detail=nc.UNREACHABLE + "no GHL contact matches this student's email and phone; check them")
+    ch = {"call": Unreachable("call"), "sms": Unreachable("sms"), "email": Unreachable("email")}
+    al = alerts()
+    eng.tick(db, T0, ch, al)
+    v = db.query(M.StudentVerification).filter_by(student_id=student.id).all()
+    assert len(v) == 1 and v[0].status == "unverified" and v[0].basis == "no_ghl_contact" and "no GHL contact matches" in v[0].evidence
+    eng.tick(db, T0 + timedelta(hours=2), ch, al)
+    assert db.query(M.StudentVerification).filter_by(student_id=student.id).count() == 1        # flagged once
+
+    # a student already verified by a person keeps that status
+    d2, s2 = make_draft(db, name="Other Student", phone="(972) 555-0199", email="o@example.com")
+    db.add(M.StudentVerification(student_id=s2.id, status="verified", basis="manual", guessed_name="Other Student"))
+    db.commit()
+    eng.start_sequence(db, d2, s2, T0 + timedelta(hours=3))
+    eng.tick(db, T0 + timedelta(hours=3, minutes=10), ch, al)
+    assert db.query(M.StudentVerification).filter_by(student_id=s2.id).one().status == "verified"
