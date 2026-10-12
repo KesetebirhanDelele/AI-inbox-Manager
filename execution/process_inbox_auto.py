@@ -505,6 +505,45 @@ def _fallback_sub_classification(classification: Dict[str, Any]) -> Dict[str, An
     }
 
 
+def _normalise_company(name: Optional[str]) -> str:
+    """'Martin Sprocket & Gear Inc' and 'Martin Sprocket and Gear' compare equal."""
+    n = (name or "").lower().replace("&", " and ")
+    n = re.sub(r"[^a-z0-9 ]+", " ", n)
+    words = [w for w in n.split() if w not in ("inc", "llc", "corp", "corporation", "co", "ltd", "company", "the")]
+    return " ".join(words)
+
+
+def assessment_duplicate_action(db, student_id: Optional[int], company: Optional[str], new_body: str, days: int = 3) -> Dict[str, Any]:
+    """
+    One assessment often arrives twice: from the employer's applicant system and from the test vendor, minutes apart. The student needs ONE notice.
+    Returns {"action": "create"} or {"action": "skip"} (an equivalent unsent notice exists) or {"action": "replace", "draft_id": n} (the
+    unsent notice we already hold comes from an email with no readable text and this one has text: this one is the better source).
+    """
+    from models import Email, InterviewEvent, NotificationDraft, NotificationSequence
+    from datetime import datetime, timedelta
+
+    wanted = _normalise_company(company)
+    if not student_id or not wanted:
+        return {"action": "create"}
+    since = datetime.utcnow() - timedelta(days=days)
+    rows = (db.query(InterviewEvent, NotificationDraft, Email)
+            .join(NotificationDraft, NotificationDraft.interview_event_id == InterviewEvent.id)
+            .join(Email, Email.id == InterviewEvent.email_id)
+            .filter(InterviewEvent.student_id == student_id, InterviewEvent.sub_type == "Assessment",
+                    NotificationDraft.email_status.in_(["draft", "approved"]), Email.received_date >= since).all())
+    for event, draft, email in rows:
+        if _normalise_company(event.company_name) != wanted:
+            continue
+        seq = db.query(NotificationSequence).filter(NotificationSequence.draft_id == draft.id).first()
+        if seq is not None and any(a.sent_at for a in seq.attempts):
+            continue                                      # the student was already told: this is just another email about it
+        old_has_text = len((email.full_body or "").strip()) >= 40
+        if not old_has_text and len((new_body or "").strip()) >= 40 and seq is None:
+            return {"action": "replace", "draft_id": draft.id}
+        return {"action": "skip"}
+    return {"action": "create"}
+
+
 def _build_sub_classification(email_data: Dict[str, Any], classification: Dict[str, Any]) -> Dict[str, Any]:
     """
     Decide the interview sub-type for an InterviewEvent.
@@ -536,6 +575,10 @@ def _build_sub_classification(email_data: Dict[str, Any], classification: Dict[s
             if merged.get(key) is None:
                 merged[key] = value
         merged["sub_type_source"] = "subclassifier"
+        if category == "Assessment":
+            # A test the candidate completes alone is not an interview: the sub-classifier read two such mails as "Technical Interview" and
+            # "Interview Request" (2026-10-12) and the student got interview wording. The primary category decides.
+            merged["interview_sub_type"] = "Assessment"
         return merged
     except Exception as e:
         log.warning(f"Sub-classification failed ({e}); using category fallback")
@@ -773,6 +816,21 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
                 )
         except Exception as e:
             _logger.warning(f"Student resolution skipped: {e}")
+
+        # ── An assessment announced twice (applicant system + test vendor) gives one notice ─
+        if sub_type == "Assessment":
+            dup = assessment_duplicate_action(db, student_id, sub_classification.get("company_name") or extracted.get("company_name"),
+                                              email_data.get("body_content") or email_data.get("body") or "")
+            if dup["action"] == "skip":
+                classification["_not_an_interview"] = True
+                _logger.info("Assessment already announced to this student (same company, last 3 days): no second notice")
+                return False
+            if dup["action"] == "replace":
+                from models import NotificationDraft as _ND
+                old = db.get(_ND, dup["draft_id"])
+                old.email_status, old.reviewed_by = "rejected", "duplicate-assessment"
+                db.commit()
+                _logger.info(f"Assessment notice {dup['draft_id']} had no readable text; replaced by this email's notice")
 
         # ── Create InterviewEvent ─────────────────────────────────────────────
         event_result = log_interview_event(

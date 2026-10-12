@@ -93,6 +93,7 @@ STRUCTURED CALL FLOW SCRIPT:
     Instruction: If the attempt is a reminder or final reminder, start with "I'm following up on your interview notice." Then tell them straight away, in a natural order, only the details that are listed: the interview type, the company, the position, the date and time with the time zone, the format, and the contact at the company.
 
     - If no date and time is listed, say the company has not confirmed a date yet and the team will share it as soon as they have it.
+    - If the interview type says Assessment, say plainly that it is an online assessment, a test and not an interview, and that the invitation with the instructions and deadline is in an email from the employer or its test provider.
     - If the interview type says cancelled, say plainly that the interview has been cancelled and that a team member will follow up.
     - If the interview type says rescheduled, give the new date and time if listed, otherwise say a team member will follow up.
     - Do not add advice, tips, or anything not listed.

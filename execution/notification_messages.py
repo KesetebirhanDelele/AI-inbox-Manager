@@ -45,7 +45,8 @@ def facts_from_event(event: Any, student: Any = None, status: str = "") -> Dict[
         return str(v).strip() if v not in (None, "") else ""
     full = (getattr(student, "full_name", None) or "").strip()
     sub = g("sub_type")
-    state = status or ("cancelled" if sub == "Interview Cancelled" else "rescheduled" if sub == "Interview Rescheduled" else "")
+    state = status or ("cancelled" if sub == "Interview Cancelled" else "rescheduled" if sub == "Interview Rescheduled"
+                       else "assessment" if sub == "Assessment" else "")
     return {
         "first_name": full.split()[0] if full else "there",
         "employer": safe_employer(g("company_name")),
@@ -64,7 +65,8 @@ def facts_from_dict(classification: Dict[str, Any], student_info: Dict[str, Any]
         v = classification.get(name)
         return str(v).strip() if v not in (None, "") else ""
     full = (student_info.get("full_name") or "").strip()
-    state = "cancelled" if sub_type == "Interview Cancelled" else "rescheduled" if sub_type == "Interview Rescheduled" else ""
+    state = ("cancelled" if sub_type == "Interview Cancelled" else "rescheduled" if sub_type == "Interview Rescheduled"
+             else "assessment" if sub_type == "Assessment" else "")
     return {
         "first_name": full.split()[0] if full else "there",
         "employer": safe_employer(g("company_name")),
@@ -91,6 +93,9 @@ def _when(f: Dict[str, str]) -> str:
 
 def _headline(f: Dict[str, str], lead: str) -> str:
     """'your interview with Acme for the position you applied for is on Thu Oct 8 at 2:00 PM CT' (or the unscheduled / changed form)."""
+    if f.get("status") == "assessment":
+        return (f"{lead}you have an online assessment to complete for {f['employer']} for the position you applied for. "
+                "It is a test, not an interview. Open the invitation email from the employer to start it")
     base = f"your interview with {f['employer']} for the position you applied for"
     if f.get("status") == "cancelled":
         return f"{lead}{base} has been cancelled by the employer"
@@ -125,6 +130,8 @@ def email_subject(f: Dict[str, str]) -> str:
     """Plain, not scanned by the audit: 'Your interview on Thu Oct 8'."""
     if f.get("status") == "cancelled":
         return "Your interview has been cancelled"
+    if f.get("status") == "assessment":
+        return "Your assessment notice"
     if f.get("date"):
         return f"Your interview on {f['date']}"
     return "Your interview notification"
@@ -132,10 +139,21 @@ def email_subject(f: Dict[str, str]) -> str:
 
 def email_body(f: Dict[str, str], ack_line: bool = False) -> str:
     """The email: first line exactly '[Interview Notification]', the same facts as the text, and a short preparation note."""
-    lines = [TAG, "", f"Hello {f['first_name']},", "",
-             f"This is a notice about an interview with {f['employer']} for the position you applied for. "
-             "The employer arranged this interview. Colaberry Interview Support is passing the details on to you.", ""]
-    if f.get("status") == "cancelled":
+    if f.get("status") == "assessment":
+        intro = (f"This is a notice about an assessment from {f['employer']} for the position you applied for. "
+                 "The employer arranged it. Colaberry Interview Support is passing the details on to you.")
+    else:
+        intro = (f"This is a notice about an interview with {f['employer']} for the position you applied for. "
+                 "The employer arranged this interview. Colaberry Interview Support is passing the details on to you.")
+    lines = [TAG, "", f"Hello {f['first_name']},", "", intro, ""]
+    if f.get("status") == "assessment":
+        lines += ["The employer has asked you to complete an online assessment. It is a test, not an interview.", "",
+                  "The invitation with the instructions and the deadline is in an email from the employer or its test provider. "
+                  "Please open it and complete the assessment as soon as you can.", "", "How to prepare:",
+                  "- Read all of the instructions before you start.",
+                  "- Use a quiet place and a reliable internet connection.",
+                  "- Check the deadline in the invitation and plan your time."]
+    elif f.get("status") == "cancelled":
         lines += ["The employer has cancelled this interview. Please reply to the employer's email to ask for a new time, "
                   "or reply to this email if you need help."]
     else:

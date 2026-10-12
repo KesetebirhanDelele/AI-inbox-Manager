@@ -216,6 +216,7 @@ def draft_notification(
         is_job_machine=is_job_machine,
         is_next_round=is_next_round,
         has_confirmed_date=has_confirmed_date,
+        is_assessment=(actual_sub_type == "Assessment"),
     )
 
     if not template:
