@@ -424,6 +424,8 @@ async def get_review_queue(
         blockers, warnings = [], []
         verification = (db.query(StudentVerification).filter(StudentVerification.student_id == student.id).first()
                         if student is not None else None)
+        if verification is not None and verification.status == "rejected" and not include_done:
+            continue                       # the approver said this is not a student we can find: their notices are closed and hidden
         unverified = verification is not None and verification.status != "verified"
         if student is None:
             blockers.append("No student identified for this email, so there is nobody to notify. Check the email and the student list.")
@@ -559,6 +561,51 @@ async def verify_student(
     db.commit()
     return {"student_id": student_id, "full_name": student.full_name, "phone_number": student.phone_number,
             "personal_email": student.personal_email, "status": "verified", "verified_by": user.username}
+
+
+class RejectStudentRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post("/students/{student_id}/reject-verification")
+async def reject_student(
+    student_id: int,
+    request: RejectStudentRequest,
+    db: Session = Depends(get_db),
+    user: UserSession = Depends(get_current_user),
+):
+    """
+    The approver says this is NOT a student we can find (no matching contact, not one of ours): the verification is marked "rejected",
+    every notice for them that has not gone out is rejected, and their follow-up plans are closed. Nothing is deleted and nothing is sent;
+    the emails and interview events stay. A student who already has notices that went out is refused: a person must handle that.
+    """
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if student is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+    drafts = (db.query(NotificationDraft).join(InterviewEvent, NotificationDraft.interview_event_id == InterviewEvent.id)
+              .filter(InterviewEvent.student_id == student_id).all())
+    sequences = [db.query(NotificationSequence).filter(NotificationSequence.draft_id == d.id).first() for d in drafts]
+    if any(sq is not None and any(a.sent_at for a in sq.attempts) for sq in sequences) or any(d.email_status == "sent" for d in drafts):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="A notice for this student has already gone out, so this cannot be undone here. Please handle it by hand.")
+    now = datetime.utcnow()
+    reason = (request.reason or "not a student we can find").strip()[:200]
+    row = db.query(StudentVerification).filter(StudentVerification.student_id == student_id).first()
+    if row is None:
+        row = StudentVerification(student_id=student_id, status="rejected", basis="manual", guessed_name=student.full_name)
+        db.add(row)
+    row.status, row.verified_by, row.verified_at = "rejected", user.username, now
+    closed = 0
+    engine = _execution_module("escalation_engine")
+    for d, sq in zip(drafts, sequences):
+        if sq is not None and sq.status == "active":
+            engine.close_sequence(db, sq, user.username, now)
+        if d.email_status in ("draft", "approved"):
+            d.email_status, d.reviewed_by, d.reviewed_at = "rejected", user.username, now
+            d.send_error = f"Rejected: {reason}"
+            closed += 1
+    db.commit()
+    return {"student_id": student_id, "status": "rejected", "notices_closed": closed, "rejected_by": user.username}
 
 
 @router.get("/{notification_id}", response_model=NotificationDetail)

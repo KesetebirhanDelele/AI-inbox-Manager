@@ -338,6 +338,11 @@ class ApiClient {
     return response.data;
   }
 
+  async rejectStudent(studentId: number, reason?: string): Promise<any> {
+    const response = await this.client.post(`/api/notifications/students/${studentId}/reject-verification`, { reason });
+    return response.data;
+  }
+
   async rejectNotification(notificationId: number, reason?: string): Promise<any> {
     const response = await this.client.post(`/api/notifications/${notificationId}/reject`, {
       reason,

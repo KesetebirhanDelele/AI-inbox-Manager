@@ -274,7 +274,7 @@ export interface ReviewQueueItem {
     assigned_gmail?: string;
     phone?: string;
     verification?: {
-      status: 'unverified' | 'verified' | string;
+      status: 'unverified' | 'verified' | 'rejected' | string;
       basis?: string;
       guessed_name?: string;
       evidence?: string;

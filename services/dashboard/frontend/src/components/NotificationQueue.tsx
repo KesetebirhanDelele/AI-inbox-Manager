@@ -112,6 +112,14 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
     mutationFn: (id: number) => apiClient.verifyStudent(id, { full_name: vName, phone_number: vPhone, personal_email: vEmail }),
     onSuccess: refresh,
   });
+  const [rejectingStudent, setRejectingStudent] = useState(false);
+  const rejectStudent = useMutation({
+    mutationFn: (id: number) => apiClient.rejectStudent(id),
+    onSuccess: () => {
+      setRejectingStudent(false);
+      refresh();
+    },
+  });
   const reject = useMutation({
     mutationFn: (p: { id: number; reason?: string }) => apiClient.rejectNotification(p.id, p.reason),
     onSuccess: () => {
@@ -126,7 +134,7 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
   const state = STATE_LABEL[item.state] || { label: item.state, cls: 'bg-gray-100 text-gray-700' };
   const iv = item.interview;
   const when = [iv.date, iv.time, iv.timezone].filter(Boolean).join(' ');
-  const error = (approve.error || reject.error || save.error || verify.error) as { response?: { data?: { detail?: string } }; message?: string } | null;
+  const error = (approve.error || reject.error || save.error || verify.error || rejectStudent.error) as { response?: { data?: { detail?: string } }; message?: string } | null;
 
   return (
     <li className="bg-white shadow rounded-lg overflow-hidden">
@@ -291,6 +299,33 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
             >
               {verify.isPending ? 'Saving...' : 'Confirm this student'}
             </button>
+            {!rejectingStudent ? (
+              <button
+                type="button"
+                onClick={() => setRejectingStudent(true)}
+                className="ml-2 px-4 py-2 bg-white text-red-700 border border-red-300 rounded-md text-sm font-medium hover:bg-red-50"
+              >
+                Not a student: reject
+              </button>
+            ) : (
+              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-900 space-y-2">
+                <div>
+                  Reject this student? Every notice for them that has not gone out is closed and their follow-ups stop. Nothing is deleted or sent.
+                  Use this when the person is not one of ours or cannot be found in GHL.
+                </div>
+                <button
+                  type="button"
+                  disabled={rejectStudent.isPending}
+                  onClick={() => rejectStudent.mutate(s.id)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                >
+                  {rejectStudent.isPending ? 'Saving...' : 'Yes, reject this student'}
+                </button>
+                <button type="button" onClick={() => setRejectingStudent(false)} className="ml-2 px-4 py-2 text-sm text-gray-700 underline">
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         )}
 

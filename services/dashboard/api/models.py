@@ -481,7 +481,7 @@ class StudentVerification(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False, unique=True, index=True)
-    status = Column(String(20), nullable=False, default="unverified")      # unverified | verified
+    status = Column(String(20), nullable=False, default="unverified")      # unverified | verified | rejected (not a student we can find)
     basis = Column(String(30), nullable=False)                             # greeting_name | gmail_guess
     guessed_name = Column(String(255))
     evidence = Column(Text)                                                # for example: delivered to x@gmail.com; greeting "Hi OMOLOLA"
