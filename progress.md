@@ -59,12 +59,12 @@ Newest first.
 8. Longer term: roster from `config/students.py` into the database; a Google-Sheet roster lookup; phone numbers (only 4 of 19 students have one); compare `email_templates.py` with the Google Doc templates; a backup escalation holder.
 
 ### WAITING on answers or actions
-- **Kes:** (a) is "Kenya" the "Kenya Means" he meant, and reopen verification or reject now; (b) verify Kwadjossan Isaac (phone ends 9244 here, 9243 in GHL); (c) confirm with Taiwo and Jackie whether the mock text/emails arrived; (d) the GHL "Thank you for confirming" automation; (e) approval of the three `GHL_WRITE_*` switches only AFTER the shadow log is validated; (f) restore Rob as approver after the rehearsal; (g) "Called back" on the Oct 5 card; (h) decisions in item 7 above.
+- **Kes:** (a) **Kenya (student 8) and the other students to verify: Kes is checking with Rob and will report back (2026-10-12 night). Claude must not reject, reopen or change any student, and must not touch Kenya's two open Highmark Health Client Screen notices, until Kes says what Rob confirmed.** Kes still has to confirm that "Kenya" is the "Kenya Means" he meant, and whether to reopen verification or reject; (b) verify Kwadjossan Isaac (phone ends 9244 here, 9243 in GHL); (c) confirm with Taiwo and Jackie whether the mock text/emails arrived; (d) the GHL "Thank you for confirming" automation; (e) approval of the three `GHL_WRITE_*` switches only AFTER the shadow log is validated; (f) restore Rob as approver after the rehearsal; (g) "Called back" on the Oct 5 card; (h) decisions in item 7 above.
 - **Ali:** the update email (draft in Kes's Gmail, to ali@colaberry.com) asks about: re-testing, the audit exemption, Twilio and Voice AI limits, the GHL auto-reply, who may undo a STOP, a backup escalation holder. Earlier questions (disclosure wording, authoritative student/phone list, pilot students, deleting about 200 stub emails) were "considered resolved" by Kes but Claude never saw the answers: do NOT delete the 208 stub emails or change the pilot students without Kes confirming.
 - **Rob:** review the "Verify Student" emails and send names, emails and phones (acknowledged 12 Oct). **Jackie:** backup for overdue callbacks (acknowledged 12 Oct).
 
 ### What remains (in order)
-1. Kes decides the open points above; Kenya and Kwadjossan are cleaned up in Verify students.
+1. Kes confirms with Rob who the students to verify really are (Kenya, Kwadjossan Isaac, and the others on the "Verify Student" label) and tells Claude; then Kenya and Kwadjossan are cleaned up in Verify students (Confirm, correct the details, or Not a student: reject). Kes decides the other open points above.
 2. **Next live test, own contact first:** new wording, text then email then call, one at a time; confirm receipt with the recipients; read back with `python execution/ghl_test_call.py --email <contact> --readback`.
 3. **Staff test with sequences** (needs student records and interview events; shadow first, read `notify_tick.log`; then Kes approves the three switches; GHL allows ONE call per number per day).
 4. Wrong person, voicemail and STOP tests on separate days; test callback to the AI receptionist; then the small live pilot (3 real students) only after Ali's go.
@@ -83,6 +83,10 @@ Newest first.
 ---
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
+
+### 2026-10-12 (late): Kes will check the students with Rob
+
+Kes: "I will verify with Rob and let you know." No student data was changed after that message: Kenya (student 8) stays verified with his two open Client Screen notices (Highmark Health), Kwadjossan Isaac stays flagged unverified, and nothing was rejected. Rob already agreed (reply of 2026-10-12) to review the "Verify Student" emails against the Google Sheets and send names, personal emails and phones. When Kes reports back, the Verify students tab is the place to act: correct the details and confirm, or use "Not a student: reject". Both the update email to Ali and the earlier role emails were drafts in Kes's Gmail; Claude never sends.
 
 ### 2026-10-12 (Monday) DAY SUMMARY: what was done, what the test showed
 
