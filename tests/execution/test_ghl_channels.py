@@ -440,3 +440,20 @@ def test_a_failing_name_search_never_changes_the_result():
     student = type("S", (), {"full_name": "Kwadjossan Isaac", "personal_email": "a@example.com", "assigned_gmail": "", "phone_number": ""})()
     contact, how, problem = nc.find_ghl_contact(Broken(contact=False), student)
     assert contact is None and "no GHL contact matches" in problem and "Possible matches" not in problem
+
+
+def test_the_likely_person_is_listed_before_strangers_who_share_a_name_word():
+    people = {
+        "Kwadjossan": [{"id": "1", "firstName": "kwadjossan", "lastName": "issac kpakpavi", "email": "isaackpakpavi@gmail.com", "phone": "+12404869243"}],
+        "Isaac": [{"id": "2", "firstName": "isaac", "lastName": "toe", "email": "isaactoe1@gmail.com", "phone": "+15557811"},
+                  {"id": "3", "firstName": "carmen", "lastName": "isaac", "email": "cdisaac@yahoo.com", "phone": "+15552701"},
+                  {"id": "1", "firstName": "kwadjossan", "lastName": "issac kpakpavi", "email": "isaackpakpavi@gmail.com", "phone": "+12404869243"}],
+    }
+
+    class WithNames(FakeGhl):
+        def search_contacts_by_name(self, query):
+            return people.get(query, [])
+    student = type("S", (), {"full_name": "Kwadjossan Isaac", "personal_email": "kwadjossanisaackpakpavi@gmail.com", "assigned_gmail": "",
+                             "phone_number": "2404869244"})()
+    text = nc.possible_ghl_matches(WithNames(contact=False), student)
+    assert text.startswith("kwadjossan issac kpakpavi <isaackpakpavi@gmail.com>, phone ending 9243")

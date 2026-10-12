@@ -319,21 +319,35 @@ def _first_names_agree(student_name: Optional[str], ghl_first_name: Optional[str
 
 def possible_ghl_matches(client: Any, student: Any, limit: int = 3) -> str:
     """Near matches by NAME in GHL, for the message that tells a person the student could not be found (name, email, last 4 of the phone).
-    Read-only and best effort: a failure here never changes the result."""
+    Every name word is searched, then the contacts are ranked by how much of the student's name and email they share, so the person
+    who changed their email comes first and a stranger who only shares a first name does not. Read-only and best effort."""
     search = getattr(client, "search_contacts_by_name", None)
     if search is None:
         return ""
     words = [w for w in re.split(r"\s+", (getattr(student, "full_name", None) or "").strip()) if len(w) >= 4]
-    seen: Dict[str, str] = {}
-    for word in (words[-1:] + words[:1]):                        # the family name first, then the first name
+    local = ((getattr(student, "personal_email", None) or getattr(student, "assigned_gmail", None) or "").split("@")[0]).lower()
+    found: Dict[str, Any] = {}
+    for word in words:
         try:
             for c in search(word):
-                name = " ".join(x for x in ((c.get("firstName") or ""), (c.get("lastName") or "")) if x) or (c.get("contactName") or "")
-                seen.setdefault(str(c.get("id")), f"{name or 'no name'} <{c.get('email') or 'no email'}>, phone ending "
-                                                  f"{str(c.get('phone') or '')[-4:] or 'none'}")
+                found.setdefault(str(c.get("id")), c)
         except Exception:
-            return "; ".join(list(seen.values())[:limit])
-    return "; ".join(list(seen.values())[:limit])
+            break
+
+    def score(c: Any) -> int:
+        text = " ".join(str(c.get(k) or "") for k in ("firstName", "lastName", "contactName", "email")).lower()
+        n = sum(1 for w in words if w[:5].lower() in text)
+        their = str(c.get("email") or "").split("@")[0].lower()
+        if len(their) >= 6 and local and (their in local or local in their):
+            n += 2                                           # one address contains the other: the same person with a shortened or lengthened email
+        return n
+
+    ranked = sorted(found.values(), key=score, reverse=True)
+    out = []
+    for c in ranked[:limit]:
+        name = " ".join(x for x in ((c.get("firstName") or ""), (c.get("lastName") or "")) if x) or (c.get("contactName") or "")
+        out.append(f"{name or 'no name'} <{c.get('email') or 'no email'}>, phone ending {str(c.get('phone') or '')[-4:] or 'none'}")
+    return "; ".join(out)
 
 
 def find_ghl_contact(client: "ghl_client.GhlClient", student: Any) -> tuple:
