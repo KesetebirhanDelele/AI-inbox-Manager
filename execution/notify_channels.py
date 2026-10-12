@@ -90,10 +90,14 @@ def _ref(ctx: SendContext) -> str:
     return f"Ref {ctx.sequence.id}"
 
 
+def _ref_value(ctx: SendContext) -> str:
+    return str(ctx.sequence.id)
+
+
 def sms_text(ctx: SendContext) -> str:
-    """Short, no link (a link would be blocked), asks for a YES reply, unique per attempt."""
-    return (f"{step_tag(ctx)}Colaberry: you have a new interview request{_company_phrase(ctx.event)}. "
-            f"Reply YES to confirm you got this. {_ref(ctx)}")
+    """The text: begins exactly "[Interview Notification]", 320 characters or fewer, no job title, no link (see notification_messages)."""
+    import notification_messages as nm
+    return nm.sms(nm.facts_from_event(ctx.event, ctx.student), step_tag(ctx), _ref_value(ctx))
 
 
 def interview_facts(event: Any) -> list:
@@ -139,11 +143,31 @@ def call_script(ctx: SendContext) -> str:
 
 
 def email_parts(ctx: SendContext) -> tuple:
-    subject = f"{step_tag(ctx)}{ctx.draft.email_subject or 'New interview request'}"
+    """Subject and body. A draft that already starts with "[Interview Notification]" (made by the new builder, or edited by the approver
+    from it) is sent as it is; an older template draft is replaced by the audit-safe notification built from the interview facts."""
+    import content_audit as audit
+    import notification_messages as nm
     body = ctx.draft.email_body or ""
+    first = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+    if first == audit.REQUIRED_START:
+        subject = ctx.draft.email_subject or "Your interview notification"
+    else:
+        facts = nm.facts_from_event(ctx.event, ctx.student)
+        subject, body = nm.email_subject(facts), nm.email_body(facts)
+    subject = f"{step_tag(ctx)}{subject}"
     if ctx.ack_url:
         body = f"{body}\n\nPlease confirm you got this message by opening this link:\n{ctx.ack_url}\n"
     return subject, body
+
+
+def audit_problem(kind: str, ctx: SendContext) -> Optional[str]:
+    """The content audit's verdict on what this attempt would send (texts and emails only; calls are not scanned), or None."""
+    import content_audit as audit
+    if kind == "sms":
+        return audit.sms_problem(normalize_sms(sms_text(ctx)))
+    if kind == "email":
+        return audit.email_problem(email_parts(ctx)[1])
+    return None
 
 
 # -- text pre-send gate -----------------------------------------------------------
@@ -226,6 +250,9 @@ class DryRunChannel:
         self.name = name
 
     def send(self, ctx: SendContext) -> ChannelResult:
+        blocked = audit_problem(self.name, ctx)
+        if blocked:
+            return ChannelResult(FAILED, detail=f"blocked by the content audit: {blocked}")
         if self.name == "sms":
             text = sms_text(ctx)
             logger.info(f"[dry_run] SMS step={ctx.attempt.step}: {text}")
@@ -253,6 +280,9 @@ class SmtpEmailChannel:
         if send is None:
             from send_notification import send_email
             send = send_email
+        blocked = audit_problem("email", ctx)
+        if blocked:
+            return ChannelResult(FAILED, detail=f"blocked by the content audit: {blocked}")
         subject, body = email_parts(ctx)
         result = send(recipient_email=recipient, subject=subject, body=body)
         if result.get("status") == "sent":
@@ -364,6 +394,9 @@ class GhlChannel:
         if phone is not None and opted_out_in_app(ctx.db, phone, self.name):
             return ChannelResult(SKIPPED, detail=f"not contacted: the student asked us to stop ({self.name})")
 
+        blocked = audit_problem(self.name, ctx)
+        if blocked:
+            return ChannelResult(FAILED, detail=f"blocked by the content audit: {blocked}")
         updates = self._updates(ctx)
         segments = None
         if self.name == "sms":

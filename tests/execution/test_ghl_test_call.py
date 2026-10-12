@@ -103,9 +103,10 @@ def test_a_missing_field_stops_before_writing(monkeypatch):
 
 def test_every_channel_starts_with_the_mock_wording():
     assert t.test_value("Kes", NOW).startswith("Mock interview notification")
-    assert t.sms_test_text(NOW).startswith("Mock interview notification")
+    assert t.sms_test_text(NOW).startswith("[Interview Notification] Mock interview notification")
     subject, body = t.email_test_parts("Kes", NOW)
-    assert subject.startswith("Mock interview notification") and body.startswith("Mock interview notification")
+    assert subject.startswith("Mock interview notification")
+    assert body.splitlines()[0] == "[Interview Notification]" and "Mock interview notification." in body
 
 
 def test_an_email_test_needs_no_phone(monkeypatch):
@@ -132,3 +133,9 @@ def test_a_call_outside_the_contacts_hours_is_refused(monkeypatch):
     lines = []
     code = t.run(["--phone", "+19725550100", "--send"], client_factory=FakeClient, now=late, out=lines.append)
     assert code == 2 and FakeClient.writes == [] and "outside the call hours" in "\n".join(lines)
+
+
+def test_the_test_messages_pass_the_content_audit_themselves():
+    import content_audit as audit
+    assert audit.sms_problem(t.sms_test_text(NOW)) is None
+    assert audit.email_problem(t.email_test_parts("Kes", NOW)[1]) is None

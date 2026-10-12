@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ghl_client as gc
 import ghl_conversations as gcv
 import notify_channels as nc
+import content_audit as audit
 
 
 MOCK = "Mock interview notification"        # every test message starts with this, so nobody mistakes it for a real notice
@@ -30,7 +31,7 @@ MOCK = "Mock interview notification"        # every test message starts with thi
 
 def test_value(first_name: str, now: datetime) -> str:
     """Same shape as notify_channels.call_script(), with sample interview details and a unique TEST reference."""
-    details = ("Interview type: Phone Screen; Company: Test Company; Position: Data Analyst; "
+    details = ("Interview type: Phone Screen; Company: Test Company; Position: the position applied for; "
                "Date: 2026-10-08; Time: 2:00 PM CT; Format: video; Contact at the company: Jane Recruiter")
     return (f"{MOCK} (a test, not a real interview). Attempt: first notice. Candidate first name: {first_name or 'there'}. "
             f"Interview details: {details}. Reference: TEST-{now.strftime('%Y%m%d%H%M%S')}.")
@@ -38,17 +39,18 @@ def test_value(first_name: str, now: datetime) -> str:
 
 def sms_test_text(now: datetime) -> str:
     """A text that passes the same gate as real ones (no links, 3+ words, short). Unique per run."""
-    return (f"{MOCK}: Colaberry test, your Data Analyst interview with Test Company is Thu Oct 8, 2 PM CT. "
-            f"Reply YES to confirm you got this. (test {now.strftime('%H%M%S')})")
+    return (f"[Interview Notification] {MOCK}: Hello there, your interview with Test Company for the position you applied for is on Thu Oct 8 "
+            f"at 2:00 PM CT. Format: video. From Colaberry Interview Support. Reply YES to confirm you got this. (test {now.strftime('%H%M%S')})")
 
 
 def email_test_parts(first_name: str, now: datetime) -> tuple:
     """Subject and body for the email fields. No links. Unique per run."""
     ref = f"TEST-{now.strftime('%Y%m%d%H%M%S')}"
     subject = f"{MOCK} ({ref})"
-    body = (f"{MOCK}." + chr(10) * 2 + f"Hi {first_name or 'there'}," + chr(10) * 2 + "This is a TEST of the Colaberry interview notification email. "
-            "Your Data Analyst interview with Test Company is Thursday, October 8 at 2:00 PM CT, by video." + chr(10) * 2 +
-            "No action is needed for this test.")
+    body = ("[Interview Notification]" + chr(10) * 2 + f"{MOCK}." + chr(10) * 2 + f"Hello {first_name or 'there'}," + chr(10) * 2 +
+            "This is a TEST of the Colaberry interview notification email. Your interview with Test Company for the position you applied for "
+            "is on Thursday, October 8 at 2:00 PM CT, by video." + chr(10) * 2 + "No action is needed for this test." + chr(10) * 2 +
+            "Colaberry Interview Support")
     return subject, body
 
 
@@ -141,13 +143,17 @@ def run(argv=None, client_factory=gc.GhlClient, now=None, out=print) -> int:
         updates = {cfg.field_call: test_value(name, now)}
     elif channel == "sms":
         text = nc.normalize_sms(sms_test_text(now))
-        problem = nc.sms_content_problem(text)
+        problem = nc.sms_content_problem(text) or audit.sms_problem(text)
         if problem:
             out(f"STOP: the test text fails the app's text gate: {problem}")
             return 2
         updates = {cfg.field_sms: text}
     else:
         subject, body = email_test_parts(name, now)
+        problem = audit.email_problem(body)
+        if problem:
+            out(f"STOP: the test email fails the content audit: {problem}")
+            return 2
         updates = {cfg.field_email_subject: subject, cfg.field_email_body: body}
     missing = [label for label in updates if not client.field_id(label)]
     if missing:

@@ -272,8 +272,9 @@ class TestDraftNotification:
         result = draft_notification(SAMPLE_CLASSIFICATION, SAMPLE_STUDENT)
 
         assert result["template_id"] == "phone_screening_scheduled"
-        assert "TechCorp" in result["email_subject"]
-        assert "John Doe" in result["email_body"]
+        assert result["email_subject"].startswith("Your interview on")        # plain subject, no company or title
+        assert result["email_body"].splitlines()[0] == "[Interview Notification]"
+        assert "TechCorp" in result["email_body"] and "Hello John," in result["email_body"]
         assert result["recipient_email"] == "john.personal@hotmail.com"
         assert result["bcc"] == "c_interviews@colaberry.com"
         assert result["draft_status"] == "ready"
@@ -361,7 +362,8 @@ class TestDraftNotification:
         result = draft_notification(classification, SAMPLE_STUDENT)
 
         assert result["template_id"] == "interview_reschedule_request"
-        assert "reschedule" in result["email_subject"].lower()
+        assert "cancelled" in result["email_subject"].lower()
+        assert "new time" in result["email_body"]                              # the old reschedule-request nuance is kept
 
     def test_rescheduled_draft(self):
         classification = {
@@ -388,7 +390,8 @@ class TestDraftNotification:
             SAMPLE_STUDENT,
             assistant_name="CustomAssistant",
         )
-        assert "CustomAssistant" in result["email_body"]
+        assert "CustomAssistant" not in result["email_body"]                   # the notification is signed by the team, not a person
+        assert result["email_body"].rstrip().endswith("Colaberry Interview Support")
 
     def test_no_personal_email(self):
         student = {**SAMPLE_STUDENT, "personal_email": None}

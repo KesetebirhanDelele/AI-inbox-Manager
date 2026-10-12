@@ -66,8 +66,8 @@ def test_email_writes_ticket_2_as_subject_and_message_as_body_with_the_ack_link(
     r = channel("email", g).send(ctx())
     contact_id, updates = g.writes[0]
     assert contact_id == "contact-1" and set(updates) == {"Support Issue Ticket #2", "Message:"}
-    assert updates["Support Issue Ticket #2"] == "Interview (Ref 7)"
-    assert "https://x.example/ack/tok" in updates["Message:"] and "Details here" in updates["Message:"]
+    assert updates["Support Issue Ticket #2"] == "Your interview notification (Ref 7)"
+    assert "https://x.example/ack/tok" in updates["Message:"] and updates["Message:"].startswith("[Interview Notification]")
     assert r.status == nc.SENT
 
 
@@ -78,7 +78,8 @@ def test_sms_writes_only_ticket_4_and_it_has_no_link_and_fits_one_segment():
     assert list(updates) == ["Support issue Ticket #4"]
     text = updates["Support issue Ticket #4"]
     assert "http" not in text and "Reply YES" in text and "Ref 7" in text and "Acme" in text
-    assert nc.sms_segments(text) == 1
+    assert text.startswith("[Interview Notification]") and len(text) <= 320
+    assert nc.sms_segments(text) <= 2
 
 
 def test_call_writes_only_the_interview_notification_field():
@@ -242,9 +243,9 @@ def test_segment_counts():
 
 
 def test_the_daily_budget_defers_to_8_05_am_pacific_tomorrow_and_never_exceeds_the_hard_cap(monkeypatch):
-    monkeypatch.setattr(nc, "sms_budget_used", lambda c: 149)
+    monkeypatch.setattr(nc, "sms_budget_used", lambda c: 148)
     g = FakeGhl(live=True)
-    r = nc.GhlChannel("sms", g, {"NOTIFY_SMS_DAILY_SEGMENT_CAP": "150"}).send(ctx())     # needs 1 segment: 150 total, fits
+    r = nc.GhlChannel("sms", g, {"NOTIFY_SMS_DAILY_SEGMENT_CAP": "150"}).send(ctx())     # needs 2 segments: 150 total, fits
     assert r.status == nc.SENT
     monkeypatch.setattr(nc, "sms_budget_used", lambda c: 150)
     g = FakeGhl(live=True)

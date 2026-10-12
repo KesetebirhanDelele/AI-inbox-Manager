@@ -240,6 +240,15 @@ to the repo root), so put the settings there once; restart the API after changin
 | `NOTIFY_INBOUND_SECRET` | unset | Secret for the inbound-reply endpoint; unset = endpoint closed |
 | `REPLY_AI_MODE` / `REPLY_AI_SHADOW_UNTIL` | shadow / 2026-10-16 | Live needs both the setting and the date to have passed |
 
+## Content audit (2026-10-12, Kes)
+
+An automated audit scans the BODY of every outbound text and email (not calls, not the email subject) and flags any message containing a word or phrase from its list (data analytics, data analyst, data science, bootcamp, power bi, tableau, sql, excel, full stack, cybersecurity, business intelligence, employment/placement/hiring rate, job placement, job guarantee, ...). The first notices were flagged. Rules now enforced in code:
+- The wording lives in `execution/notification_messages.py`; the audit's list and the text rules in `execution/content_audit.py` (tests: `tests/execution/test_content_audit.py`). Colaberry does not offer the position, the employer does: the messages never say Colaberry is hiring and **never name the job title** ("the position you applied for").
+- Text: begins exactly `[Interview Notification]`, 320 characters or fewer, first name, employer, date, time and zone, where (a text carries no link: "the join link is in your email"), how to reply (`NOTIFY_CONTACT_NUMBER`, else "reply YES"). No marketing words, no "$". Email: first line exactly `[Interview Notification]`, same facts, a short preparation note, plain subject "Your interview on <date>".
+- An employer name that is itself on the flagged list ("Excel Staffing") is replaced by "the employer" in texts and emails (the call still names it).
+- Send-time gate: `notify_channels.audit_problem` runs before any text or email is written or logged (also in shadow mode); a message that would be flagged is a FAILED attempt with the reason, never sent. An older template draft is replaced at send time by the audit-safe email; `execution/rewrite_pending_drafts.py` makes the approval card show the same text.
+- The call wording is in `docs/voice-agent-outbound-interview-prompt.md` (calls are not scanned; no outcome claims). A STOP reply never gets a further reply from us. Open: "offer to resend the details by text" needs a GHL action.
+
 ## Spacing between students (2026-10-12, Kes)
 
 To keep calls and texts from stacking on the shared phone line (Twilio concurrency limits), `escalation_engine.tick` lets only one student's batch go out per spacing window: when another student was contacted less than `NOTIFY_LEAD_SPACING_MINUTES` ago, a student's due attempts are held (left pending, nothing changed) and sent on a later tick. The student who has waited longest goes first. This spaces OUR sends only. It cannot see Cora's calls and texts, calls that last longer than the spacing, or inbound calls to the receptionist, all of which use the same account. The real concurrency limits of the Twilio account and of GHL Voice AI are not verified yet (see progress.md).

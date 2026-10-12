@@ -235,6 +235,12 @@ def draft_notification(
     data = build_template_data(classification, student_info, assistant_name)
     populated = populate_template(template, data)
 
+    # The notification email is the audit-safe one (no job title, first line "[Interview Notification]"): see notification_messages.py.
+    # The template above still decides the template id and which fields are missing.
+    import notification_messages as nm
+    facts = nm.facts_from_dict(classification, student_info, actual_sub_type)
+    populated["subject"], populated["body"] = nm.email_subject(facts), nm.email_body(facts)
+
     # Determine draft status
     if populated["missing_fields"]:
         draft_status = "needs_review"
