@@ -37,25 +37,22 @@ FACTS = {"first_name": "Kes", "employer": "Acme Corp", "date": "Thu Oct 8", "tim
          "link": "", "employer_contact": "Jane Recruiter", "status": ""}
 
 
-def test_the_text_follows_every_rule(monkeypatch):
-    monkeypatch.setenv("NOTIFY_CONTACT_NUMBER", "972-555-0100")
+def test_the_text_follows_every_rule():
     text = nm.sms(FACTS, "", "12")
     assert text.startswith("[Interview Notification]") and len(text) <= 320
     assert audit.sms_problem(text) is None
-    for needed in ("Kes", "Acme Corp", "Thu Oct 8", "2:00 PM CT", "972-555-0100", "the position you applied for"):
+    for needed in ("Kes", "Acme Corp", "Thu Oct 8", "2:00 PM CT", "the position you applied for", "Reply YES to confirm you got this."):
         assert needed in text
-    assert "http" not in text
+    assert "http" not in text and "call " not in text.lower().replace("calling", "")      # confirmation is YES only: no phone number
 
 
-def test_a_reminder_keeps_the_tag_first_and_the_text_unique(monkeypatch):
-    monkeypatch.delenv("NOTIFY_CONTACT_NUMBER", raising=False)
+def test_a_reminder_keeps_the_tag_first_and_the_text_unique():
     a, b = nm.sms(FACTS, "", "12"), nm.sms(FACTS, "Reminder 1: ", "12")
     assert b.startswith("[Interview Notification] Reminder 1: ") and a != b
     assert audit.sms_problem(b) is None
 
 
-def test_a_long_employer_name_still_fits_in_320_characters(monkeypatch):
-    monkeypatch.setenv("NOTIFY_CONTACT_NUMBER", "972-555-0100")
+def test_a_long_employer_name_still_fits_in_320_characters():
     f = {**FACTS, "employer": "A" * 80 + " International Holdings Group", "link": "https://x.example/j"}
     text = nm.sms(f, "Final reminder: ", "123456")
     assert len(text) <= 320 and audit.sms_problem(text) is None
@@ -77,16 +74,30 @@ def test_an_unscheduled_interview_says_the_employer_will_confirm():
     assert audit.sms_problem(text) is None
 
 
-def test_the_email_follows_every_rule(monkeypatch):
-    monkeypatch.setenv("NOTIFY_CONTACT_NUMBER", "972-555-0100")
+def test_the_email_follows_every_rule():
     body = nm.email_body({**FACTS, "link": "https://meet.example/abc"})
     assert body.splitlines()[0] == "[Interview Notification]"
     assert audit.email_problem(body) is None
-    for needed in ("Hello Kes", "Acme Corp", "Date: Thu Oct 8", "Time: 2:00 PM CT", "Join link: https://meet.example/abc",
-                   "How to prepare", "972-555-0100"):
+    for needed in ("Hello Kes", "Acme Corp", "Date: Thu Oct 8", "Time: 2:00 PM CT", "How to prepare", "replying YES"):
         assert needed in body
     assert "the position you applied for" in body and "arranged this interview" in body       # Colaberry is not the employer
     assert nm.email_subject(FACTS) == "Your interview on Thu Oct 8"
+
+
+def test_no_message_carries_a_link_or_a_phone_number_even_when_the_meeting_has_one():
+    f = {**FACTS, "link": "https://meet.example/abc?pwd=secret"}
+    for text in (nm.sms(f, "", "12"), nm.email_body(f)):
+        assert "http" not in text and "meet.example" not in text and "www." not in text
+        assert "call " not in text.lower()                                                  # confirmation is YES, never a call-this-number
+    assert "employer's invitation email" in nm.sms(f, "", "12")                              # where the real link is
+    assert "employer's invitation email" in nm.email_body(f)
+
+
+def test_a_link_in_a_text_or_an_email_is_refused_by_the_audit():
+    assert "link" in audit.sms_problem("[Interview Notification] Join at https://x.example/a")
+    assert "link" in audit.sms_problem("[Interview Notification] Join at www.x.example")
+    assert "link" in audit.email_problem("[Interview Notification]\n\nJoin at meet.zoom.us/j/123456/")
+    assert audit.has_link("see https://a.b") and not audit.has_link("Thu Oct 8 at 2:00 PM CT. Reply YES.")
 
 
 def test_the_checks_reject_a_missing_tag_or_a_flagged_word():

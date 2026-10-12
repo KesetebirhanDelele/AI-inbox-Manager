@@ -7,21 +7,16 @@ Rules (Kes, 2026-10-12, after an automated content audit flagged the old wording
   * The job title is NEVER named ("the position you applied for"), because titles such as "Data Analyst" or "SQL Developer"
     are on the audit's flagged list. An employer name that itself contains a flagged word is replaced by "the employer".
   * The text begins exactly "[Interview Notification]" and is 320 characters or fewer; the email's first line is exactly
-    "[Interview Notification]". Neutral wording, no promises, no marketing. No link in a text (carriers block them, and
-    notify_channels.sms_content_problem refuses one): a video interview says "the join link is in your email".
-  * The numbers for replies come from the setting NOTIFY_CONTACT_NUMBER; unset, the line says to reply to the message.
+    "[Interview Notification]". Neutral wording, no promises, no marketing. No link in a text in a text or an email.
+  * No phone number and no link anywhere (Kes, 2026-10-12): the candidate confirms by replying YES to the text or the email, or by
+    saying yes on the call. The meeting link is in the employer's own invitation email.
 """
-import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 import content_audit as audit
 
 TAG = audit.REQUIRED_START
-
-
-def contact_number() -> str:
-    return (os.getenv("NOTIFY_CONTACT_NUMBER") or "").strip()
 
 
 def safe_employer(name: Optional[str]) -> str:
@@ -82,6 +77,12 @@ def facts_from_dict(classification: Dict[str, Any], student_info: Dict[str, Any]
     }
 
 
+def _is_online(f: Dict[str, str]) -> bool:
+    """A video or online interview: there is a meeting link in the employer's own invitation, so we point to it and never repeat it."""
+    text = f"{f.get('format', '')} {f.get('link', '')}".lower()
+    return bool(f.get("link")) or any(w in text for w in ("video", "online", "virtual", "zoom", "teams", "meet"))
+
+
 def _when(f: Dict[str, str]) -> str:
     if f.get("date"):
         return f"on {f['date']}" + (f" at {f['time']}" if f.get("time") else "")
@@ -103,12 +104,11 @@ def sms(f: Dict[str, str], step_tag: str = "", ref: str = "") -> str:
     """One text, 320 characters or fewer, starting exactly '[Interview Notification]'. Reminders add their label after the tag."""
     lead = f"Hello {f['first_name']}, "
     where = ""
-    if f.get("link"):
-        where = " The join link is in your email."
-    elif f.get("format"):
+    if f.get("format"):
         where = f" Format: {f['format']}."
-    number = contact_number()
-    reply = f"Reply YES to confirm you got this, or call {number}." if number else "Reply YES to confirm you got this."
+    if _is_online(f):
+        where += " Use the meeting link in the employer's invitation email."
+    reply = "Reply YES to confirm you got this."
     tail = f" Ref {ref}" if ref else ""
 
     def build(employer_f):
@@ -132,7 +132,6 @@ def email_subject(f: Dict[str, str]) -> str:
 
 def email_body(f: Dict[str, str], ack_line: bool = False) -> str:
     """The email: first line exactly '[Interview Notification]', the same facts as the text, and a short preparation note."""
-    number = contact_number()
     lines = [TAG, "", f"Hello {f['first_name']},", "",
              f"This is a notice about an interview with {f['employer']} for the position you applied for. "
              "The employer arranged this interview. Colaberry Interview Support is passing the details on to you.", ""]
@@ -149,14 +148,13 @@ def email_body(f: Dict[str, str], ack_line: bool = False) -> str:
             lines.append(f"Time: {f['time']}")
         if f.get("format"):
             lines.append(f"Format: {f['format']}")
-        if f.get("link"):
-            lines.append(f"Join link: {f['link']}")
+        if _is_online(f):
+            lines.append("Meeting link: use the link in the employer's invitation email.")
         if f.get("employer_contact"):
             lines.append(f"Employer contact: {f['employer_contact']}")
         lines += ["", "How to prepare:",
                   "- Join five minutes early, and test your audio, video and internet connection first.",
                   "- Have your resume, a pen and paper ready.",
                   "- Read the position description again and think of questions to ask."]
-    lines += ["", "Please confirm you received this message by replying YES"
-              + (f", or by calling {number}." if number else "."), "", "Colaberry Interview Support"]
+    lines += ["", "Please confirm you received this message by replying YES to this email.", "", "Colaberry Interview Support"]
     return "\n".join(lines)

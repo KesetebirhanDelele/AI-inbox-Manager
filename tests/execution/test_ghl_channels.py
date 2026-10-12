@@ -61,13 +61,14 @@ def channel(kind, ghl):
 
 # -- what is written where --------------------------------------------------------
 
-def test_email_writes_ticket_2_as_subject_and_message_as_body_with_the_ack_link():
+def test_email_writes_ticket_2_as_subject_and_message_as_body_with_no_link():
     g = FakeGhl(live=True)
     r = channel("email", g).send(ctx())
     contact_id, updates = g.writes[0]
     assert contact_id == "contact-1" and set(updates) == {"Support Issue Ticket #2", "Message:"}
     assert updates["Support Issue Ticket #2"] == "Your interview notification (Ref 7)"
-    assert "https://x.example/ack/tok" in updates["Message:"] and updates["Message:"].startswith("[Interview Notification]")
+    assert updates["Message:"].startswith("[Interview Notification]")
+    assert "http" not in updates["Message:"] and "ack/tok" not in updates["Message:"]         # no confirmation link: the student replies YES
     assert r.status == nc.SENT
 
 

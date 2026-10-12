@@ -55,6 +55,14 @@ def contains_flagged(name: Optional[str]) -> bool:
     return bool(find_flagged(name or "")) or bool(find_sms_banned(name or ""))
 
 
+_LINK = re.compile(r"https?://|www\.|\b[a-z0-9-]+\.(?:com|net|org|io|co|us|ly)/", re.I)
+
+
+def has_link(text: str) -> bool:
+    """A web address of any kind (messages carry no links)."""
+    return bool(_LINK.search(text or ""))
+
+
 def sms_problem(text: str) -> Optional[str]:
     """Why this text must not go out under the audit rules, or None."""
     t = text or ""
@@ -62,6 +70,8 @@ def sms_problem(text: str) -> Optional[str]:
         return f'text must begin with exactly "{REQUIRED_START}"'
     if len(t) > SMS_MAX_CHARS:
         return f"text is {len(t)} characters, the limit is {SMS_MAX_CHARS}"
+    if has_link(t):
+        return "the text contains a link (messages carry no links)"
     flagged = find_flagged(t) + find_sms_banned(t)
     if flagged:
         return "content audit: the text contains " + ", ".join(sorted(set(flagged)))
@@ -73,6 +83,8 @@ def email_problem(body: str) -> Optional[str]:
     lines = [ln for ln in (body or "").splitlines() if ln.strip()]
     if not lines or lines[0].strip() != REQUIRED_START:
         return f'the first line of the email must be exactly "{REQUIRED_START}"'
+    if has_link(body):
+        return "the email contains a link (messages carry no links)"
     flagged = find_flagged(body)
     if flagged:
         return "content audit: the email contains " + ", ".join(sorted(set(flagged)))

@@ -155,9 +155,7 @@ def email_parts(ctx: SendContext) -> tuple:
         facts = nm.facts_from_event(ctx.event, ctx.student)
         subject, body = nm.email_subject(facts), nm.email_body(facts)
     subject = f"{step_tag(ctx)}{subject}"
-    if ctx.ack_url:
-        body = f"{body}\n\nPlease confirm you got this message by opening this link:\n{ctx.ack_url}\n"
-    return subject, body
+    return subject, body            # no confirmation link: the student replies YES (the one-tap link was removed 2026-10-12)
 
 
 def audit_problem(kind: str, ctx: SendContext) -> Optional[str]:

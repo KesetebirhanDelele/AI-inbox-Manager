@@ -4,7 +4,7 @@ Rewrite the email of every notification draft that has not been sent into the au
 Older drafts carry the template wording, which names the job title in the body (a flagged word on the audit's list). At send time the app
 already builds the audit-safe email for such a draft (notify_channels.email_parts), so nothing flagged can go out; this script makes the
 approval card show the SAME text the student will receive. Only drafts whose status is draft or approved, with no follow-up sequence that
-has already sent anything, and whose body does not already start with "[Interview Notification]", are touched. Dry run by default.
+has already sent anything, and whose body is not already audit-safe ("[Interview Notification]" first line, no flagged word, no link), are touched. Dry run by default.
 
 Usage (inside the cron container on the server):
     python execution/rewrite_pending_drafts.py            # list only
@@ -30,8 +30,8 @@ def plan(db):
     out = []
     for draft in db.query(M.NotificationDraft).filter(M.NotificationDraft.email_status.in_(["draft", "approved"])).all():
         first = next((ln.strip() for ln in (draft.email_body or "").splitlines() if ln.strip()), "")
-        if first == audit.REQUIRED_START:
-            continue
+        if first == audit.REQUIRED_START and audit.email_problem(draft.email_body or "") is None:
+            continue                                       # already the audit-safe wording (no flagged word, no link)
         seq = db.query(M.NotificationSequence).filter(M.NotificationSequence.draft_id == draft.id).first()
         if seq is not None and any(a.sent_at for a in seq.attempts):
             continue                                       # something already went out under the old wording: leave the record as it was

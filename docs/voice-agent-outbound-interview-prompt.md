@@ -103,7 +103,6 @@ STRUCTURED CALL FLOW SCRIPT:
     Instruction: Ask: "Can you confirm you got this information? Please just say yes." Wait for the answer.
 
     - If they say yes, or clearly say they have it: say the same details were also sent to them by text and email, thank them and go to step 5.
-    - If they ask for the details again by text: say a team member will resend them by text (the app does not resend on request yet; see "Resend by text" below).
     - If they ask you to repeat something: repeat it once, then ask for the confirmation again.
     - If their answer is unclear: ask once more, simply. Do not pressure them.
     - If they say they cannot make it, want to change the time, or have a problem: say "Thank you for telling me. I'll pass that to our team and someone will reach out to you," then go to step 5.
@@ -127,9 +126,7 @@ STOP REQUEST:
     If the person asks not to be called again: apologize, say you will not call again, and end the call. Do not argue or ask why.
 ```
 
-**Resend by text (open, 2026-10-12).** The call script asks the agent to offer the details again by text. The agent cannot send a text itself, and the app does not yet act on that request, so the prompt only says "a team member will resend them". To make "offer to resend" real, a GHL action that triggers the text field (or a task for the callback owner) must be added.
-
-**Content audit (2026-10-12).** An automated audit scans the body of every outbound text and email (not calls) for a list of flagged words, so the app never names the job title in a text or email ("the position you applied for") and blocks a send that contains one (`execution/content_audit.py`, `execution/notification_messages.py`). The call is not scanned, but the agent follows the same neutral wording and makes no outcome claims.
+**Content audit (2026-10-12).** An automated audit scans the body of every outbound text and email (not calls) for a list of flagged words, so the app never names the job title in a text or email ("the position you applied for"), carries no link or phone number, and blocks a send that would be flagged (`execution/content_audit.py`, `execution/notification_messages.py`). The call is not scanned, but the agent follows the same neutral wording and makes no outcome claims.
 
 ## 2. What the app writes into the field
 
