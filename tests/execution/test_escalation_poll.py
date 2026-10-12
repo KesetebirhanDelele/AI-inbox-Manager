@@ -143,6 +143,8 @@ def test_a_student_with_two_open_notices_has_each_reply_handled_once_for_both(db
     student = db.get(M.Student, first.student_id)
     second = eng.start_sequence(db, draft2, student, T0 + timedelta(minutes=1))
     eng.tick(db, T0 + timedelta(minutes=1), {k: HandedToGhl(k) for k in ("call", "sms", "email")}, alerts())
+    # the second notice waits for the spacing after the first student contact (3 minutes by default), then goes out
+    eng.tick(db, T0 + timedelta(minutes=5), {k: HandedToGhl(k) for k in ("call", "sms", "email")}, alerts())
 
     report = poll(db, FakeConv([msg("m1", "YES")]))
     assert report.new_messages == 1 and report.stopped == 1            # one message, handled once
