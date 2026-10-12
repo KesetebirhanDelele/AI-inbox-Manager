@@ -1740,6 +1740,15 @@ def _is_self_sent(email_data: Dict[str, Any], from_addr: str) -> bool:
     return sender in recipients
 
 
+# A care-giving or clinical-support job (not a data or technology one). Used only together with the absence of _DATA_OR_TECH_WORK below.
+_NON_DATA_CARE_JOB = re.compile(
+    r"\b(certified nursing assistant|nursing assistant|nurse aide|nurse's aide|\bcna\b|caregiver|care giver|home health aide|personal care aide|"
+    r"patient care technician|medical assistant|phlebotom\w+|licensed practical nurse|\blpn\b|registered nurse|\brn\b)\b", re.I)
+_DATA_OR_TECH_WORK = re.compile(
+    r"\b(data|analyst|analytics|sql|power bi|tableau|python|software|developer|engineer|engineering|programmer|cloud|cyber\w*|"
+    r"it support|help ?desk|machine learning|\bai\b|informatics|business intelligence|reporting)\b", re.I)
+
+
 def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     """
     Apply deterministic sender-domain rules BEFORE the AI classification call.
@@ -1785,6 +1794,13 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
 
     # ── Colaberry school form mailer (Kes 2026-10-10): "New/Final Project Request" notices, never an interview. Exact address only: other school.colaberry.com mail is not touched. ──
     if from_addr.strip() == "info@school.colaberry.com":
+        return "Other"
+
+    # ── A care-giving job that has nothing to do with the students' data and technology training (Kes 2026-10-12) ──
+    # Example: a home-care firm asking for a call about a Certified Nursing Assistant posting. It is classed Other (no student notice).
+    # Only when the first part of the mail names a care job AND mentions no data or technology work, so "Healthcare Data Analyst" is untouched.
+    head = f"{subject} {body}"
+    if _NON_DATA_CARE_JOB.search(head) and not _DATA_OR_TECH_WORK.search(head):
         return "Other"
 
     # ── Not job mail (Kes 2026-10-10), each narrow on purpose ──────────────────

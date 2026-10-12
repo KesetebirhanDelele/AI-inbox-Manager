@@ -529,3 +529,22 @@ def test_html_inside_the_text_part_is_turned_into_text():
 def test_not_job_mail_rules(sender, subject, body, expected):
     from process_inbox_auto import pre_classify_by_sender
     assert pre_classify_by_sender({"sender_email": sender, "subject": subject, "body_content": body}) == expected
+
+
+CNA_BODY = ("Hello MIRRIAM, My name is Alex Boyles, and I'm with Visiting Angels Senior Home Care Maple Valley. I wanted to thank you for your recent "
+            "application to our Certified Nursing Assistant (CNA) posting and see if you'd be available for a 15 to 20-minute phone call to further "
+            "discuss the position.")
+
+
+@pytest.mark.parametrize("subject, body, expected", [
+    ("Phone call about your application", CNA_BODY, "Other"),                                       # the example from Kes
+    ("Interview for Caregiver role", "Can you speak Thursday?", "Other"),
+    ("Home Health Aide interview", "Please send your availability", "Other"),
+    ("Interview: Healthcare Data Analyst", "Home care clinics need a data analyst. Please send times.", None),   # a data role is never caught
+    ("Interview request: Registered Nurse Informatics Analyst", "Please send your availability", None),         # informatics is tech work
+    ("Phone screen for Software Engineer", "Our care team would like to talk", None),
+    ("Interview request", "We would like to schedule a phone screen for the Business Analyst role", None),     # no care job named
+])
+def test_a_care_job_unrelated_to_the_training_is_other(subject, body, expected):
+    from process_inbox_auto import pre_classify_by_sender
+    assert pre_classify_by_sender({"sender_email": "alex@visitingangels.example", "subject": subject, "body_content": body}) == expected
