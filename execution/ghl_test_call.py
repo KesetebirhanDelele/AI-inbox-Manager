@@ -25,28 +25,38 @@ import ghl_conversations as gcv
 import notify_channels as nc
 
 
+MOCK = "Mock interview notification"        # every test message starts with this, so nobody mistakes it for a real notice
+
+
 def test_value(first_name: str, now: datetime) -> str:
     """Same shape as notify_channels.call_script(), with sample interview details and a unique TEST reference."""
     details = ("Interview type: Phone Screen; Company: Test Company; Position: Data Analyst; "
                "Date: 2026-10-08; Time: 2:00 PM CT; Format: video; Contact at the company: Jane Recruiter")
-    return (f"Attempt: first notice. Candidate first name: {first_name or 'there'}. "
+    return (f"{MOCK} (a test, not a real interview). Attempt: first notice. Candidate first name: {first_name or 'there'}. "
             f"Interview details: {details}. Reference: TEST-{now.strftime('%Y%m%d%H%M%S')}.")
 
 
 def sms_test_text(now: datetime) -> str:
     """A text that passes the same gate as real ones (no links, 3+ words, short). Unique per run."""
-    return ("Colaberry: your Data Analyst interview with Test Company is Thu Oct 8, 2 PM CT. "
+    return (f"{MOCK}: Colaberry test, your Data Analyst interview with Test Company is Thu Oct 8, 2 PM CT. "
             f"Reply YES to confirm you got this. (test {now.strftime('%H%M%S')})")
 
 
 def email_test_parts(first_name: str, now: datetime) -> tuple:
     """Subject and body for the email fields. No links. Unique per run."""
     ref = f"TEST-{now.strftime('%Y%m%d%H%M%S')}"
-    subject = f"Test: interview notification ({ref})"
-    body = (f"Hi {first_name or 'there'}," + chr(10) * 2 + "This is a TEST of the Colaberry interview notification email. "
+    subject = f"{MOCK} ({ref})"
+    body = (f"{MOCK}." + chr(10) * 2 + f"Hi {first_name or 'there'}," + chr(10) * 2 + "This is a TEST of the Colaberry interview notification email. "
             "Your Data Analyst interview with Test Company is Thursday, October 8 at 2:00 PM CT, by video." + chr(10) * 2 +
             "No action is needed for this test.")
     return subject, body
+
+
+def in_allowed_hours(phone: str, channel: str, now: datetime) -> bool:
+    """The app's own quiet-hours rule in the contact's time zone (from the phone area code): calls 8 AM to 8 PM, texts 8 AM to 9 PM."""
+    import escalation_schedule as sched
+    tz_name, _source = sched.timezone_for_phone(phone)
+    return not sched.in_quiet_hours(now.astimezone(timezone.utc).replace(tzinfo=None), tz_name, channel)
 
 
 def load_env() -> dict:
@@ -89,8 +99,8 @@ def run(argv=None, client_factory=gc.GhlClient, now=None, out=print) -> int:
     name = (contact.get("firstName") or "").strip()
     phone = str(contact.get("phone") or "")
     out(f"contact found: id {cid}, first name {name or '(none)'}, phone ends {phone[-4:] or '(none)'}")
-    if not phone:
-        out("STOP: this contact has no phone number, so there is nobody to call. Nothing written.")
+    if not phone and args.channel in ("call", "sms") and not args.readback:
+        out(f"STOP: this contact has no phone number, so there is nobody to {'call' if args.channel == 'call' else 'text'}. Nothing written.")
         return 2
 
     if args.readback:
@@ -116,6 +126,13 @@ def run(argv=None, client_factory=gc.GhlClient, now=None, out=print) -> int:
         return 0
 
     channel = args.channel
+    if channel == "email" and not str(contact.get("email") or "").strip():
+        out("STOP: this contact has no email address. Nothing written.")
+        return 2
+    if args.send and channel in ("call", "sms") and not in_allowed_hours(phone, channel, now):
+        out(f"STOP: it is outside the {'call' if channel == 'call' else 'text'} hours in this contact's time zone "
+            f"({'8 AM to 8 PM' if channel == 'call' else '8 AM to 9 PM'}). Nothing written.")
+        return 2
     why = gc.block_reason(contact, channel, cfg.block_tags)
     if why:
         out(f"STOP: {why}. Nothing written.")

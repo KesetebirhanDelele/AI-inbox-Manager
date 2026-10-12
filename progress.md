@@ -87,6 +87,10 @@ LOGS what it would send and nothing reaches a student. The old one-email Approve
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-12: one-contact test tool made ready for the staff mock test (Kes: "Run the test with actual call, SMS, email... starts with mock interview notification")
+
+`execution/ghl_test_call.py`: every test message (call value, text, email subject and body) now STARTS with "Mock interview notification"; an email test no longer needs a phone (Jackie's GHL contact has none), while a call or text still does; `--send` of a call or text is refused outside the contact's own hours (calls 8 AM to 8 PM, texts 8 AM to 9 PM, zone from the phone area code, the app's own rule). Tests added. Contacts resolved read-only in GHL (exact match on email, one contact each): Kes Del = kesetebirhan@gmail.com (phone on file); Taiwo Oludimimu has TWO contacts, the one with a phone is taiwo@colaberry.com (the other, taiwo.abisola@gmail.com, has no phone); jackie@colaberry.com has no phone, email only. The tool writes one contact's field for one channel and never changes `.env`, so production stays in shadow mode.
+
 ### 2026-10-12: spacing between students so notices do not trip Twilio's concurrency limit (Kes)
 
 `escalation_engine.tick` now holds a student's due attempts while ANY other student was contacted (sent, or logged in shadow mode) less than `NOTIFY_LEAD_SPACING_MINUTES` ago (default 3; 0 = off). One student's call, text and email still go out together; held attempts stay pending and the next tick sends them; the student waiting longest goes first. The tick output shows `spaced=N`. Because the host cron runs every 5 minutes, students in a burst go out about 5 minutes apart (a 1-minute cron would give 3). Tests: second student held then released at 3 minutes, oldest first, shadow sends count, 0 switches it off, env parsing. Documented in the directive.
