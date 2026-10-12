@@ -73,10 +73,7 @@ def test_sent_and_rejected_drafts_are_not_touched(db):
 
 
 def test_an_earlier_new_style_draft_that_carries_a_link_is_rewritten_too(db):
-    _draft(db, "[Interview Notification]
-
-Hello Test,
-
-Join link: https://meet.example/abc")
+    body = "[Interview Notification]" + chr(10) * 2 + "Hello Test," + chr(10) * 2 + "Join link: https://meet.example/abc"
+    _draft(db, body)
     items = rpd.plan(db)
     assert len(items) == 1 and "http" not in items[0][2]
