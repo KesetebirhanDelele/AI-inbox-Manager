@@ -548,3 +548,11 @@ CNA_BODY = ("Hello MIRRIAM, My name is Alex Boyles, and I'm with Visiting Angels
 def test_a_care_job_unrelated_to_the_training_is_other(subject, body, expected):
     from process_inbox_auto import pre_classify_by_sender
     assert pre_classify_by_sender({"sender_email": "alex@visitingangels.example", "subject": subject, "body_content": body}) == expected
+
+
+def test_a_long_tracking_link_before_the_text_does_not_hide_a_care_job():
+    from process_inbox_auto import pre_classify_by_sender
+    link = "( https://hireemaillink.apploi.co/ls/click?upn=" + "u001." + "x" * 700 + " )"
+    mail = {"sender_email": "apploi+1@apploi.example", "subject": "Visiting Angels Request for Interview",
+            "body_content": link + " " + CNA_BODY}
+    assert pre_classify_by_sender(mail) == "Other"

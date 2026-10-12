@@ -1799,7 +1799,11 @@ def pre_classify_by_sender(email_data: Dict[str, Any]) -> Optional[str]:
     # ── A care-giving job that has nothing to do with the students' data and technology training (Kes 2026-10-12) ──
     # Example: a home-care firm asking for a call about a Certified Nursing Assistant posting. It is classed Other (no student notice).
     # Only when the first part of the mail names a care job AND mentions no data or technology work, so "Healthcare Data Analyst" is untouched.
-    head = f"{subject} {body}"
+    # Read the text with web addresses removed and a longer window than the other rules: a recruiting platform often puts a long
+    # tracking link first, which pushed the real wording past the first 500 characters (found with the Visiting Angels mail).
+    raw_body = (email_data.get("body_content") or email_data.get("body") or "")
+    text_only = re.sub(r"https?://\S+|www\.\S+", " ", raw_body)[:1500]
+    head = f"{subject} {text_only}"
     if _NON_DATA_CARE_JOB.search(head) and not _DATA_OR_TECH_WORK.search(head):
         return "Other"
 
