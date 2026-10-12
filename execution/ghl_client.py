@@ -41,6 +41,31 @@ class GhlError(RuntimeError):
         self.status_code = status_code
 
 
+def contact_emails(contact: Dict[str, Any]) -> List[str]:
+    """Every email address on a GHL contact, lower-cased: the primary one first, then any additional ones.
+    The additional emails are read tolerantly (a list of strings or of {"email": ...} objects, under the names the API is known to use),
+    because the exact shape has to be confirmed against a real contact (see progress.md, 2026-10-12)."""
+    found: List[str] = []
+
+    def add(value: Any) -> None:
+        v = str(value or "").strip().lower()
+        if v and "@" in v and v not in found:
+            found.append(v)
+
+    add(contact.get("email"))
+    for key in ("additionalEmails", "additional_emails", "emails"):
+        extra = contact.get(key)
+        if isinstance(extra, str):
+            add(extra)
+        elif isinstance(extra, list):
+            for item in extra:
+                if isinstance(item, dict):
+                    add(item.get("email") or item.get("value") or item.get("address"))
+                else:
+                    add(item)
+    return found
+
+
 def _digits_tail(phone: Any) -> str:
     """The last 10 digits of a phone number, so +1 972 555 0100 and (972) 555-0100 compare equal."""
     digits = "".join(ch for ch in str(phone or "") if ch.isdigit())
@@ -192,10 +217,11 @@ class GhlClient:
         return exact[0] if exact else None
 
     def search_contact_by_email(self, email: str) -> Optional[dict]:
-        """The contact whose email EXACTLY matches (case-insensitive), or None; two exact matches are refused."""
+        """The contact whose PRIMARY or ADDITIONAL email EXACTLY matches (case-insensitive), or None; two exact matches are refused."""
         result = self._request("GET", "/contacts/", params={"locationId": self.config.location_id, "query": email})
         contacts = result.get("contacts", []) if isinstance(result, dict) else []
-        exact = [c for c in contacts if str(c.get("email", "")).strip().lower() == email.strip().lower()]
+        wanted = email.strip().lower()
+        exact = [c for c in contacts if wanted in contact_emails(c)]
         if len(exact) > 1:
             raise GhlError(f"{len(exact)} GHL contacts share this email; refusing to guess")
         return exact[0] if exact else None
@@ -277,6 +303,42 @@ class GhlClient:
         return found
 
     # -- writes (shadow-gated) -----------------------------------------------
+
+    def add_additional_email(self, contact_id: str, email: str, confirmed_by: str) -> Dict[str, Any]:
+        """
+        Add an ADDITIONAL email to a contact so the student can be found by either address. Never touches the primary email.
+
+        Only a person's explicit confirmation of this exact change permits it: `confirmed_by` (who said yes) is required and recorded in
+        the log. Refused when another contact already owns the address (two contacts must never share one). Shadow by default like every
+        GHL write: only logged unless the live switches are on. After a live write the contact is read back: the primary email must be
+        unchanged and the new address must be present, otherwise this raises (the API's field shape is unverified, so it is checked, not trusted).
+        Returns {"live": bool, "changed": bool, "reason"?: str}.
+        """
+        if not (confirmed_by or "").strip():
+            raise GhlError("a person must confirm this change before an email is added to a GHL contact")
+        wanted = (email or "").strip().lower()
+        if "@" not in wanted:
+            raise GhlError("not an email address")
+        contact = self.get_contact(contact_id)
+        primary = str(contact.get("email") or "").strip().lower()
+        existing = contact_emails(contact)
+        if wanted in existing:
+            return {"live": self.config.is_live, "changed": False, "reason": "this address is already on the contact"}
+        owner = self.search_contact_by_email(wanted)
+        if owner and str(owner.get("id")) != str(contact_id):
+            raise GhlError("another GHL contact already has this email; refusing to put one address on two contacts")
+        additional = [e for e in existing if e != primary] + [wanted]
+        if not self.config.is_live:
+            logger.info(f"[GHL shadow] would add an additional email on contact {contact_id} (confirmed by {confirmed_by})")
+            return {"live": False, "changed": False, "reason": "shadow mode: nothing written"}
+        self._request("PUT", f"/contacts/{contact_id}", json={"additionalEmails": additional})     # the primary "email" is never in this payload
+        after = self.get_contact(contact_id)
+        if str(after.get("email") or "").strip().lower() != primary:
+            raise GhlError("the contact's primary email changed unexpectedly after the write; check the contact in GHL now")
+        if wanted not in contact_emails(after):
+            raise GhlError("GHL did not store the additional email (the API may expect a different shape); nothing else was changed")
+        logger.info(f"GHL added an additional email on contact {contact_id} (confirmed by {confirmed_by})")
+        return {"live": True, "changed": True}
 
     def write_fields(self, contact_id: str, updates: Dict[str, str]) -> Dict[str, Any]:
         """
