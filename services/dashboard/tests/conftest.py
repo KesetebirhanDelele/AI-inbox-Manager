@@ -289,3 +289,17 @@ def _never_open_a_real_smtp_connection(monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP_SSL", _record)
     yield
     assert not attempts, "This test tried to open a real SMTP connection (it would have emailed a real address): mock send_email in it"
+
+
+# --- tests must never read the live roster sheet or GHL --------------------------------------------------------------------------------
+# student_flags / student_roster read the real settings from .env; empty values stop that (load_dotenv never overrides a variable that is set).
+@pytest.fixture(autouse=True)
+def _never_reach_the_roster_sheet_or_ghl(monkeypatch):
+    for key in ("STUDENT_ROSTER_SHEET_ID", "GHL_API_KEY", "GHL_LOCATION_ID"):
+        monkeypatch.setenv(key, "")
+    try:
+        import student_roster, student_flags
+        student_roster._CACHE.update(at=0.0, rows=None)
+        student_flags._GHL_CACHE.clear()
+    except ImportError:
+        pass

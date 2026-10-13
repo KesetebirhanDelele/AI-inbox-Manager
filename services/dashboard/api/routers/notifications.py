@@ -8,6 +8,7 @@ interview notification drafts.
 import hmac
 import os
 import sys
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -413,6 +414,8 @@ async def get_review_queue(
         .all()
     )
 
+    flags_mod = _execution_module("student_flags")
+    flags_deadline = time.time() + 12                       # lookups are cached; if a cold cache is slow, the rest show "unknown" this time
     items = []
     for event, draft, student, email in rows:
         status_ = draft.email_status if draft else None
@@ -441,6 +444,18 @@ async def get_review_queue(
         if unverified:
             blockers.append("This student was created from the email's delivery address and is not verified yet. "
                             "Trace who they are (roster sheet, Drive, the original sign-up), correct the details below, and confirm.")
+
+        # Every open interview notice says whether the student is on the roster sheet and found in GHL; a person decides (never silent).
+        flags = {"roster": "unknown", "ghl": "unknown"}
+        if student is not None and status_ in (None, "draft", "approved"):
+            try:
+                flags["roster"] = flags_mod.roster_status(student)
+                if time.time() < flags_deadline:
+                    flags["ghl"] = flags_mod.ghl_status(student)
+            except Exception:
+                pass
+            for w in reversed(flags_mod.warnings_for(flags["roster"], flags["ghl"])):
+                warnings.insert(0, w)
 
         text = clean_email_text((email.full_body or email.body_preview) if email else "")
         check = authenticity.assess(
@@ -479,6 +494,7 @@ async def get_review_queue(
             "state": state,
             "blockers": blockers,
             "warnings": warnings,
+            "flags": flags,
             "can_approve": state == "ready",
             "will_happen": (("Starts a call, a text and an email to the student, then follows up until they confirm."
                              if delivery_live else

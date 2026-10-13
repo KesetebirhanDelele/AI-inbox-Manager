@@ -5,8 +5,10 @@ The roster sheet is a values-only copy of the columns we need (Agent, Name, STAT
 by an Apps Script from the master sheet. This module only READS it, with a read-only service account; it never writes to the sheet,
 to GHL or to the student records. Matching is pure logic so it can be tested without any network.
 """
+import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -142,3 +144,44 @@ def compare(students: List[Dict[str, Any]], roster: List[RosterRow]) -> Dict[str
 def mask_email(email: str) -> str:
     local, _, domain = email.partition("@")
     return (local[:2] + "***@" + domain) if domain else "***"
+
+
+# ── Live use inside the app: cached, and it never blocks mail processing or the review screen ────────────────────────────
+logger = logging.getLogger(__name__)
+MIN_ROSTER_ROWS = 5                  # a blank or broken sheet must never make everyone look "not listed"
+_CACHE: Dict[str, Any] = {"at": 0.0, "rows": None}
+
+
+def cached_roster(ttl_minutes: float = 30, fetch=None, clock=time.time) -> Optional[List[RosterRow]]:
+    """The roster, re-read at most every `ttl_minutes`. None when it cannot be trusted (not set, unreadable, or nearly empty)."""
+    if _CACHE["rows"] is not None and clock() - _CACHE["at"] < ttl_minutes * 60:
+        return _CACHE["rows"]
+    if fetch is None and not os.getenv("STUDENT_ROSTER_SHEET_ID", "").strip():
+        return _CACHE["rows"]
+    try:
+        rows = (fetch or fetch_roster)()
+    except Exception as exc:                           # sheet down, key missing, header renamed: carry on without it
+        logger.warning(f"Student roster could not be read: {exc}")
+        return _CACHE["rows"]                          # the last good copy, else None
+    if len(rows) < MIN_ROSTER_ROWS:
+        logger.warning(f"Student roster has only {len(rows)} rows; ignoring it")
+        return _CACHE["rows"]
+    _CACHE.update(at=clock(), rows=rows)
+    return rows
+
+
+def standing(student: Dict[str, Any], roster: Optional[List[RosterRow]]) -> str:
+    """listed (an email matches) | name_only (a person must look) | unlisted | unknown (no usable roster)."""
+    if not roster:
+        return "unknown"
+    return {"email": "listed", "name": "name_only", "none": "unlisted"}[match_student(student, roster).how]
+
+
+def roster_emails_for(student: Dict[str, Any], roster: Optional[List[RosterRow]]) -> List[str]:
+    """Extra addresses to look the student up by in GHL: the roster row matched by email or by the exact full name."""
+    if not roster:
+        return []
+    m = match_student(student, roster)
+    if m.row is None or (m.how == "name" and norm_name(m.row.name) != norm_name(student.get("full_name"))):
+        return []
+    return list(m.row.emails)

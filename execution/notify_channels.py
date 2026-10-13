@@ -365,6 +365,15 @@ def find_ghl_contact(client: "ghl_client.GhlClient", student: Any) -> tuple:
         value = (getattr(student, attr, None) or "").strip()
         if value and value.lower() not in emails:
             emails.append(value.lower())
+    try:                                  # the roster's personal / application emails are tried too; all identifiers must agree (below)
+        import student_roster
+        sd = {"id": getattr(student, "id", None), "full_name": getattr(student, "full_name", None),
+              "personal_email": getattr(student, "personal_email", None), "assigned_gmail": getattr(student, "assigned_gmail", None)}
+        for value in student_roster.roster_emails_for(sd, student_roster.cached_roster()):
+            if value and value.lower() not in emails:
+                emails.append(value.lower())
+    except Exception:
+        pass
     phone = to_e164(getattr(student, "phone_number", None))
     if not emails and phone is None:
         return None, "", "no email or phone number on file for this student"
