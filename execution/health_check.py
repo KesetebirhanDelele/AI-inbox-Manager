@@ -11,7 +11,7 @@ Checks (window: last 24 hours):
   CRITICAL  review-queue gap         classifications that should be queued but have no approval row
   CRITICAL  run health               last run too old, or a run ended in partial_failure
   CRITICAL  notification sends       failed drafts, or drafts stuck in 'approved'
-  CRITICAL  escalation attempts      call/text/email attempts that failed (only once escalation is switched on)
+  CRITICAL  escalation attempts      call/text/email attempts that failed and were not recovered by a later step on the same plan
   WARNING   sub-classifier fallback  share of events labelled by the fallback, not the sub-classifier
   WARNING   student matching         share of events with no student attached
 
@@ -182,8 +182,18 @@ def collect_metrics(db, log_text: str, now: datetime) -> Dict[str, Any]:
         NotificationDraft.reviewed_at != None,  # noqa: E711
         NotificationDraft.reviewed_at < stuck_cutoff).count()
 
-    attempts_failed = db.query(NotificationAttempt).filter(
-        NotificationAttempt.status == "failed", NotificationAttempt.created_at >= since).count()
+    # A failed attempt only counts while nothing later has worked for the same student plan: once a later step on that plan
+    # is sent (or logged as a shadow dry run) the cause was fixed, so it is history, not an open problem.
+    failed = db.query(NotificationAttempt).filter(
+        NotificationAttempt.status == "failed", NotificationAttempt.created_at >= since).all()
+    attempts_failed = 0
+    for f in failed:
+        recovered = db.query(NotificationAttempt.id).filter(
+            NotificationAttempt.sequence_id == f.sequence_id,
+            NotificationAttempt.status.in_(("sent", "dry_run")),
+            NotificationAttempt.id > f.id).first()      # ids follow the plan's step order (created_at is one timestamp for the whole plan)
+        if recovered is None:
+            attempts_failed += 1
 
     return {
         "shadow": _shadow_mode(),

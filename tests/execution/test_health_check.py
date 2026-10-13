@@ -200,3 +200,31 @@ def test_retired_category_events_are_not_counted_as_the_subclassifier_failing(mo
     db.commit()
     m = hc.collect_metrics(db, "", NOW)
     assert m["events"] == 4 and m["events_fallback"] == 1 and m["events_retired_fallback"] == 2
+
+
+def test_failed_attempts_that_a_later_step_recovered_are_not_counted(monkeypatch):
+    api_dir = _EXECUTION_DIR.parents[0] / "services" / "dashboard" / "api"
+    monkeypatch.syspath_prepend(str(api_dir))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import models
+
+    engine = create_engine("sqlite://")
+    models.Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    t = NOW - timedelta(hours=2)
+
+    def attempt(seq, step, status):
+        db.add(models.NotificationAttempt(sequence_id=seq, channel="sms", step=step, planned_for=t, scheduled_for=t,
+                                          status=status, created_at=t))
+        db.flush()
+
+    # plan 1: failed, then a later step worked (cause fixed) -> not counted
+    attempt(1, "start", "failed"); attempt(1, "d1_4h", "dry_run")
+    # plan 2: failed and nothing after it worked -> counted
+    attempt(2, "start", "failed"); attempt(2, "d1_4h", "pending")
+    # plan 3: a step that worked BEFORE the failure does not excuse it -> counted
+    attempt(3, "start", "sent"); attempt(3, "d1_4h", "failed")
+    db.commit()
+    assert hc.collect_metrics(db, "", NOW)["attempts_failed"] == 2

@@ -84,6 +84,10 @@ Newest first.
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-13: health check no longer alerts on a failure a later step already fixed
+
+The 07:30 UTC health email said 4 student notification attempts failed (call, text, email, one follow-up), all on one plan (student 25, Kwadjossan Isaac, 12 Oct 19:45 UTC): "no GHL contact matches". This was a real lookup miss (not shadow mode; the lookup is a live read). Kes then added the additional email in GHL and every later step on that plan found the contact (`dry_run`). The check kept counting the old failures for 24h. Now `collect_metrics` counts a failed attempt only if no LATER attempt (higher id; `created_at` is one timestamp per plan) on the same plan is `sent` or `dry_run`. Files: `execution/health_check.py`, `tests/execution/test_health_check.py` (new test: recovered / not recovered / success-before-failure). No student data changed.
+
 ### 2026-10-12 (late): Kes will check the students with Rob
 
 Kes: "I will verify with Rob and let you know." No student data was changed after that message: Kenya (student 8) stays verified with his two open Client Screen notices (Highmark Health), Kwadjossan Isaac stays flagged unverified, and nothing was rejected. Rob already agreed (reply of 2026-10-12) to review the "Verify Student" emails against the Google Sheets and send names, personal emails and phones. When Kes reports back, the Verify students tab is the place to act: correct the details and confirm, or use "Not a student: reject". Both the update email to Ali and the earlier role emails were drafts in Kes's Gmail; Claude never sends.
