@@ -84,6 +84,10 @@ Newest first.
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-13: live student roster (Google Sheet) read by the app, dry-run comparison only
+
+Kes keeps a master sheet of students. A values-only `roster` tab (Agent, Name, STATUS, New Email Address, Personal Email Address; only Active and In Progress rows) is filled hourly by an Apps Script, so the app never sees the master, any formula or other columns. The app reads it live with a read-only service account (`inboxgenius` Google Cloud project, no billing linked, Sheets API only; key at the gitignored `config/service-account-key.json`; sheet shared as Viewer). New: `execution/student_roster.py` (parse by header name, match by email then name, compare) and `execution/student_roster_check.py` (dry-run report, emails masked, nothing written to students, GHL or the sheet); tests `tests/execution/test_student_roster.py`; `.env.example` (`STUDENT_ROSTER_SHEET_ID`, `INBOXGENIUS_SERVICE_ACCOUNT`). Next (not built): show roster status in Verify students and use "same name, different email" to propose an additional GHL email, each only after a person confirms.
+
 ### 2026-10-13: health check no longer alerts on a failure a later step already fixed
 
 The 07:30 UTC health email said 4 student notification attempts failed (call, text, email, one follow-up), all on one plan (student 25, Kwadjossan Isaac, 12 Oct 19:45 UTC): "no GHL contact matches". This was a real lookup miss (not shadow mode; the lookup is a live read). Kes then added the additional email in GHL and every later step on that plan found the contact (`dry_run`). The check kept counting the old failures for 24h. Now `collect_metrics` counts a failed attempt only if no LATER attempt (higher id; `created_at` is one timestamp per plan) on the same plan is `sent` or `dry_run`. Files: `execution/health_check.py`, `tests/execution/test_health_check.py` (new test: recovered / not recovered / success-before-failure). No student data changed.
