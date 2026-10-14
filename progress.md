@@ -84,6 +84,10 @@ Newest first.
 
 ## 2026-10-09 to 2026-10-10 log (newest first)
 
+### 2026-10-14: the Review list shows only notices that still need a decision
+
+Kes: three cards (Fikru Cheklie, concluded; Kwadjossan Isaac and Sehrish, approved with follow-up plans running) sat in Student notifications although already decided. `GET /api/notifications/review-queue` now skips `approved` drafts unless `include_done=true` ("Show finished"), like sent and rejected ones. Nothing was rejected or closed: the approved plans keep running (shadow). Files: `services/dashboard/api/routers/notifications.py`; tests `test_review_flags.py` (new) and `test_reject_student.py` (looks under Show finished). Backend only, no web rebuild.
+
 ### 2026-10-13 (evening): skill for giving an app read-only access to a live Google Sheet
 
 New guide `docs/google-sheet-service-account.md` (and the same text as the local Claude skill `.claude/skills/google-sheet-service-account/SKILL.md`; `.claude/` is gitignored, so the docs file is the tracked copy): the exact recipe used for the InboxGenius roster (Cloud project with no billing, Sheets API, service account, JSON key, Apps Script values-only copy of chosen columns by header name so the master and formulas stay private, sharing as Viewer, key placement and gitignore, `.env` names, read-only verification, test isolation, cost, rotation). Docs only; no code change.

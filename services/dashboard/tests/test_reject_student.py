@@ -23,7 +23,7 @@ def test_rejecting_a_student_closes_their_notices_and_plans_and_hides_them(clien
     draft = make_notification_draft(db, event, email_status="approved")
     seq = _seq(db, draft, student)
 
-    before = client.get("/api/notifications/review-queue", cookies=auth_cookies).json()
+    before = client.get("/api/notifications/review-queue?include_done=true", cookies=auth_cookies).json()
     assert any(i["student"] and i["student"]["id"] == student.id for i in before["items"])
 
     resp = client.post(f"/api/notifications/students/{student.id}/reject-verification", json={"reason": "not in GHL"}, cookies=auth_cookies)

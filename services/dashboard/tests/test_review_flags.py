@@ -49,3 +49,16 @@ def test_unreachable_roster_or_ghl_shows_unknown_and_changes_nothing(client, db,
     make_notification_draft(db, make_interview_event(db, make_email(db), student=student), email_status="draft")
     item = _item(client, auth_cookies, student)
     assert item["flags"] == {"roster": "unknown", "ghl": "unknown"} and not any(w.startswith("NOT ON THE ROSTER") for w in item["warnings"])
+
+
+def test_decided_notices_leave_the_main_list_and_show_under_show_finished(client, db, auth_cookies):
+    waiting = make_student(db, username="waiting", full_name="Waiting Person")
+    decided = make_student(db, username="decided", full_name="Decided Person")
+    make_notification_draft(db, make_interview_event(db, make_email(db), student=waiting), email_status="draft")
+    make_notification_draft(db, make_interview_event(db, make_email(db), student=decided), email_status="approved")
+
+    def students(url):
+        items = client.get(url, cookies=auth_cookies).json()["items"]
+        return {i["student"]["id"] for i in items if i["student"]}
+    assert students("/api/notifications/review-queue") == {waiting.id}                          # only what still needs a decision
+    assert students("/api/notifications/review-queue?include_done=true") == {waiting.id, decided.id}

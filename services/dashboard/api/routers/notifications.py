@@ -386,7 +386,7 @@ REVIEW_MAX_AGE_DAYS = 14
 
 @router.get("/review-queue")
 async def get_review_queue(
-    include_done: bool = Query(False, description="also list notices already sent or rejected"),
+    include_done: bool = Query(False, description="also list notices already decided: sent, approved (plan running or finished) or rejected"),
     limit: int = Query(100, ge=1, le=300),
     db: Session = Depends(get_db),
     user: UserSession = Depends(get_current_user),
@@ -419,8 +419,8 @@ async def get_review_queue(
     items = []
     for event, draft, student, email in rows:
         status_ = draft.email_status if draft else None
-        if status_ in ("sent", "rejected") and not include_done:
-            continue
+        if status_ in ("sent", "rejected", "approved") and not include_done:
+            continue                       # already decided (approved: the follow-up plan is running or finished): only under "Show finished"
         # Old mail is never a decision for today: anything received more than REVIEW_MAX_AGE_DAYS ago only shows with "Show finished".
         if not include_done and email is not None and email.received_date and email.received_date < datetime.utcnow() - timedelta(days=REVIEW_MAX_AGE_DAYS):
             continue
