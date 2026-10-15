@@ -1370,7 +1370,7 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
   "adapted from the receptionist" explanation from the prompt doc.
 - Follow-up: test voicemail, wrong person and STOP; fix greeting so it asks "Am I speaking with ...?".
 
-### 2026-10-15: a cancelled role is not a cancelled interview (branch `fix/role-cancelled-not-interview`, not merged or deployed)
+### 2026-10-15: a cancelled role is not a cancelled interview (merged to master and deployed 2026-10-15 as 5279e9a; server `.deployed_commit` matches)
 - Why: Vizient's "the role has been cancelled" email was labelled Interview Cancelled (0.95) and drafted "the employer has cancelled this interview"
   for two students (drafts 120, 121). The model had no label for a role withdrawn before any interview; the prompt even listed "position filled" as an
   Interview Cancelled signal.
