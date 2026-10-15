@@ -1369,3 +1369,13 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
   OFF; no GHL credentials on the server. `GHL_VOICE_AGENT_ID` not needed for triggering; only for filtering call logs. Also removed the
   "adapted from the receptionist" explanation from the prompt doc.
 - Follow-up: test voicemail, wrong person and STOP; fix greeting so it asks "Am I speaking with ...?".
+
+### 2026-10-15: a cancelled role is not a cancelled interview (branch `fix/role-cancelled-not-interview`, not merged or deployed)
+- Why: Vizient's "the role has been cancelled" email was labelled Interview Cancelled (0.95) and drafted "the employer has cancelled this interview"
+  for two students (drafts 120, 121). The model had no label for a role withdrawn before any interview; the prompt even listed "position filled" as an
+  Interview Cancelled signal.
+- `execution/classify_email.py`: new pure rule `role_cancelled_not_interview` (Interview Cancelled + role/position/requisition cancelled, closed or
+  filled + the word "interview" appears nowhere) turns the category into **Rejection** in `apply_business_rules`, always on. A Rejection makes no
+  interview event, so no student notice, no pilot-limit slot, no alert. Prompt: Interview Cancelled now needs an interview; role cancellations go to Rejection.
+- Tests: `tests/execution/test_role_cancelled.py` (Vizient email, real interview cancellation untouched, wordings, other categories). Suite: 968 passed.
+- Deferred: draft 121 (Omolola) still pending on the server, reject by hand. One email made drafts for two students (11702/11703): not investigated.

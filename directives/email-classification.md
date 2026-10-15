@@ -28,7 +28,7 @@ Colaberry processes hundreds of job-related emails weekly. Manual processing tak
 1. **Interview Request** - Company requesting to schedule an interview
 2. **Interview Schedule** - Confirmed interview with date/time
 3. **Interview Reschedule** - Request to change existing interview
-4. **Interview Cancelled** - Interview explicitly cancelled
+4. **Interview Cancelled** - Interview explicitly cancelled. A cancelled *role* with no interview mentioned (e.g. "the role has been cancelled") is a **Rejection**, not this: `role_cancelled_not_interview` in `execution/classify_email.py` re-files it, so it makes no interview event, student notice or alert.
 5. **Final Interview Scheduled** - Last round interview confirmation
 6. **Rejection** - Candidate not selected
 7. **Job Alert** - Automated job posting notification

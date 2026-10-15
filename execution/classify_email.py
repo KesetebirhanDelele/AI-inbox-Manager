@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -132,8 +133,9 @@ You are an AI classifier for an automated inbox management system that processes
   - "Introduction Call" messages that are actually cold outreach or general scheduling invites without a confirmed time → "Interview Request" or "Interview Schedule"
 
 **5. Interview Cancelled**
-- Interview explicitly cancelled
-- Signals: "cancel", "no longer moving forward at this time", "position filled"
+- An interview that was scheduled or discussed is explicitly cancelled
+- Signals: "your interview has been cancelled", "interview is cancelled"
+- NOT this: the ROLE or position itself is cancelled, closed or filled and no interview is mentioned ("the role has been cancelled", "position filled") → "Rejection". No interview was scheduled, so there is nothing to cancel.
 - Confidence: High if clear cancellation language
 
 **7. Final Interview Scheduled**
@@ -695,6 +697,27 @@ def remap_retired_category(category: str, extracted: Optional[Dict[str, Any]], e
     return "Interview Request"
 
 
+_ROLE_CANCELLED = re.compile(
+    r"\b(role|position|job|requisition|opening|vacancy)\b[^.\n]{0,60}?\b(has|have|had|was|is|been)\b[^.\n]{0,30}?"
+    r"\b(cancel+ed|closed|withdrawn|filled|put on hold|on hold)\b"
+    r"|\b(cancel+ed|closed|withdrawn)\b[^.\n]{0,30}?\b(the|this|our)\b[^.\n]{0,30}?\b(role|position|job|requisition|opening)\b",
+    re.IGNORECASE,
+)
+
+
+def role_cancelled_not_interview(category: str, email_data: Optional[Dict[str, Any]]) -> bool:
+    """
+    Pure rule: an "Interview Cancelled" label on mail that says the ROLE was cancelled and never mentions an interview.
+
+    The model had no label for a role withdrawn before any interview, forced it into Interview Cancelled with 0.95 confidence,
+    and the student got "the employer has cancelled this interview" (Vizient, 2026-10-14).
+    """
+    if category != "Interview Cancelled" or not email_data:
+        return False
+    text = " ".join([str(email_data.get("subject") or ""), str(email_data.get("body_content") or email_data.get("body") or "")])
+    return "interview" not in text.lower() and _ROLE_CANCELLED.search(text) is not None
+
+
 def apply_business_rules(
     classification: Dict[str, Any],
     email_data: Optional[Dict[str, Any]] = None,
@@ -748,6 +771,12 @@ def apply_business_rules(
                 f"Domain override: '{original}' → 'Other' — sender '{from_addr}' "
                 f"is not a LinkedIn domain"
             )
+
+    # A cancelled ROLE is not a cancelled interview: file it as a Rejection (no interview event, no student notice, no alert).
+    if role_cancelled_not_interview(result.get("category", ""), email_data):
+        logger.info("Role-cancelled mail with no interview: 'Interview Cancelled' -> 'Rejection'")
+        result["category_original"] = result["category"]
+        result["category"] = "Rejection"
 
     # Retired interview categories: CATEGORY_REMAP_MODE = off | shadow (default: log the new label only) | live (use it).
     mode = os.getenv("CATEGORY_REMAP_MODE", "shadow").lower()
