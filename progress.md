@@ -1398,3 +1398,6 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - `execution/interview_followup.suggested_action` (pure rules) -> `suggestion {action, text}` on each open item of `GET /api/notifications/review-queue`;
   the card shows a coloured line (Reject / Check first / Approve) above the genuineness box. Frontend change: needs a web rebuild (`--build-web`).
 - Tests: 8 new in `tests/execution/test_interview_followup.py`, 1 in `services/dashboard/tests/test_review_flags.py`.
+
+### 2026-10-16: cancellation suggestion lists only dated notices (merged and deployed with the card change)
+- Found on the live queue: Sehrish's "Canceled" card listed the undated setup notice #125 as an announced interview. `suggested_action` now lists only dated ones.

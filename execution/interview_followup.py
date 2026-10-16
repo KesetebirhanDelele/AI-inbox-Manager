@@ -172,8 +172,9 @@ def suggested_action(db, event, draft) -> Optional[Dict[str, str]]:
 
     # 2. A cancellation: it must say which interview it cancels, and the system often cannot tell.
     if event.sub_type == "Interview Cancelled":
-        if announced:
-            listed = "; ".join(f"#{d.id} {_describe(ev)}" for ev, d in announced[-3:])
+        dated_announced = [(ev, d) for ev, d in announced if ev.interview_date]       # an undated notice cannot be what is cancelled
+        if dated_announced:
+            listed = "; ".join(f"#{d.id} {_describe(ev)}" for ev, d in dated_announced[-3:])
             return {"action": "check", "text": f"A cancellation. Interviews already announced to this student: {listed}. Make sure this cancels one of them."}
         return {"action": "check", "text": "A cancellation, but no interview was announced to this student before. It may cancel a meeting they never heard of."}
 

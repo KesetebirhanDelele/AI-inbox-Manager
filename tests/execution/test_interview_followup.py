@@ -207,3 +207,11 @@ def test_a_setup_email_with_no_interview_details_says_reject(db):
 def test_an_ordinary_new_interview_gets_no_suggestion(db):
     ev, d = _open(db, company="Acme", date="2026-10-22", time="09:00", tz="EST")
     assert fu.suggested_action(db, ev, d) is None
+
+
+def test_the_cancellation_list_skips_notices_with_no_date(db):
+    _event(db, "draft", sub_type="Interview Request")                                 # a setup mail: no date
+    _event(db, "approved", company="CGI", date="2026-10-19", time="12:00", tz="PST")
+    ev, d = _open(db, sub_type="Interview Cancelled", company="Wilson HR")
+    text = fu.suggested_action(db, ev, d)["text"]
+    assert "CGI" in text and text.count("#") == 1
