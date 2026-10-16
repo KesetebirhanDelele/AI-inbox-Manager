@@ -62,3 +62,19 @@ def test_decided_notices_leave_the_main_list_and_show_under_show_finished(client
         return {i["student"]["id"] for i in items if i["student"]}
     assert students("/api/notifications/review-queue") == {waiting.id}                          # only what still needs a decision
     assert students("/api/notifications/review-queue?include_done=true") == {waiting.id, decided.id}
+
+
+def test_a_follow_up_leaves_the_main_list_and_shows_under_show_finished_labelled(client, db, auth_cookies):
+    from models import InterviewFollowUp
+    student = make_student(db, username="rem", full_name="Reminded Person")
+    original = make_interview_event(db, make_email(db), student=student)
+    make_notification_draft(db, original, email_status="approved")
+    reminder = make_interview_event(db, make_email(db), student=student)            # no draft: a reminder about the same interview
+    db.add(InterviewFollowUp(event_id=reminder.id, original_event_id=original.id, reason="same interview, same time"))
+    db.commit()
+
+    open_items = client.get("/api/notifications/review-queue", cookies=auth_cookies).json()["items"]
+    assert reminder.id not in [i["event_id"] for i in open_items]
+    done = client.get("/api/notifications/review-queue?include_done=true", cookies=auth_cookies).json()["items"]
+    item = next(i for i in done if i["event_id"] == reminder.id)
+    assert item["state"] == "follow_up" and item["follow_up_of"] == original.id and item["blockers"] == []

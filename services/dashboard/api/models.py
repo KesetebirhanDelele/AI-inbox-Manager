@@ -418,6 +418,20 @@ class NotificationOptOut(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class InterviewFollowUp(Base):
+    """
+    An email about an interview the student was ALREADY told about (reminder, reply, duplicate confirmation) at the same moment.
+    It gets no student notice: this row links it to the earlier event. One row per follow-up event.
+    """
+    __tablename__ = "interview_follow_ups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("interview_events.id"), nullable=False, unique=True, index=True)
+    original_event_id = Column(Integer, ForeignKey("interview_events.id"), nullable=False, index=True)
+    reason = Column(String(200))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class CallbackRequest(Base):
     """
     A student called the AI receptionist back about an interview. The callback owner (a ROLE) must call them back within one business hour.

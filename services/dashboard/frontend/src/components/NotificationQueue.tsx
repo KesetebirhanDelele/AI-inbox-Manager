@@ -18,6 +18,7 @@ const STATE_LABEL: Record<string, { label: string; cls: string }> = {
   approved: { label: 'Approved', cls: 'bg-green-100 text-green-800' },
   sent: { label: 'Sent', cls: 'bg-green-100 text-green-800' },
   rejected: { label: 'Rejected', cls: 'bg-gray-100 text-gray-700' },
+  follow_up: { label: 'Follow-up on a scheduled interview (no notice sent)', cls: 'bg-gray-100 text-gray-700' },
 };
 
 const digits = (value?: string) => (value || '').replace(/\D/g, '');

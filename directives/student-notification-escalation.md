@@ -289,3 +289,16 @@ Nobody is written into the code. Three ROLES are assigned on the dashboard's Set
   call back itself. Optional GHL action "Update contact field" can write the caller's best number and availability to a contact field for Rob's convenience; our app does NOT depend on it (the call time comes from the call log).
 - **What the emails contain (2026-10-09).** Both the callback owner's alert and the escalation role's overdue email carry the same context (`callbacks.context_lines`): the caller's own words (why they called), how to reach the student, their last three interviews (company, role, type, time, when the email arrived), what the app has already sent them (channel, time, status), their replies and any confirmation, and the number of earlier callbacks from that number. Read-only; capped (8 notices, shortened replies). An unmatched number says so and asks the caller to identify themselves. The overdue email lists each student in its own block so the person can call with the full picture.
 - Unproven until a real callback is made: how a callback transcript reads in the call log and how reliably it is recognised (153 earlier receptionist calls had none).
+
+## Follow-ups on an interview the student was already told about
+
+A reminder, reply or second confirmation of the SAME interview must not become a new student notice. `execution/interview_followup.py`
+(no LLM) compares each new interview event with the student's earlier events that have a pending, approved or sent notice: same moment
+(date and time compared in UTC; US zones read by date, so "PST" in October means Pacific time that day) and a compatible company (an email that
+names no company can match; two different named companies never do). A match is linked in `interview_follow_ups` and gets **no draft**, so
+nothing reaches the student and no pilot-limit slot is used. The review list hides it (shown, labelled "Follow-up on a scheduled interview",
+under Show finished). Pending cards about one interview group under the oldest.
+- Never a follow-up: a cancellation, an interview at a different time (a real reschedule), no date or time, a notice the approver rejected.
+- The model's "Rescheduled" label is not trusted; only a different time counts as a change.
+- Every doubt shows a card. Clean today's queue with `python execution/interview_followup.py` (lists) then `--apply`.
+

@@ -1379,3 +1379,15 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
   interview event, so no student notice, no pilot-limit slot, no alert. Prompt: Interview Cancelled now needs an interview; role cancellations go to Rejection.
 - Tests: `tests/execution/test_role_cancelled.py` (Vizient email, real interview cancellation untouched, wordings, other categories). Suite: 968 passed.
 - Deferred: draft 121 (Omolola) still pending on the server, reject by hand. One email made drafts for two students (11702/11703): not investigated.
+
+### 2026-10-16: follow-ups on an already announced interview make no new notice (branch `feat/follow-up-on-scheduled-interview`, not merged or deployed)
+- Why: Sehrish's queue held 7 cards for ~3 meetings: Calendly confirmation (approved 14 Oct), then Hydrafacial replies, a second Calendly mail and a
+  Wilson HR invite, two labelled "Rescheduled" although nothing moved (12:00 PST = 15:00 EST on 19 Oct). Nothing compared a new email with what the student
+  was already told.
+- New `execution/interview_followup.py` (pure rules, no LLM) + table `interview_follow_ups` (model `InterviewFollowUp`, migration 009; a NEW table, because
+  create_all cannot add columns). `process_inbox_auto.process_interview_email` links a matching event and creates no draft. Review list: such events are
+  hidden, shown under Show finished with state `follow_up` / `follow_up_of`. Frontend label added. `python execution/interview_followup.py [--apply]` cleans
+  the pending queue (dry run by default).
+- Tests: `tests/execution/test_interview_followup.py` (14), one in `services/dashboard/tests/test_review_flags.py`. Whole suite 1063 passed; frontend `tsc` clean.
+- Deferred: cancellations with no date still make a card (cannot be matched safely); Calendly setup mail ("How do you prefer to meet?") is still treated as an
+  interview; Upcoming/Interviews pages still list follow-up events.

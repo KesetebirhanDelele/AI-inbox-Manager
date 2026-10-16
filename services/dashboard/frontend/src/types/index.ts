@@ -261,6 +261,7 @@ export interface NotificationDetail {
 export interface ReviewQueueItem {
   event_id: number;
   draft_id: number | null;
+  follow_up_of?: number | null;
   state: 'ready' | 'needs_verification' | 'blocked' | 'needs_student' | 'no_draft' | 'approved' | 'failed' | string;
   blockers: string[];
   warnings: string[];

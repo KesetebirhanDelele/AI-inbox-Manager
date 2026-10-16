@@ -29,6 +29,7 @@ from models import (
     NotificationSequence,
     StudentVerification,
     InterviewEvent,
+    InterviewFollowUp,
     Student,
     Email,
     UserSession,
@@ -414,11 +415,15 @@ async def get_review_queue(
         .all()
     )
 
+    follow_ups = {row.event_id: row.original_event_id for row in db.query(InterviewFollowUp).all()}
     flags_mod = _execution_module("student_flags")
     flags_deadline = time.time() + 12                       # lookups are cached; if a cold cache is slow, the rest show "unknown" this time
     items = []
     for event, draft, student, email in rows:
         status_ = draft.email_status if draft else None
+        follow_up_of = follow_ups.get(event.id)
+        if follow_up_of is not None and not include_done:
+            continue                       # a reminder/reply about an interview the student was already told about: no decision needed
         if status_ in ("sent", "rejected", "approved") and not include_done:
             continue                       # already decided (approved: the follow-up plan is running or finished): only under "Show finished"
         # Old mail is never a decision for today: anything received more than REVIEW_MAX_AGE_DAYS ago only shows with "Show finished".
@@ -447,7 +452,7 @@ async def get_review_queue(
 
         # Every open interview notice says whether the student is on the roster sheet and found in GHL; a person decides (never silent).
         flags = {"roster": "unknown", "ghl": "unknown"}
-        if student is not None and status_ in (None, "draft", "approved"):
+        if student is not None and follow_up_of is None and status_ in (None, "draft", "approved"):
             try:
                 flags["roster"] = flags_mod.roster_status(student)
                 if time.time() < flags_deadline:
@@ -463,7 +468,9 @@ async def get_review_queue(
         if check["verdict"] == "likely_job_board":
             warnings.insert(0, "This looks like a job-board mailer, not a real interview invitation. Please read the email before approving.")
 
-        if draft is None:
+        if follow_up_of is not None:
+            state = "follow_up"
+        elif draft is None:
             state = "needs_student" if student is None else "no_draft"
             if student is not None:
                 blockers.append("No draft was created for this email.")
@@ -492,6 +499,7 @@ async def get_review_queue(
             "event_id": event.id,
             "draft_id": draft.id if draft else None,
             "state": state,
+            "follow_up_of": follow_up_of,
             "blockers": blockers,
             "warnings": warnings,
             "flags": flags,

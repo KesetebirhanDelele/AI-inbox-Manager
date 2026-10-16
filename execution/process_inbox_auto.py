@@ -845,6 +845,17 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
             f"{sub_type} at {extracted.get('company_name')}"
         )
 
+        # ── A reminder/reply about an interview the student was already told about is not news: link it, no notice ──
+        try:
+            from interview_followup import find_scheduled_interview, record_follow_up
+            original_id = find_scheduled_interview(db, student_id, sub_classification, before_event_id=event_result["id"])
+            if original_id:
+                record_follow_up(db, event_result["id"], original_id)
+                _logger.info(f"Follow-up on the interview already announced in event {original_id}: no student notice")
+                return True
+        except Exception as e:
+            _logger.warning(f"Follow-up check skipped ({e}); a normal notice is created")
+
         # ── Create NotificationDraft for dashboard visibility ─────────────────
         if student_id and student_config:
             try:
