@@ -1391,3 +1391,10 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Tests: `tests/execution/test_interview_followup.py` (14), one in `services/dashboard/tests/test_review_flags.py`. Whole suite 1063 passed; frontend `tsc` clean.
 - Deferred: cancellations with no date still make a card (cannot be matched safely); Calendly setup mail ("How do you prefer to meet?") is still treated as an
   interview; Upcoming/Interviews pages still list follow-up events.
+
+### 2026-10-16: suggested action on each Review card (branch `feat/review-suggested-action`, not merged or deployed)
+- Why: after the follow-up work Kes pointed out the CGI card (#132, a repeat of #122 which he rejected) still showed only "Looks like a real interview" and a green
+  Approve. The system knew more than the card said.
+- `execution/interview_followup.suggested_action` (pure rules) -> `suggestion {action, text}` on each open item of `GET /api/notifications/review-queue`;
+  the card shows a coloured line (Reject / Check first / Approve) above the genuineness box. Frontend change: needs a web rebuild (`--build-web`).
+- Tests: 8 new in `tests/execution/test_interview_followup.py`, 1 in `services/dashboard/tests/test_review_flags.py`.

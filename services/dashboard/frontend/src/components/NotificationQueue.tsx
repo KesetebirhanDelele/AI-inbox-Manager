@@ -191,6 +191,19 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
           <div><span className="block text-xs text-gray-500">Format</span>{iv.format || '—'}</div>
         </div>
 
+        {/* What the system found out about this notice (it only suggests: a person decides) */}
+        {item.suggestion && (
+          <div className={`rounded-md border px-3 py-2 text-sm ${
+            item.suggestion.action === 'reject' ? 'border-red-300 bg-red-50 text-red-900'
+              : item.suggestion.action === 'approve' ? 'border-green-300 bg-green-50 text-green-900'
+                : 'border-yellow-300 bg-yellow-50 text-yellow-900'}`}>
+            <span className="font-semibold">
+              {item.suggestion.action === 'reject' ? 'Suggested: Reject. ' : item.suggestion.action === 'approve' ? 'Suggested: Approve. ' : 'Suggested: Check first. '}
+            </span>
+            {item.suggestion.text}
+          </div>
+        )}
+
         {/* Is the email genuine? */}
         <div className="border border-gray-200 rounded-md">
           <button

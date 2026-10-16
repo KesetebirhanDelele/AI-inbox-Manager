@@ -302,3 +302,9 @@ under Show finished). Pending cards about one interview group under the oldest.
 - The model's "Rescheduled" label is not trusted; only a different time counts as a change.
 - Every doubt shows a card. Clean today's queue with `python execution/interview_followup.py` (lists) then `--apply`.
 
+### Suggested action on a card
+Every open notice may carry `suggestion` (`interview_followup.suggested_action`, pure rules, never approves or rejects): **Reject** when it repeats a notice a
+person already rejected (names that notice) or has no date, time, company or position; **Check first** for a cancellation (lists the interviews already
+announced to the student, or says none) or a different time without the Rescheduled label; **Approve** for a Rescheduled notice at a different time of the
+same named company. No line = no opinion; a missing line never implies approval.
+

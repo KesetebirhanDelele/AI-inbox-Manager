@@ -149,3 +149,61 @@ def test_recording_a_follow_up_twice_makes_one_row(db):
     fu.record_follow_up(db, b.id, a.id)
     fu.record_follow_up(db, b.id, a.id)
     assert db.query(db.models.InterviewFollowUp).count() == 1
+
+
+# --- the suggested action on an open card -----------------------------------------------------------------------------
+
+def _open(db, **kw):
+    ev = _event(db, "draft", **kw)
+    return ev, db.query(db.models.NotificationDraft).filter_by(interview_event_id=ev.id).one()
+
+
+def _reject(db, ev, by="admin"):
+    d = db.query(db.models.NotificationDraft).filter_by(interview_event_id=ev.id).one()
+    d.email_status, d.reviewed_by, d.reviewed_at = "rejected", by, datetime(2026, 10, 15, 17, 21)
+    db.commit()
+    return d
+
+
+def test_a_repeat_of_a_rejected_notice_says_reject_and_why(db):
+    old = _event(db, "draft", company="CGI", date="2026-10-19", time="13:30", tz="PST")
+    rejected = _reject(db, old)
+    ev, d = _open(db, company="CGI", date="2026-10-19", time="13:30", tz="PST")
+    out = fu.suggested_action(db, ev, d)
+    assert out["action"] == "reject" and f"#{rejected.id}" in out["text"] and "rejected by admin on 15 Oct" in out["text"]
+
+
+def test_a_notice_closed_as_a_follow_up_is_not_quoted_as_a_person_rejecting_it(db):
+    old = _event(db, "draft", company="CGI", date="2026-10-19", time="13:30", tz="PST")
+    _reject(db, old, by="follow-up")
+    ev, d = _open(db, company="CGI", date="2026-10-19", time="13:30", tz="PST")
+    assert fu.suggested_action(db, ev, d) is None
+
+
+def test_a_cancellation_says_check_and_lists_what_was_announced(db):
+    _event(db, "approved", company="CGI", date="2026-10-19", time="12:00", tz="PST")
+    ev, d = _open(db, sub_type="Interview Cancelled", company="Wilson HR")
+    out = fu.suggested_action(db, ev, d)
+    assert out["action"] == "check" and "CGI" in out["text"] and "2026-10-19" in out["text"]
+
+
+def test_a_cancellation_with_nothing_announced_says_so(db):
+    ev, d = _open(db, sub_type="Interview Cancelled", company="Wilson HR")
+    assert "no interview was announced" in fu.suggested_action(db, ev, d)["text"]
+
+
+def test_a_real_reschedule_of_the_same_company_says_approve_with_old_and_new_time(db):
+    _event(db, "approved", company="CGI", date="2026-10-19", time="12:00", tz="PST")
+    ev, d = _open(db, sub_type="Interview Rescheduled", company="CGI", date="2026-10-21", time="12:00", tz="PST")
+    out = fu.suggested_action(db, ev, d)
+    assert out["action"] == "approve" and "2026-10-19" in out["text"] and "2026-10-21" in out["text"]
+
+
+def test_a_setup_email_with_no_interview_details_says_reject(db):
+    ev, d = _open(db, sub_type="Interview Request")
+    assert fu.suggested_action(db, ev, d)["action"] == "reject"
+
+
+def test_an_ordinary_new_interview_gets_no_suggestion(db):
+    ev, d = _open(db, company="Acme", date="2026-10-22", time="09:00", tz="EST")
+    assert fu.suggested_action(db, ev, d) is None

@@ -468,6 +468,13 @@ async def get_review_queue(
         if check["verdict"] == "likely_job_board":
             warnings.insert(0, "This looks like a job-board mailer, not a real interview invitation. Please read the email before approving.")
 
+        suggestion = None
+        if draft is not None and status_ == "draft" and follow_up_of is None:
+            try:
+                suggestion = _execution_module("interview_followup").suggested_action(db, event, draft)
+            except Exception:
+                suggestion = None          # no opinion beats a wrong one
+
         if follow_up_of is not None:
             state = "follow_up"
         elif draft is None:
@@ -500,6 +507,7 @@ async def get_review_queue(
             "draft_id": draft.id if draft else None,
             "state": state,
             "follow_up_of": follow_up_of,
+            "suggestion": suggestion,
             "blockers": blockers,
             "warnings": warnings,
             "flags": flags,

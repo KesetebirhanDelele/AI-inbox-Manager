@@ -78,3 +78,10 @@ def test_a_follow_up_leaves_the_main_list_and_shows_under_show_finished_labelled
     done = client.get("/api/notifications/review-queue?include_done=true", cookies=auth_cookies).json()["items"]
     item = next(i for i in done if i["event_id"] == reminder.id)
     assert item["state"] == "follow_up" and item["follow_up_of"] == original.id and item["blockers"] == []
+
+
+def test_the_card_carries_the_suggested_action(client, db, auth_cookies):
+    student = make_student(db, username="sug", full_name="Suggested Person")
+    make_notification_draft(db, make_interview_event(db, make_email(db), student=student, sub_type="Interview Cancelled"), email_status="draft")
+    item = _item(client, auth_cookies, student)
+    assert item["suggestion"]["action"] == "check" and "cancellation" in item["suggestion"]["text"]

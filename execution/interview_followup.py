@@ -139,6 +139,57 @@ def link_existing_follow_ups(db, dry_run: bool = True) -> list:
     return out
 
 
+def _describe(event) -> str:
+    when = " ".join(x for x in (event.interview_date, event.interview_time, event.interview_timezone) if x)
+    return f"{event.company_name or 'unnamed company'}" + (f", {when}" if when else "")
+
+
+def suggested_action(db, event, draft) -> Optional[Dict[str, str]]:
+    """
+    What the system found about an OPEN notice, in plain words, so the approver does not have to work it out.
+    {"action": "reject" | "check" | "approve", "text": ...} or None (no opinion: a missing line never implies approval).
+    It only suggests; a person still decides. Pure rules over the student's earlier events, no LLM.
+    """
+    from models import InterviewEvent, NotificationDraft
+
+    if event.student_id is None:
+        return None
+    earlier = (db.query(InterviewEvent, NotificationDraft)
+               .join(NotificationDraft, NotificationDraft.interview_event_id == InterviewEvent.id)
+               .filter(InterviewEvent.student_id == event.student_id, InterviewEvent.id < event.id)
+               .order_by(InterviewEvent.id).all())
+    mine = _fields(event)
+    dated = bool(event.interview_date and event.interview_time)
+
+    # 1. The same interview as a notice a person already rejected (a person's decision, so it is asked again, but with the reason).
+    if dated and event.sub_type != "Interview Cancelled":
+        for ev, d in earlier:
+            if d.email_status == "rejected" and d.reviewed_by != "follow-up" and ev.sub_type != "Interview Cancelled"                     and companies_compatible(event.company_name, ev.company_name) and same_moment(mine, _fields(ev)):
+                on = d.reviewed_at.strftime("%d %b") if d.reviewed_at else "earlier"
+                return {"action": "reject", "text": f"Same interview as notice #{d.id} ({_describe(ev)}), rejected by {d.reviewed_by or 'a person'} on {on}."}
+
+    announced = [(ev, d) for ev, d in earlier if d.email_status in ANNOUNCED_STATUSES and ev.sub_type != "Interview Cancelled"]
+
+    # 2. A cancellation: it must say which interview it cancels, and the system often cannot tell.
+    if event.sub_type == "Interview Cancelled":
+        if announced:
+            listed = "; ".join(f"#{d.id} {_describe(ev)}" for ev, d in announced[-3:])
+            return {"action": "check", "text": f"A cancellation. Interviews already announced to this student: {listed}. Make sure this cancels one of them."}
+        return {"action": "check", "text": "A cancellation, but no interview was announced to this student before. It may cancel a meeting they never heard of."}
+
+    # 3. The same named company at a different time than an announced interview: a change, not a repeat.
+    if dated:
+        for ev, d in announced:
+            if _company_key(event.company_name) and _company_key(event.company_name) == _company_key(ev.company_name)                     and ev.interview_date and ev.interview_time and not same_moment(mine, _fields(ev)):
+                action = "approve" if event.sub_type == "Interview Rescheduled" else "check"
+                return {"action": action, "text": f"Different time from the interview announced in #{d.id} ({_describe(ev)}). Now: {_describe(event)}."}
+
+    # 4. Nothing an interview needs: no date, time, company or position (a scheduling-tool setup mail).
+    if not (event.interview_date or event.interview_time or event.company_name or event.position_title):
+        return {"action": "reject", "text": "No interview details in this email: no date, time, company or position. Probably a setup or marketing email."}
+    return None
+
+
 def main(argv=None) -> int:
     """Usage (inside the cron container): python execution/interview_followup.py [--apply]  (lists only by default)."""
     import argparse
