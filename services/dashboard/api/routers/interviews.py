@@ -14,7 +14,7 @@ from datetime import datetime, date
 from database import get_db
 from utils_text import clean_preview, clean_email_text
 from auth import get_current_user
-from models import Email, Classification, UserSession, InterviewEvent, Student, NotificationDraft, StudentVerification, CallbackRequest
+from models import Email, Classification, UserSession, InterviewEvent, Student, NotificationDraft, StudentVerification, CallbackRequest, InterviewFollowUp
 from checklist_steps import normalize_sub_type
 
 router = APIRouter()
@@ -117,8 +117,17 @@ async def get_upcoming_interviews(
         InterviewEvent.interview_time.asc()
     ).all()
 
+    # A repeat of an interview the student was already told about is linked as a follow-up, and an approver may reject a notice as a duplicate.
+    # Neither is a separate interview: hide the follow-ups, and events whose notices were ALL rejected (events with no notice at all stay).
+    follow_up_ids = {row.event_id for row in db.query(InterviewFollowUp.event_id).all()}
+    statuses = {}
+    for event_id, status in db.query(NotificationDraft.interview_event_id, NotificationDraft.email_status).all():
+        statuses.setdefault(event_id, set()).add(status)
+
     upcoming = []
     for event, student in results:
+        if event.id in follow_up_ids or (event.id in statuses and statuses[event.id] <= {"rejected"}):
+            continue
         upcoming.append(UpcomingInterview(
             interview_event_id=event.id,
             student_name=student.full_name if student else "Unknown",

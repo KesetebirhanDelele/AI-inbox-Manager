@@ -1401,3 +1401,11 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 
 ### 2026-10-16: cancellation suggestion lists only dated notices (merged and deployed with the card change)
 - Found on the live queue: Sehrish's "Canceled" card listed the undated setup notice #125 as an announced interview. `suggested_action` now lists only dated ones.
+
+### 2026-10-18: Upcoming interviews hides rejected duplicates and follow-ups (branch `fix/upcoming-hides-rejected-duplicates`, not merged or deployed)
+- Why: Kes rejected the duplicate CGI / Hydrafacial cards in Review, but the Upcoming table still showed one row per event (4x CGI Power BI Client Screen).
+  Rejecting a notice only closed the notice; `GET /api/interviews/upcoming` never looked at notice status. This was the "Upcoming still lists follow-up events" deferred item.
+- `services/dashboard/api/routers/interviews.py`: `/upcoming` now skips events linked in `interview_follow_ups` and events whose notices are ALL rejected. Events with no notice stay.
+- Tests: 3 new in `services/dashboard/tests/test_interviews.py`; interviews + date-filter tests 29 passed.
+- Needs a backend deploy. Deferred: the Reports "Interviews" tab list may use a different query; the 2 Sehrish Hydrafacial rows (Phone Screen + Rescheduled, same 15:00) only collapse if one notice is rejected.
+- Same branch: dashboard "Upcoming interviews" table drops the Join link column and merges Date + Time into one "Date & Time" column (Today/Tomorrow badge, then "Oct 19, 06:48"). `DashboardPage.tsx`; needs `--build-web`.

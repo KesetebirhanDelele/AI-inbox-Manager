@@ -384,10 +384,8 @@ const DashboardPage = () => {
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Student</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Position</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Time</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date &amp; Time</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Link</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -401,23 +399,20 @@ const DashboardPage = () => {
                         <td className="px-3 py-2 text-gray-600 max-w-[160px] truncate">{iv.position || '—'}</td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           {iv.interview_date ? (
-                            <span className={`px-2 py-0.5 text-xs font-semibold rounded ${
-                              isToday ? 'bg-red-100 text-red-700' :
-                              isTomorrow ? 'bg-orange-100 text-orange-700' :
-                              'bg-blue-50 text-blue-700'
-                            }`}>
-                              {isToday ? 'Today' : isTomorrow ? 'Tomorrow' : new Date(iv.interview_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </span>
+                            <>
+                              {(isToday || isTomorrow) && (
+                                <span className={`mr-2 px-2 py-0.5 text-xs font-semibold rounded ${isToday ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                                  {isToday ? 'Today' : 'Tomorrow'}
+                                </span>
+                              )}
+                              <span className="text-xs text-gray-700">
+                                {new Date(iv.interview_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                {iv.interview_time ? `, ${iv.interview_time}` : ''}
+                              </span>
+                            </>
                           ) : '—'}
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-700 text-xs">{iv.interview_time || '—'}</td>
                         <td className="px-3 py-2 whitespace-nowrap text-gray-600 text-xs">{iv.interview_type ? TYPE_LABELS[iv.interview_type] || iv.interview_type : '—'}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {iv.meeting_link ? (
-                            <a href={iv.meeting_link} target="_blank" rel="noopener noreferrer"
-                              className="text-xs text-primary-600 hover:underline font-medium">Join</a>
-                          ) : '—'}
-                        </td>
                       </tr>
                     );
                   })}
