@@ -1409,3 +1409,10 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Tests: 3 new in `services/dashboard/tests/test_interviews.py`; interviews + date-filter tests 29 passed.
 - Needs a backend deploy. Deferred: the Reports "Interviews" tab list may use a different query; the 2 Sehrish Hydrafacial rows (Phone Screen + Rescheduled, same 15:00) only collapse if one notice is rejected.
 - Same branch: dashboard "Upcoming interviews" table drops the Join link column and merges Date + Time into one "Date & Time" column (Today/Tomorrow badge, then "Oct 19, 06:48"). `DashboardPage.tsx`; needs `--build-web`.
+
+### 2026-10-18: Upcoming collapses duplicates instead of hiding rejected ones (branch `fix/upcoming-collapse-not-hide-rejected`, not merged or deployed)
+- Why: the earlier same-day change hid every event whose notices were all rejected. On the live dashboard that removed CGI (all 4 events rejected by admin),
+  Rutendo's assessment and Orange County, leaving one row. A rejected notice means "do not tell the student", not "not an interview".
+- `/api/interviews/upcoming` now hides only events linked in `interview_follow_ups`, and shows identical events (same student, company, date, time) once.
+- Tests: 2 replaced in `services/dashboard/tests/test_interviews.py`; dashboard suite 252 passed.
+- Known: Hydrafacial rows are follow-ups of event 139 (Sehrish, no company, 12:00), so they show as that one row without the company name.

@@ -96,15 +96,19 @@ class TestGetInterviewCount:
 
 
 class TestGetUpcomingInterviews:
-    def test_hides_an_event_whose_only_notice_was_rejected_as_a_duplicate(self, client, db, auth_cookies):
+    def test_identical_events_show_once(self, client, db, auth_cookies):
         student = make_student(db)
-        kept = make_interview_event(db, make_email(db, email_id="m1"), student=student, interview_date="2099-12-31")
-        make_notification_draft(db, kept, email_status="draft")
-        dup = make_interview_event(db, make_email(db, email_id="m2"), student=student, interview_date="2099-12-31")
-        make_notification_draft(db, dup, email_status="rejected")
+        first = make_interview_event(db, make_email(db, email_id="m1"), student=student, interview_date="2099-12-31")
+        make_interview_event(db, make_email(db, email_id="m2"), student=student, interview_date="2099-12-31")
 
         data = client.get("/api/interviews/upcoming", cookies=auth_cookies).json()
-        assert [row["interview_event_id"] for row in data] == [kept.id]
+        assert [row["interview_event_id"] for row in data] == [first.id]
+
+    def test_a_rejected_notice_does_not_hide_the_interview(self, client, db, auth_cookies):
+        event = make_interview_event(db, make_email(db), student=make_student(db), interview_date="2099-12-31")
+        make_notification_draft(db, event, email_status="rejected")
+
+        assert len(client.get("/api/interviews/upcoming", cookies=auth_cookies).json()) == 1
 
     def test_hides_an_event_linked_as_a_follow_up(self, client, db, auth_cookies):
         from models import InterviewFollowUp
@@ -116,13 +120,6 @@ class TestGetUpcomingInterviews:
 
         data = client.get("/api/interviews/upcoming", cookies=auth_cookies).json()
         assert [row["interview_event_id"] for row in data] == [original.id]
-
-    def test_keeps_an_event_with_one_rejected_and_one_live_notice(self, client, db, auth_cookies):
-        event = make_interview_event(db, make_email(db), student=make_student(db), interview_date="2099-12-31")
-        make_notification_draft(db, event, email_status="rejected")
-        make_notification_draft(db, event, email_status="sent")
-
-        assert len(client.get("/api/interviews/upcoming", cookies=auth_cookies).json()) == 1
 
     def test_upcoming_empty(self, client, db, auth_cookies):
         resp = client.get("/api/interviews/upcoming", cookies=auth_cookies)
