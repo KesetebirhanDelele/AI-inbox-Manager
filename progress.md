@@ -1416,3 +1416,14 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - `/api/interviews/upcoming` now hides only events linked in `interview_follow_ups`, and shows identical events (same student, company, date, time) once.
 - Tests: 2 replaced in `services/dashboard/tests/test_interviews.py`; dashboard suite 252 passed.
 - Known: Hydrafacial rows are follow-ups of event 139 (Sehrish, no company, 12:00), so they show as that one row without the company name.
+
+### 2026-10-19: routine replies and cancelled positions (branch `fix/quoted-text-and-cancel-match`, not merged or deployed)
+- Why: Sehrish's HRize/Sonata thread. "I am calling you right away" made a full interview notice (07:30 PST, video) because the time came from the quoted
+  thread under the reply; nothing stripped quoted text. The "position cancelled, interview will no longer be scheduled" mail escaped `role_cancelled_not_interview`
+  (it contained the word "interview") and its card said "Looks like a real interview" without saying which interview it cancelled.
+- `execution/classify_email.py`: `strip_quoted_reply`, `is_routine_reply` (a "RE:" mail with short new text and no time/date/scheduling word, with something
+  quoted below -> category Other, no event, no notice); `role_cancelled_not_interview` now reads only the new text and ignores "interview ... no longer be scheduled".
+- `execution/interview_followup.suggested_action`: a cancellation naming the one announced interview of that company says which (approve).
+- `NotificationQueue.tsx`: cancellation cards say "Is this a real cancellation?" instead of "real interview". Needs `--build-web`.
+- Tests: `tests/execution/test_routine_reply.py` (8), 1 in `test_interview_followup.py`. Suite 1080 passed, dashboard 252 passed, `tsc` clean.
+- Deferred: the two existing Sehrish cards (#141 Sonata, the 12:20 PM cancellation) are not touched; reject by hand. Reply rule applies only to "RE:" subjects.

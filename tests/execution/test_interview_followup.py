@@ -215,3 +215,11 @@ def test_the_cancellation_list_skips_notices_with_no_date(db):
     ev, d = _open(db, sub_type="Interview Cancelled", company="Wilson HR")
     text = fu.suggested_action(db, ev, d)["text"]
     assert "CGI" in text and text.count("#") == 1
+
+
+def test_a_cancellation_naming_the_one_announced_company_says_which_interview(db):
+    _event(db, "approved", company=None, date="2026-10-19", time="12:00", tz="PST")
+    _event(db, "approved", company="Sonata Software", date="2026-10-19", time="07:30", tz="PST")
+    ev, d = _open(db, sub_type="Interview Cancelled", company="Sonata Software")
+    out = fu.suggested_action(db, ev, d)
+    assert out["action"] == "approve" and "Sonata Software" in out["text"] and "07:30" in out["text"] and "12:00" not in out["text"]

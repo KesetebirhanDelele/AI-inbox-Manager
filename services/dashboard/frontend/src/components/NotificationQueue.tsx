@@ -131,7 +131,10 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
 
   const s = item.student;
   const myCallbacks = callbacks.filter((c) => s && c.student_id === s.id);
-  const verdict = VERDICT_STYLE[item.authenticity.verdict] || VERDICT_STYLE.needs_check;
+  const isCancellation = /cancel/i.test(item.interview.type || '');
+  const verdict = isCancellation && item.authenticity.verdict === 'looks_genuine'
+    ? { label: 'Looks like a real cancellation notice', cls: 'bg-yellow-100 text-yellow-800' }
+    : VERDICT_STYLE[item.authenticity.verdict] || VERDICT_STYLE.needs_check;
   const state = STATE_LABEL[item.state] || { label: item.state, cls: 'bg-gray-100 text-gray-700' };
   const iv = item.interview;
   const when = [iv.date, iv.time, iv.timezone].filter(Boolean).join(' ');
@@ -211,7 +214,7 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
             onClick={() => setShowWhy(!showWhy)}
             className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-800"
           >
-            <span>Is this email a real interview? {verdict.label}</span>
+            <span>{isCancellation ? 'Is this a real cancellation?' : 'Is this email a real interview?'} {verdict.label}</span>
             <span className="text-gray-400">{showWhy ? 'Hide' : 'Why?'}</span>
           </button>
           {showWhy && (

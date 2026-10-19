@@ -705,17 +705,69 @@ _ROLE_CANCELLED = re.compile(
 )
 
 
+_ROUTINE_REPLY_CATEGORIES = {
+    "Interview Request", "Interview Schedule", "Interview Reschedule", "Interview Confirmation", "Phone Screen",
+    "Final Interview Scheduled", "Instant Interview", "Client Screen", "Technical Interview",
+}
+_QUOTE_MARKER = re.compile(
+    r"^\s*(from:\s|sent:\s|-{2,}\s*original message|-{2,}\s*forwarded message|on .{5,200}wrote:\s*$|>)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def strip_quoted_reply(text: str) -> str:
+    """The NEW text of a reply: everything above the first quoted-thread marker ("From:", "On ... wrote:", "> ")."""
+    m = _QUOTE_MARKER.search(text or "")
+    return (text[:m.start()] if m else (text or "")).strip()
+
+
+_SCHEDULING_WORDS = re.compile(
+    r"\b(interview|schedul\w*|reschedul\w*|invite|calendar|zoom|teams|meet|meeting|availab\w*|slot|confirm\w*|cancel\w*|"
+    r"assessment|test|screen\w*|call|pst|est|cst|mst|pdt|edt|ist|utc|mon|tue|wed|thu|fri|sat|sun|(mon|tues|wednes|thurs|fri|satur|sun)day|today|tomorrow|tonight|week)\b|\d{1,2}:\d{2}|\b\d{1,2}\s?(am|pm)\b",
+    re.IGNORECASE,
+)
+_ROUTINE_MAX_CHARS = 400
+
+
+def is_routine_reply(email_data: Optional[Dict[str, Any]]) -> bool:
+    """
+    Pure rule: a "RE:" reply whose NEW text says nothing about scheduling. Its interview details come only from the quoted thread underneath,
+    so it is the same interview already announced, not a new one ("I am calling you right away", Sehrish, 2026-10-19).
+    The word "calling" alone is allowed; any time, date or scheduling word makes it a normal email again.
+    """
+    if not email_data:
+        return False
+    subject = str(email_data.get("subject") or "").strip().lower()
+    if not subject.startswith("re:"):
+        return False
+    body = str(email_data.get("body_content") or email_data.get("body") or "")
+    fresh = strip_quoted_reply(body)
+    if not fresh or len(fresh) > _ROUTINE_MAX_CHARS or len(fresh) == len(body.strip()):
+        return False                                   # nothing quoted (cannot tell) or a long message
+    fresh = re.sub(r"\bcalling\b", "", fresh, flags=re.IGNORECASE)
+    return _SCHEDULING_WORDS.search(fresh) is None
+
+
+_INTERVIEW_NOT_HAPPENING = re.compile(
+    r"interview[^.\n]{0,40}?\b(no longer|not)\b[^.\n]{0,15}?\b(be\s+)?scheduled\b",
+    re.IGNORECASE,
+)
+
+
 def role_cancelled_not_interview(category: str, email_data: Optional[Dict[str, Any]]) -> bool:
     """
     Pure rule: an "Interview Cancelled" label on mail that says the ROLE was cancelled and never mentions an interview.
 
     The model had no label for a role withdrawn before any interview, forced it into Interview Cancelled with 0.95 confidence,
     and the student got "the employer has cancelled this interview" (Vizient, 2026-10-14).
+    "...the interview will no longer be scheduled" does not count as mentioning an interview: none had been scheduled (HRize, 2026-10-19).
+    Only the new text counts, not a quoted thread underneath.
     """
     if category != "Interview Cancelled" or not email_data:
         return False
-    text = " ".join([str(email_data.get("subject") or ""), str(email_data.get("body_content") or email_data.get("body") or "")])
-    return "interview" not in text.lower() and _ROLE_CANCELLED.search(text) is not None
+    body = strip_quoted_reply(str(email_data.get("body_content") or email_data.get("body") or ""))
+    text = " ".join([str(email_data.get("subject") or ""), body])
+    return "interview" not in _INTERVIEW_NOT_HAPPENING.sub(" ", text).lower() and _ROLE_CANCELLED.search(text) is not None
 
 
 def apply_business_rules(
@@ -777,6 +829,12 @@ def apply_business_rules(
         logger.info("Role-cancelled mail with no interview: 'Interview Cancelled' -> 'Rejection'")
         result["category_original"] = result["category"]
         result["category"] = "Rejection"
+
+    # A reply with no scheduling words of its own repeats an interview already announced: no new interview notice.
+    if result.get("category") in _ROUTINE_REPLY_CATEGORIES and is_routine_reply(email_data):
+        logger.info(f"Routine reply (details only in the quoted thread): '{result['category']}' -> 'Other'")
+        result["category_original"] = result["category"]
+        result["category"] = "Other"
 
     # Retired interview categories: CATEGORY_REMAP_MODE = off | shadow (default: log the new label only) | live (use it).
     mode = os.getenv("CATEGORY_REMAP_MODE", "shadow").lower()
