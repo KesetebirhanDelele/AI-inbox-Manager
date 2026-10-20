@@ -98,6 +98,23 @@ class EngineeringKPIs(BaseModel):
     db_storage_pct: Optional[float] = None
 
 
+def count_interview_requests(db: Session, since: datetime) -> int:
+    """
+    Interviews announced since `since`, for the dashboard tile: one per interview event, so an email that only repeats an announced interview
+    (follow-up), a cancellation, or an interview whose notices were ALL rejected by a person does not count. Pending and approved ones do.
+    Rejecting a card in Review therefore lowers the tile; an event with no notice yet still counts.
+    """
+    from models import InterviewFollowUp
+    events = db.query(InterviewEvent).filter(InterviewEvent.created_at >= since, InterviewEvent.sub_type != "Interview Cancelled").all()
+    if not events:
+        return 0
+    follow_ups = {row.event_id for row in db.query(InterviewFollowUp.event_id).all()}
+    statuses: Dict[int, List[str]] = {}
+    for event_id, status in db.query(NotificationDraft.interview_event_id, NotificationDraft.email_status).all():
+        statuses.setdefault(event_id, []).append(status)
+    return sum(1 for e in events if e.id not in follow_ups and not (statuses.get(e.id) and all(st == "rejected" for st in statuses[e.id])))
+
+
 @router.get("/summary", response_model=SummaryStats)
 async def get_summary_stats(
     db: Session = Depends(get_db),
@@ -130,12 +147,7 @@ async def get_summary_stats(
 
     # Use actual email/classification table for interview counts (prevents double-counting
     # caused by unread interview emails being re-processed on every run)
-    today_interview = db.query(Email).join(
-        Classification, Email.id == Classification.email_id
-    ).filter(
-        Classification.category == "Interview Request",
-        Email.fetch_timestamp >= today_start
-    ).count()
+    today_interview = count_interview_requests(db, since=today_start)
 
     # Total interview requests (all time) — used for dashboard card
     total_interview = db.query(Email).join(

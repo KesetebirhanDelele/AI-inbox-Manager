@@ -1427,3 +1427,10 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - `NotificationQueue.tsx`: cancellation cards say "Is this a real cancellation?" instead of "real interview". Needs `--build-web`.
 - Tests: `tests/execution/test_routine_reply.py` (8), 1 in `test_interview_followup.py`. Suite 1080 passed, dashboard 252 passed, `tsc` clean.
 - Deferred: the two existing Sehrish cards (#141 Sonata, the 12:20 PM cancellation) are not touched; reject by hand. Reply rule applies only to "RE:" subjects.
+
+### 2026-10-19: "Interview Requests Today" tile counts interviews, not emails (branch `fix/interview-count-tile`, not merged or deployed)
+- Why: the tile counted emails classified "Interview Request" today, so it still said 2 after Kes rejected Sehrish's cards, and counted replies and cancellations.
+- `services/dashboard/api/routers/stats.py`: `count_interview_requests` counts today's interview events, skipping follow-ups, "Interview Cancelled" and events whose
+  notices are ALL rejected. Pending and approved count; an event with no notice counts. Rejecting a card lowers the tile. "total_interview_requests" (all time) is unchanged.
+- Tests: `services/dashboard/tests/test_interview_tile.py` (4). Dashboard suite 256 passed. Backend-only: no web rebuild.
+- Note: today's count of already-processed emails is rebuilt from interview events, so past days may also change.
