@@ -57,6 +57,7 @@ class RolesResponse(BaseModel):
     business_hours: str
     review_alert_enabled: bool = True
     backup_after_hours: float = 2.0
+    staff_alerts_enabled: bool = True
 
 
 class RoleIn(BaseModel):
@@ -71,6 +72,7 @@ class PilotIn(BaseModel):
 class AlertSettingsIn(BaseModel):
     review_alert_enabled: bool
     backup_after_hours: float
+    staff_alerts_enabled: bool = True
 
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -95,6 +97,7 @@ async def get_roles(db: Session = Depends(get_db), user: UserSession = Depends(g
     days = ", ".join(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][d] for d in hours.days)
     return RolesResponse(roles=out, pilot_limit=pilot_limit(db), pilot_used=used,
                          review_alert_enabled=_execution("review_alerts").enabled(db),
+                         staff_alerts_enabled=roles.staff_alerts_on(db),
                          backup_after_hours=_execution("stale_draft_alerts").stale_minutes(None, db) / 60,
                          business_hours=f"{days}, {hours.start_hour:02d}:00 to {hours.end_hour:02d}:00 ({hours.tz})")
 
@@ -125,10 +128,11 @@ async def set_alert_settings(body: AlertSettingsIn, db: Session = Depends(get_db
     """The approver's "new card" email on or off, and how many business hours before the backup is told."""
     if not 0.25 <= body.backup_after_hours <= 72:
         raise HTTPException(status_code=422, detail="The backup time must be between 0.25 and 72 business hours")
+    _set(db, _execution("roles").STAFF_ALERTS_KEY, "on" if body.staff_alerts_enabled else "off")
     _set(db, _execution("review_alerts").ENABLED_KEY, "on" if body.review_alert_enabled else "off")
     _set(db, _execution("stale_draft_alerts").HOURS_KEY, str(body.backup_after_hours))
     db.commit()
-    return {"review_alert_enabled": body.review_alert_enabled, "backup_after_hours": body.backup_after_hours}
+    return {"review_alert_enabled": body.review_alert_enabled, "backup_after_hours": body.backup_after_hours, "staff_alerts_enabled": body.staff_alerts_enabled}
 
 
 @router.put("/{role}")

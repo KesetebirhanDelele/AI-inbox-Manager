@@ -1460,3 +1460,12 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Settings: `PUT /api/roles/alert-settings`, new card on `RolesCard.tsx` (switch + backup hours). Needs `--build-web`.
 - Tests: `tests/execution/test_review_alerts.py` (9), 3 in `services/dashboard/tests/test_roles.py`. Main suite 1089, dashboard 264 passed, `tsc` clean.
 - Deployment notes: the backup only runs when `/etc/cron.d/inboxgenius-stale` is moved back (deploys do not touch host cron); the Backup approver email must be set on Settings.
+
+### 2026-10-20: callback backup role and a master switch for staff email alerts (branch `feat/callback-backup-and-alert-switch`, not merged or deployed)
+- Why: Kes wants the approver + backup and the callback owner + a callback backup (Jackie) alerted by email, and one place to turn the Gmail alert system on and off.
+  Overdue callbacks used to go to the Escalation role (same person as the approver backup).
+- `roles.py`: 4th role `callback_backup`; `staff_alerts_on(db)`. `escalation_engine.RoleAlerts._notify` returns False without sending while the switch is off;
+  `callback_overdue` sends to callback_backup, falling back to escalation_target. `callbacks.check_overdue` uses it.
+- Settings: master switch in `PUT /api/roles/alert-settings` + `RolesCard.tsx` (needs `--build-web`); the new role shows automatically in the role list.
+- Tests: 3 new in `tests/execution/test_review_alerts.py`, role list test updated, 1 setting test updated. Main suite and dashboard suite pass, `tsc` clean.
+- Not done here (server/settings steps): assign emails to Backup approver and Callback backup; move `inboxgenius-stale` cron back so the approver backup runs.

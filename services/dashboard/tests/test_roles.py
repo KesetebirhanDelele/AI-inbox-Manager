@@ -5,11 +5,11 @@ from conftest import make_email, make_interview_event, make_notification_draft, 
 
 
 class TestRoles:
-    def test_all_three_roles_are_listed_with_nobody_assigned(self, client, db, auth_cookies, monkeypatch):
-        for var in ("APPROVER_ALERT_EMAIL", "CALLBACK_OWNER_EMAIL", "ESCALATION_ALERT_EMAIL"):
+    def test_all_four_roles_are_listed_with_nobody_assigned(self, client, db, auth_cookies, monkeypatch):
+        for var in ("APPROVER_ALERT_EMAIL", "CALLBACK_OWNER_EMAIL", "ESCALATION_ALERT_EMAIL", "CALLBACK_BACKUP_EMAIL"):
             monkeypatch.delenv(var, raising=False)
         data = client.get("/api/roles", cookies=auth_cookies).json()
-        assert [r["role"] for r in data["roles"]] == ["approver", "callback_owner", "escalation_target"]
+        assert [r["role"] for r in data["roles"]] == ["approver", "callback_owner", "escalation_target", "callback_backup"]
         assert all(r["email"] == "" and r["source"] == "none" for r in data["roles"])
         assert data["pilot_limit"] == 3 and data["pilot_used"] == 0 and "09:00 to 17:00" in data["business_hours"]
 
@@ -73,13 +73,13 @@ class TestPilotLimit:
 class TestAlertSettings:
     def test_defaults_are_on_and_two_hours(self, client, db, auth_cookies):
         data = client.get("/api/roles", cookies=auth_cookies).json()
-        assert data["review_alert_enabled"] is True and data["backup_after_hours"] == 2
+        assert data["review_alert_enabled"] is True and data["backup_after_hours"] == 2 and data["staff_alerts_enabled"] is True
 
     def test_the_switch_and_the_backup_time_are_saved_without_a_deploy(self, client, db, auth_cookies):
-        r = client.put("/api/roles/alert-settings", json={"review_alert_enabled": False, "backup_after_hours": 3.5}, cookies=auth_cookies)
+        r = client.put("/api/roles/alert-settings", json={"review_alert_enabled": False, "backup_after_hours": 3.5, "staff_alerts_enabled": False}, cookies=auth_cookies)
         assert r.status_code == 200
         data = client.get("/api/roles", cookies=auth_cookies).json()
-        assert data["review_alert_enabled"] is False and data["backup_after_hours"] == 3.5
+        assert data["review_alert_enabled"] is False and data["backup_after_hours"] == 3.5 and data["staff_alerts_enabled"] is False
 
     def test_a_silly_backup_time_is_refused(self, client, db, auth_cookies):
         for hours in (0, -1, 500):

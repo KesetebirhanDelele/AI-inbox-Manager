@@ -5,6 +5,8 @@ Who receives what: ROLES that get assigned, never a person written into the code
                       needs help, STOP, cannot be reached)
   callback_owner      takes the calls from students who call back about an interview
   escalation_target   the BACKUP: told when a card has sat undecided too long (so it is NOT the approver)
+  callback_backup     the callback owner's backup: told when a student callback is still open after one business hour
+                      (falls back to escalation_target while nobody holds this role, which is how overdue callbacks were routed before)
 
 Assignments live in the database (table role_assignments, edited on the dashboard's Settings page). When the work moves to
 recruiters this is a settings change, not a rewrite. An optional `scope` (for example a recruiter) is stored for that day but not used yet.
@@ -13,22 +15,25 @@ Fallback when nothing is assigned: the environment variables below, so an alert 
 import os
 from typing import Dict, List, Optional
 
-ROLES = ("approver", "callback_owner", "escalation_target")
+ROLES = ("approver", "callback_owner", "escalation_target", "callback_backup")
 
 ROLE_LABELS: Dict[str, str] = {
     "approver": "Approver",
     "callback_owner": "Callback owner",
     "escalation_target": "Backup approver (escalation)",
+    "callback_backup": "Callback backup",
 }
 ROLE_HELP: Dict[str, str] = {
     "approver": "Approves student notifications. Emailed when a new card needs review, and when a student has not responded, replied needing help, opted out or cannot be reached.",
     "callback_owner": "Takes interview callbacks from students, within one business hour during working hours.",
     "escalation_target": "Backup for the approver: emailed when a card has waited for a decision longer than the backup time below.",
+    "callback_backup": "Backup for the callback owner: emailed when a student callback is still open after one business hour.",
 }
 ENV_FALLBACK: Dict[str, str] = {
     "approver": "APPROVER_ALERT_EMAIL",
     "callback_owner": "CALLBACK_OWNER_EMAIL",
     "escalation_target": "ESCALATION_ALERT_EMAIL",
+    "callback_backup": "CALLBACK_BACKUP_EMAIL",
 }
 
 
@@ -60,3 +65,11 @@ def get_setting(db, key: str, default: str) -> str:
     import models
     row = db.query(models.SystemConfig).filter(models.SystemConfig.key == key).first()
     return row.value if row is not None and row.value not in (None, "") else default
+
+
+STAFF_ALERTS_KEY = "staff_email_alerts"
+
+
+def staff_alerts_on(db) -> bool:
+    """The master switch on the Settings page: off stops EVERY email to a role holder (approver, backup, callback owner, callback backup)."""
+    return get_setting(db, STAFF_ALERTS_KEY, "on").strip().lower() not in ("off", "false", "0", "no")

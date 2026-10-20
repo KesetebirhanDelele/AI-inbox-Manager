@@ -140,3 +140,52 @@ def test_the_backup_time_comes_from_settings_then_the_environment(db):
     assert sd.stale_minutes({"STALE_DRAFT_BUSINESS_MINUTES": "90"}, db) == 90
     db.add(db.models.SystemConfig(key=sd.HOURS_KEY, value="3")); db.commit()
     assert sd.stale_minutes({"STALE_DRAFT_BUSINESS_MINUTES": "90"}, db) == 180
+
+
+# ── master switch and the callback backup ──────────────────────────────────────────────────────
+
+class _Sender:
+    def __init__(self):
+        self.sent = []
+
+    def __call__(self, recipient_email, subject, body, bcc=""):
+        self.sent.append(recipient_email)
+        return {"status": "sent"}
+
+
+def _assign(db, role, email):
+    db.add(db.models.RoleAssignment(role=role, email=email, active=True)); db.commit()
+
+
+def test_the_master_switch_stops_every_staff_email_and_turning_it_on_restores_them(db):
+    from escalation_engine import RoleAlerts
+    _assign(db, "approver", "kes@example.com")
+    send = _Sender()
+    alerts = RoleAlerts(db=db, send_fn=send)
+    db.add(db.models.SystemConfig(key="staff_email_alerts", value="off")); db.commit()
+    assert alerts.review_needed("s", "b") is False and send.sent == []
+    db.query(db.models.SystemConfig).filter_by(key="staff_email_alerts").one().value = "on"; db.commit()
+    assert alerts.review_needed("s", "b") is True and send.sent == ["kes@example.com"]
+
+
+def test_a_switched_off_system_marks_cards_unannounced_so_they_go_out_later(db):
+    _approver(db)
+    ra.run(db, alerts=Capture())
+    _card(db)
+    from escalation_engine import RoleAlerts
+    db.add(db.models.SystemConfig(key="staff_email_alerts", value="off")); db.commit()
+    assert ra.run(db, alerts=RoleAlerts(db=db, send_fn=_Sender()))["status"] == "send failed"
+    db.query(db.models.SystemConfig).filter_by(key="staff_email_alerts").one().value = "on"; db.commit()
+    sender = _Sender()
+    assert ra.run(db, alerts=RoleAlerts(db=db, send_fn=sender))["alerted"] == 1 and sender.sent == ["kes@example.com"]
+
+
+def test_an_overdue_callback_goes_to_the_callback_backup_else_the_escalation_role(db):
+    from escalation_engine import RoleAlerts
+    _assign(db, "escalation_target", "approver-backup@example.com")
+    send = _Sender()
+    RoleAlerts(db=db, send_fn=send).callback_overdue("s", "b")
+    assert send.sent == ["approver-backup@example.com"]                       # nobody is callback backup yet: as before
+    _assign(db, "callback_backup", "jackie@example.com")
+    RoleAlerts(db=db, send_fn=send).callback_overdue("s", "b")
+    assert send.sent[-1] == "jackie@example.com"

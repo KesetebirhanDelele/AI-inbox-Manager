@@ -174,6 +174,10 @@ class RoleAlerts:
 
     def _notify(self, subject: str, body: str, role: str = "approver") -> bool:
         self.sent.append(subject)
+        import roles
+        if self.to is None and not roles.staff_alerts_on(self.db):
+            logger.info(f"[staff email alerts are OFF in Settings] not sent: {subject}")
+            return False
         to = self.address_for(role)
         if not to:
             logger.warning(f"[alert for role {role}, nobody assigned] {subject}: {body}")
@@ -191,6 +195,10 @@ class RoleAlerts:
 
     def stale_drafts(self, subject: str, body: str) -> bool:
         return self._notify(subject, body, role="escalation_target")
+
+    def callback_overdue(self, subject: str, body: str) -> bool:
+        """To the callback backup; while nobody holds that role, to the escalation role (where overdue callbacks always went)."""
+        return self._notify(subject, body, role="callback_backup" if self.address_for("callback_backup") else "escalation_target")
 
     def callback_needed(self, subject: str, body: str) -> bool:
         return self._notify(subject, body, role="callback_owner")

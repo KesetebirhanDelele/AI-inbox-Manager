@@ -12,6 +12,7 @@ const RolesCard = () => {
   const [emails, setEmails] = useState<Record<string, string>>({});
   const [pilot, setPilot] = useState('');
   const [reviewAlert, setReviewAlert] = useState(true);
+  const [staffAlerts, setStaffAlerts] = useState(true);
   const [backupHours, setBackupHours] = useState('2');
 
   useEffect(() => {
@@ -19,6 +20,7 @@ const RolesCard = () => {
     setEmails(Object.fromEntries(data.roles.map((r) => [r.role, r.email])));
     setPilot(String(data.pilot_limit));
     setReviewAlert(data.review_alert_enabled);
+    setStaffAlerts(data.staff_alerts_enabled);
     setBackupHours(String(data.backup_after_hours));
   }, [data]);
 
@@ -31,7 +33,7 @@ const RolesCard = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roles'] }),
   });
   const saveAlerts = useMutation({
-    mutationFn: () => apiClient.setAlertSettings(reviewAlert, Number(backupHours)),
+    mutationFn: () => apiClient.setAlertSettings(reviewAlert, Number(backupHours), staffAlerts),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roles'] }),
   });
   const errorOf = (e: unknown) => (e as { response?: { data?: { detail?: string } } } | null)?.response?.data?.detail;
@@ -82,7 +84,16 @@ const RolesCard = () => {
         {save.isError && <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">{errorOf(save.error) || 'Could not save.'}</div>}
 
         <div className="border border-gray-200 rounded-md p-3 space-y-2">
-          <div className="font-medium text-gray-900">New-card email and backup time</div>
+          <div className="font-medium text-gray-900">Email alerts to staff</div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-900">
+            <input type="checkbox" checked={staffAlerts} onChange={(e) => setStaffAlerts(e.target.checked)} />
+            Master switch: send alert emails to the roles above (Approver, Backup approver, Callback owner, Callback backup)
+          </label>
+          <div className="text-xs text-gray-500">
+            Off stops every one of these emails (they are sent from the app's Gmail account). Students are not affected; their notices follow the approval rules.
+            Click Save below to apply. Alerts held back while it was off are sent once you switch it on.
+          </div>
+          <div className="font-medium text-gray-900 pt-2">New-card email and backup time</div>
           <div className="text-xs text-gray-500">
             When a new card needs review, the Approver is emailed (sent after each processing run). If nobody approves or rejects it within the backup
             time, the Backup approver is emailed. Nothing reaches a student until a card is approved.

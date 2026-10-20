@@ -6,7 +6,7 @@ message and says a team member will call back within one business hour; THE AI N
 
   * poll_callbacks   reads the receptionist's newest calls from GHL (read-only), keeps the ones about an interview, finds the student (by the GHL contact's email
                      or either phone number), stores a CallbackRequest and emails the callback_owner ROLE.
-  * check_overdue    emails the escalation_target ROLE once when a callback is still open after one business hour.
+  * check_overdue    emails the callback_backup ROLE (escalation_target while nobody holds it) once when a callback is still open after one business hour.
   * The dashboard shows "Callback needed" on the student's interviews until the callback owner clicks "Called back".
 
 Nothing is written to GHL and nothing is sent to the student. Calls from before the feature was switched on are recorded as a baseline and never alerted.
@@ -196,7 +196,7 @@ def poll_callbacks(db, client, now: datetime, alerts, agent_id: str, hours=None,
 
 
 def check_overdue(db, now: datetime, alerts, hours=None, env: Optional[Dict[str, str]] = None) -> int:
-    """Email the escalation role once for each callback still open after one business hour. Returns how many were reported."""
+    """Email the callback backup (else the escalation role) once for each callback still open after one business hour. Returns how many were reported."""
     import models as M
     from business_hours import BusinessHours, business_minutes_between
     hours = hours or BusinessHours.from_env(env)
@@ -214,8 +214,8 @@ def check_overdue(db, now: datetime, alerts, hours=None, env: Optional[Dict[str,
             "Below is why each one called and what we have already told them, so you can call with the full picture.\n\n"
             + "\n\n".join(blocks) +
             "\n\nPlease call them yourself today, then reply \"called back\" so it can be closed. The callback owner has already been told. "
-            "You receive this because you hold the escalation role.")
-    if alerts.stale_drafts(f"{len(late)} interview callback(s) overdue", body):
+            "You receive this because you are the callback backup.")
+    if alerts.callback_overdue(f"{len(late)} interview callback(s) overdue", body):
         for r in late:
             r.sla_alerted_at = now
         db.commit()
