@@ -1469,3 +1469,6 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Settings: master switch in `PUT /api/roles/alert-settings` + `RolesCard.tsx` (needs `--build-web`); the new role shows automatically in the role list.
 - Tests: 3 new in `tests/execution/test_review_alerts.py`, role list test updated, 1 setting test updated. Main suite and dashboard suite pass, `tsc` clean.
 - Not done here (server/settings steps): assign emails to Backup approver and Callback backup; move `inboxgenius-stale` cron back so the approver backup runs.
+
+### 2026-10-20: stale-draft (approver backup) cron switched back on (docs only; server file moved, no code change)
+- On the server `/etc/cron.d/inboxgenius-stale` is back (moved from `/opt/ai-inbox-manager/disabled-cron/`). RUNBOOK §16 updated. Watch `/opt/ai-inbox-manager/logs/stale.log` after the first business-hours run.
