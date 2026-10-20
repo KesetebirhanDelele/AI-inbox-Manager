@@ -13,11 +13,19 @@ type Card = {
   warnings: string[];
   blockers: string[];
   suggestion?: { action: string; text: string } | null;
+  draft: { subject?: string; body?: string; recipient_email?: string } | null;
   can_approve: boolean;
   will_happen: string;
   preview: { call: string; text: string; email_subject?: string } | null;
 };
-type View = { state: string; used_action?: string; draft_status?: string; delivery_live?: boolean; card?: Card };
+type View = {
+  state: string;
+  used_action?: string;
+  draft_status?: string;
+  delivery_live?: boolean;
+  card?: Card;
+  original_email?: { subject?: string; from_address?: string; received_date?: string; text?: string } | null;
+};
 
 const MESSAGES: Record<string, string> = {
   used: 'This link was already used.',
@@ -28,6 +36,11 @@ const MESSAGES: Record<string, string> = {
 const ApprovePage = () => {
   const { token = '' } = useParams();
   const [view, setView] = useState<View | null>(null);
+  const [gate, setGate] = useState<{ sent_to?: string } | null>(null);
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [gateBusy, setGateBusy] = useState(false);
+  const [gateMessage, setGateMessage] = useState('');
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState<'approve' | 'reject' | null>(null);
   const [reason, setReason] = useState('');
@@ -48,7 +61,9 @@ const ApprovePage = () => {
       .then(async (r) => {
         if (r.status === 404) throw new Error('This link is not valid.');
         if (!r.ok) throw new Error('Could not load this card. Try again, or open the Review page in the app.');
-        setView(await r.json());
+        const data = await r.json();
+        if (data.state === 'needs_code') setGate({ sent_to: data.sent_to });
+        else setView(data);
       })
       .catch((e) => setError(e.message));
   }, [token]);
@@ -60,7 +75,7 @@ const ApprovePage = () => {
       const r = await fetch(`/api/approve-links/${encodeURIComponent(token)}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: true, reason: action === 'reject' ? reason || undefined : undefined }),
+        body: JSON.stringify({ confirm: true, code, reason: action === 'reject' ? reason || undefined : undefined }),
       });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Could not complete this. Open the Review page in the app.');
@@ -73,6 +88,42 @@ const ApprovePage = () => {
     }
   };
 
+  const sendCode = async () => {
+    setGateBusy(true);
+    setGateMessage('');
+    try {
+      const r = await fetch(`/api/approve-links/${encodeURIComponent(token)}/send-code`, { method: 'POST' });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Could not send the code.');
+      setCodeSent(true);
+      setGateMessage(`A code was emailed to ${body.sent_to}. It works for ${body.valid_minutes} minutes. Switch to your email app, copy it, and come back to this page.`);
+    } catch (e) {
+      setGateMessage((e as Error).message);
+    } finally {
+      setGateBusy(false);
+    }
+  };
+
+  const openWithCode = async () => {
+    setGateBusy(true);
+    setGateMessage('');
+    try {
+      const r = await fetch(`/api/approve-links/${encodeURIComponent(token)}/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Could not open the card.');
+      setGate(null);
+      setView(body);
+    } catch (e) {
+      setGateMessage((e as Error).message);
+    } finally {
+      setGateBusy(false);
+    }
+  };
+
   const shell = (children: React.ReactNode) => (
     <div className="min-h-screen bg-gray-100 px-4 py-6">
       <div className="max-w-xl mx-auto space-y-4">{children}</div>
@@ -80,6 +131,27 @@ const ApprovePage = () => {
   );
 
   if (error) return shell(<div className="bg-white rounded-lg shadow p-4 text-red-800">{error}</div>);
+  if (gate) {
+    return shell(
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <div className="text-lg font-semibold text-gray-900">Confirm it is you</div>
+        <div className="text-sm text-gray-700">
+          For your security we email a 6-digit code to <strong>{gate.sent_to}</strong>. Nothing is shown until you enter it, and each decision needs a fresh code.
+        </div>
+        <button type="button" disabled={gateBusy} onClick={sendCode}
+          className="w-full py-3 rounded-md bg-blue-600 text-white font-medium disabled:opacity-50">{codeSent ? 'Email me a new code' : 'Email me a code'}</button>
+        {codeSent && (
+          <div className="space-y-2">
+            <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code"
+              placeholder="6-digit code" className="w-full px-3 py-3 border border-gray-300 rounded-md text-lg tracking-widest text-center" />
+            <button type="button" disabled={gateBusy || code.length !== 6} onClick={openWithCode}
+              className="w-full py-3 rounded-md bg-green-600 text-white font-medium disabled:opacity-40">Show the card</button>
+          </div>
+        )}
+        {gateMessage && <div className="text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded p-2">{gateMessage}</div>}
+      </div>
+    );
+  }
   if (!view) return shell(<div className="bg-white rounded-lg shadow p-4 text-gray-600">Loading...</div>);
   if (done) return shell(<div className="bg-white rounded-lg shadow p-4 text-green-800 font-medium">{done}</div>);
   if (view.state !== 'ready' || !view.card) {
@@ -112,19 +184,36 @@ const ApprovePage = () => {
       {c.blockers.map((b) => <div key={b} className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{b}</div>)}
       {c.warnings.map((w) => <div key={w} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-900">{w}</div>)}
 
-      {c.email && (
-        <div className="bg-white rounded-lg shadow p-4 text-sm space-y-1">
-          <div className="text-gray-500">From {c.email.from_address} · {c.email.subject}</div>
-          <div className="whitespace-pre-wrap text-gray-800 max-h-48 overflow-y-auto">{c.email.excerpt}</div>
+      {(view.original_email || c.email) && (
+        <div className="bg-white rounded-lg shadow p-4 text-sm space-y-2">
+          <div className="font-medium text-gray-900">The original email we received</div>
+          <div className="text-gray-500">
+            From {(view.original_email || c.email)?.from_address}
+            {view.original_email?.received_date ? ` · ${new Date(view.original_email.received_date.endsWith('Z') ? view.original_email.received_date : `${view.original_email.received_date}Z`).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} CT` : ''}
+          </div>
+          <div className="text-gray-800 font-medium">{(view.original_email || c.email)?.subject}</div>
+          <div className="whitespace-pre-wrap text-gray-800 max-h-96 overflow-y-auto border border-gray-100 rounded p-2 bg-gray-50">
+            {view.original_email?.text || c.email?.excerpt}
+          </div>
         </div>
       )}
 
       {c.preview && (
-        <div className="bg-white rounded-lg shadow p-4 text-sm space-y-1">
-          <div className="font-medium text-gray-900">What the student will receive</div>
-          <div><span className="text-gray-500">Call: </span>{c.preview.call}</div>
-          <div><span className="text-gray-500">Text: </span>{c.preview.text}</div>
-          {c.preview.email_subject && <div><span className="text-gray-500">Email: </span>{c.preview.email_subject}</div>}
+        <div className="bg-white rounded-lg shadow p-4 text-sm space-y-3">
+          <div className="font-medium text-gray-900">Exactly what the student will receive</div>
+          <div>
+            <div className="text-gray-500">Phone call (spoken by the AI agent)</div>
+            <div className="whitespace-pre-wrap text-gray-800">{c.preview.call}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Text message</div>
+            <div className="whitespace-pre-wrap text-gray-800">{c.preview.text}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Email{c.draft?.recipient_email ? ` to ${c.draft.recipient_email}` : ''}</div>
+            <div className="text-gray-800 font-medium">{c.draft?.subject || c.preview.email_subject}</div>
+            {c.draft?.body && <div className="whitespace-pre-wrap text-gray-800 max-h-96 overflow-y-auto border border-gray-100 rounded p-2 bg-gray-50 mt-1">{c.draft.body}</div>}
+          </div>
         </div>
       )}
 

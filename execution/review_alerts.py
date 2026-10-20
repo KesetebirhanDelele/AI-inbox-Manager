@@ -97,7 +97,7 @@ def run(db, now: Optional[datetime] = None, alerts=None, env: Optional[Dict[str,
     more = f"\n...and {len(new) - MAX_LISTED} more." if len(new) > MAX_LISTED else ""
     body = (f"{len(new)} new student notification card(s) are waiting for your decision (approve, edit or reject):\n\n" + "\n".join(lines) + more +
             f"\n\nReview them here: {DASHBOARD_URL}\n"
-            "Each link opens the card with its warnings and asks you to confirm before anything happens; it works once and expires in 24 hours. "
+            "Each link first emails a 6-digit code to this address, so only you can open it; then it shows the card and asks you to confirm. It works once and expires in 24 hours. "
             "Nothing is sent to a student until you approve. If nobody decides within the backup time, the backup person is told.")
     sent = alerts.review_needed(f"{len(new)} new notification card(s) to review", body)
     if sent:

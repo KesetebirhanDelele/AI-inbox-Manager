@@ -563,3 +563,20 @@ class ApprovalLink(Base):
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime)
     used_action = Column(String(20))                        # approved | rejected
+
+
+class ApprovalCode(Base):
+    """
+    The one-time 6-digit code that proves the person opening an approval link can read the approver's mailbox. Only a salted hash is stored. A code lasts 10 minutes,
+    allows 5 wrong tries, and is used up by the approval or rejection it unlocks, so every decision needs a fresh code.
+    """
+    __tablename__ = "approval_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    link_id = Column(Integer, ForeignKey("approval_links.id"), nullable=False, index=True)
+    salt = Column(String(32), nullable=False)
+    code_hash = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    consumed_at = Column(DateTime)

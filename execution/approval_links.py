@@ -63,3 +63,63 @@ def link_state(link, now: Optional[datetime] = None) -> str:
     if link.expires_at <= now:
         return "expired"
     return "ok"
+
+
+# ── the one-time email code ────────────────────────────────────────────────────────────────
+
+CODE_MINUTES = 10
+MAX_WRONG_TRIES = 5
+MAX_CODES_PER_HOUR = 3          # per link: nobody can flood the approver's inbox from a link
+
+
+class TooManyCodes(Exception):
+    pass
+
+
+def _code_hash(salt: str, code: str) -> str:
+    return hashlib.sha256(f"{salt}:{(code or '').strip()}".encode("utf-8")).hexdigest()
+
+
+def issue_code(db, link, now: Optional[datetime] = None) -> str:
+    """A new 6-digit code for this link (the earlier one stops working). Raises TooManyCodes after MAX_CODES_PER_HOUR in an hour."""
+    import models as M
+    now = now or datetime.utcnow()
+    recent = db.query(M.ApprovalCode).filter(M.ApprovalCode.link_id == link.id, M.ApprovalCode.created_at >= now - timedelta(hours=1)).count()
+    if recent >= MAX_CODES_PER_HOUR:
+        raise TooManyCodes()
+    for old in db.query(M.ApprovalCode).filter(M.ApprovalCode.link_id == link.id, M.ApprovalCode.consumed_at.is_(None)).all():
+        old.consumed_at = now                                   # only the newest code can unlock the link
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    salt = secrets.token_hex(8)
+    db.add(M.ApprovalCode(link_id=link.id, salt=salt, code_hash=_code_hash(salt, code), created_at=now,
+                          expires_at=now + timedelta(minutes=CODE_MINUTES)))
+    db.commit()
+    return code
+
+
+def check_code(db, link, code: str, now: Optional[datetime] = None, consume: bool = False) -> str:
+    """ok | wrong | expired | locked | none (no code was ever sent). A wrong try is counted; after MAX_WRONG_TRIES the code is dead."""
+    import hmac
+    import models as M
+    now = now or datetime.utcnow()
+    row = (db.query(M.ApprovalCode).filter(M.ApprovalCode.link_id == link.id, M.ApprovalCode.consumed_at.is_(None))
+           .order_by(M.ApprovalCode.id.desc()).first())
+    if row is None:
+        return "none"
+    if row.expires_at <= now:
+        return "expired"
+    if row.attempts >= MAX_WRONG_TRIES:
+        return "locked"
+    if not hmac.compare_digest(row.code_hash, _code_hash(row.salt, code)):
+        row.attempts += 1
+        db.commit()
+        return "locked" if row.attempts >= MAX_WRONG_TRIES else "wrong"
+    if consume:
+        row.consumed_at = now
+        db.commit()
+    return "ok"
+
+
+def mask_email(email: str) -> str:
+    name, _, domain = (email or "").partition("@")
+    return f"{name[:2]}***@{domain}" if domain else "***"

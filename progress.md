@@ -1520,3 +1520,14 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 
 ### 2026-10-20: mock notification tool can take the student from the roster (branch `feat/mock-from-roster`)
 - Kes has no student row (his record is on the roster sheet only). `mock_notification.py --from-roster "<name>"` finds exactly one roster entry, shows it masked, and with `--create` adds the student row (assigned Gmail = first roster email, personal = last; no phone, GHL is found by email) then the mock card. Tests: 2 new (1111 passed in the main suite). Backend only.
+
+### 2026-10-20: mock test passed end to end; the approval-link page shows the full original email and the student's whole email (branch `feat/link-full-content`, not merged or deployed)
+- Mock test (card 147, student 29 = Kes from the roster): alert email delivered, approved through the link (`link:kesetebirhan@gmail.com`), 3 sends handed to GHL, the text arrived, reply "Yes" at about 17:53 UTC, sequence acknowledged by sms at 17:55, 6 pending steps cancelled. Phone call and email delivery were not reported either way.
+- Kes asked that the link carry the original email and what the student sees. `GET /api/approve-links/{token}` now also returns `original_email` (subject, sender, time, cleaned full text up to 20,000 characters; the app's card shows the first 1,500).
+  `ApprovePage.tsx` shows it, plus the call script, the text, and the student's email subject AND full body. Test added; dashboard suite 287 passed, `tsc` clean. Needs `--build-web`.
+
+### 2026-10-20: the approval link needs a one-time code emailed to the approver (same branch `feat/link-full-content`, not merged or deployed)
+- Why: Kes: only the approver may approve, a forwarded link must not work; Gmail opens links in its own browser but he can minimise it to read the code.
+- New table `approval_codes` (migration 011): salted hash, 10 minutes, 5 wrong tries, used up by the decision it unlocks. Router rewritten: GET shows state only; `send-code` (a button on the page, so scanners send nothing; 3 codes per hour per link; the code email is a security email and ignores the staff-alert master switch);
+  `open` {code} returns the card and the full original email; approve/reject need confirm + code. A refused approval keeps the code and link usable. `ApprovePage.tsx`: "Confirm it is you" screen with "Email me a code", code box, "Show the card". The alert email explains the code step.
+- Tests: `services/dashboard/tests/test_approval_links.py` rewritten (18); dashboard and main suites pass; `tsc` clean. Needs `--build-web`.
