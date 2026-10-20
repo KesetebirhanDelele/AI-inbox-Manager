@@ -1508,3 +1508,12 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
   still waiting, no response (plan finished), opted out, stopped by approver, interview came first, average minutes to acknowledge. `students_notified` unchanged.
 - `ReportsPage.tsx`: new "Student follow-up: did they get it?" card under the Overview tiles. Needs `--build-web`.
 - Tests: `services/dashboard/tests/test_follow_up_report.py` (3). Dashboard suite 277 passed, `tsc` clean.
+
+### 2026-10-20: approve from the alert email with a secure link (branch `feat/approve-by-link`, not merged or deployed)
+- Why: approving needed a login to the dashboard; Kes wants to approve from his phone via the email. Approve-by-reply was rejected as unsafe (anyone who can send mail could trigger real calls/texts); a link needs a second tap.
+- `execution/approval_links.py` (create/find/state; token = 32 random bytes, stored as SHA-256, 24h, single use), model `ApprovalLink` + migration 010 (new table only), `routers/approval_links.py` (public: GET shows the card, POST approve/reject
+  with `confirm: true`, reusing `notifications.approve_notification` / `reject_notification`, so every guard still applies; a refused approval leaves the link usable; actions logged as `link:<email>`).
+  `review_alerts` and `stale_draft_alerts` add a link per card (a link failure never stops the alert). Frontend: public route `/approve/:token`, `ApprovePage.tsx` (phone-sized, shows warnings/preview, confirm step, LIVE/Shadow banner). Needs `--build-web`.
+- `execution/mock_notification.py`: `--find`, dry run, `--create` makes a marked mock card for ONE existing student and sends the approver alert; approving it with live delivery ON really contacts that student.
+- Tests: `services/dashboard/tests/test_approval_links.py` (9), 3 in `tests/execution/test_review_alerts.py`, `tests/execution/test_mock_notification.py` (5). Main suite 1109, dashboard 286 passed, `tsc` clean.
+- Not verified live: real email delivery of the link and the page on a phone (that is the test after deploy).

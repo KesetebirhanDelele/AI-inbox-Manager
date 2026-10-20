@@ -85,12 +85,19 @@ def run(db, now: datetime, alerts=None, hours=None, env: Optional[Dict[str, str]
         return {"status": "no escalation role assigned", "alerted": 0, "stale": len(stale)}
 
     lines = []
+    backup = roles.role_email(db, "escalation_target", env)
     for d in stale[:MAX_LISTED]:
         event = db.get(M.InterviewEvent, d.interview_event_id)
+        try:
+            import approval_links
+            link = approval_links.create_link(db, d.id, "escalation_target", backup, now, env)
+        except Exception:                               # no link must never stop the alert
+            link = ""
         student = db.get(M.Student, event.student_id) if event and event.student_id else None
         age = business_minutes_between(d.created_at, now, hours)
         lines.append(f"- {(student.full_name if student else 'Unknown student')} / "
-                     f"{(event.company_name if event else '') or 'unknown company'}: waiting {age / 60:.1f} business hours")
+                     f"{(event.company_name if event else '') or 'unknown company'}: waiting {age / 60:.1f} business hours"
+                     + (f"\n    Review and approve on your phone: {link}" if link else ""))
     more = f"\n...and {len(stale) - MAX_LISTED} more." if len(stale) > MAX_LISTED else ""
     body = (f"{len(stale)} student notification draft(s) have been waiting for approval for more than "
             f"{threshold / 60:g} business hours:\n\n" + "\n".join(lines) + more +

@@ -189,3 +189,53 @@ def test_an_overdue_callback_goes_to_the_callback_backup_else_the_escalation_rol
     _assign(db, "callback_backup", "jackie@example.com")
     RoleAlerts(db=db, send_fn=send).callback_overdue("s", "b")
     assert send.sent[-1] == "jackie@example.com"
+
+
+# ── the emailed link ───────────────────────────────────────────────────────────────────────────
+
+def test_the_alert_carries_one_working_link_per_card_and_stores_only_hashes(db):
+    import approval_links
+    _approver(db)
+    ra.run(db, alerts=Capture())
+    _card(db, "Acme"); _card(db, "Beta")
+    cap = Capture()
+    ra.run(db, alerts=cap, env={"DASHBOARD_BASE_URL": "https://example.test"})
+    body = cap.calls[0][1]
+    links = [w for w in body.split() if w.startswith("https://example.test/approve/")]
+    assert len(links) == 2 and links[0] != links[1]
+    rows = db.query(db.models.ApprovalLink).all()
+    assert len(rows) == 2 and {r.role for r in rows} == {"approver"} and {r.recipient_email for r in rows} == {"kes@example.com"}
+    for url in links:
+        token = url.rsplit("/", 1)[1]
+        assert approval_links.find_link(db, token) is not None and token not in {r.token_hash for r in rows}
+
+
+def test_a_link_problem_never_stops_the_alert(db, monkeypatch):
+    import approval_links
+    _approver(db)
+    ra.run(db, alerts=Capture())
+    _card(db)
+    monkeypatch.setattr(approval_links, "create_link", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    cap = Capture()
+    out = ra.run(db, alerts=cap)
+    assert out["alerted"] == 1 and "approve/" not in cap.calls[0][1] and "Sehrish" in cap.calls[0][1]
+
+
+def test_the_backup_alert_links_belong_to_the_backup(db):
+    from datetime import timedelta
+    db.add(db.models.RoleAssignment(role="escalation_target", email="jackie@example.com", active=True)); db.commit()
+    sd.run(db, datetime(2026, 10, 6, 15, 0), alerts=_StaleCapture())                                 # baseline
+    _, d = _card(db)
+    d.created_at = datetime(2026, 10, 6, 14, 0); db.commit()                                         # 09:00 CDT, three business hours before
+    cap = _StaleCapture()
+    out = sd.run(db, datetime(2026, 10, 6, 18, 0), alerts=cap, env={"DASHBOARD_BASE_URL": "https://example.test"})   # 13:00 CDT
+    assert out["status"] == "sent" and "https://example.test/approve/" in cap.body
+    assert {r.role for r in db.query(db.models.ApprovalLink).all()} == {"escalation_target"}
+
+
+class _StaleCapture:
+    body = ""
+
+    def stale_drafts(self, subject, body):
+        self.body = body
+        return True

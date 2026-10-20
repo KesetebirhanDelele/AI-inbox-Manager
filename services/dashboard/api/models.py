@@ -545,3 +545,21 @@ class SystemConfig(Base):
     value = Column(Text)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String(100))
+
+
+class ApprovalLink(Base):
+    """
+    A secure link in an alert email that opens ONE card for review and approval without logging in. Only the SHA-256 of the token is stored (the token itself
+    is only in the email). Valid for a limited time; used up by the first approve or reject; refused once the card has been decided another way.
+    """
+    __tablename__ = "approval_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    draft_id = Column(Integer, ForeignKey("notification_drafts.id"), nullable=False, index=True)
+    role = Column(String(30), nullable=False)               # approver | escalation_target (who the email went to)
+    recipient_email = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime)
+    used_action = Column(String(20))                        # approved | rejected

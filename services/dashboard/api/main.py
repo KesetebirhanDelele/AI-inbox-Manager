@@ -252,7 +252,7 @@ async def root():
 
 
 # Import routers
-from routers import approvals, inbox, stats, whitelist, emails, interviews, notifications, checklist, schedule, role_settings, callback_requests
+from routers import approvals, inbox, stats, whitelist, emails, interviews, notifications, checklist, schedule, role_settings, callback_requests, approval_links
 
 # Register routers
 app.include_router(approvals.router, prefix="/api/approvals", tags=["approvals"])
@@ -264,6 +264,7 @@ app.include_router(interviews.router, prefix="/api/interviews", tags=["interview
 app.include_router(role_settings.router, prefix="/api/roles", tags=["roles"])
 app.include_router(callback_requests.router, prefix="/api/callbacks", tags=["callbacks"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(approval_links.router, prefix="/api/approve-links", tags=["approve-links"])   # no login: the token in the emailed link is the key
 app.include_router(checklist.router, prefix="/api/checklist", tags=["checklist"])
 app.include_router(schedule.router, prefix="/api/schedule", tags=["schedule"])
 

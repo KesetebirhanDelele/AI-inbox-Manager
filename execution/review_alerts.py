@@ -35,7 +35,7 @@ def enabled(db) -> bool:
     return roles.get_setting(db, ENABLED_KEY, "on").strip().lower() not in ("off", "false", "0", "no")
 
 
-def _line(db, draft) -> str:
+def _line(db, draft, link: str = "") -> str:
     import models as M
     event = db.get(M.InterviewEvent, draft.interview_event_id)
     student = db.get(M.Student, event.student_id) if event and event.student_id else None
@@ -51,6 +51,8 @@ def _line(db, draft) -> str:
             text += f"\n    Suggested: {hint['action'].capitalize()}. {hint['text']}"
     except Exception:                                   # a hint must never stop the alert
         pass
+    if link:
+        text += f"\n    Review and approve on your phone: {link}"
     return text
 
 
@@ -82,10 +84,20 @@ def run(db, now: Optional[datetime] = None, alerts=None, env: Optional[Dict[str,
         alerts.review_needed("New cards waiting for review", f"{len(new)} new card(s) but nobody holds the approver role.")
         return {"status": "no approver assigned", "alerted": 0, "new": len(new)}
 
-    lines: List[str] = [_line(db, d) for d in new[:MAX_LISTED]]
+    approver = roles.role_email(db, "approver", env)
+    lines: List[str] = []
+    for d in new[:MAX_LISTED]:
+        try:
+            import approval_links
+            link = approval_links.create_link(db, d.id, "approver", approver, now, env)
+        except Exception as exc:                        # no link must never stop the alert; the app still works
+            logger.warning(f"approval link not created for card {d.id}: {exc}")
+            link = ""
+        lines.append(_line(db, d, link))
     more = f"\n...and {len(new) - MAX_LISTED} more." if len(new) > MAX_LISTED else ""
     body = (f"{len(new)} new student notification card(s) are waiting for your decision (approve, edit or reject):\n\n" + "\n".join(lines) + more +
             f"\n\nReview them here: {DASHBOARD_URL}\n"
+            "Each link opens the card with its warnings and asks you to confirm before anything happens; it works once and expires in 24 hours. "
             "Nothing is sent to a student until you approve. If nobody decides within the backup time, the backup person is told.")
     sent = alerts.review_needed(f"{len(new)} new notification card(s) to review", body)
     if sent:
