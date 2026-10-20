@@ -1482,3 +1482,9 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Tests: 2 in `test_ghl_channels.py` (env live + switch off = shadow; on then off; missing db = off), 1 in `test_notifications.py`, 5 in `services/dashboard/tests/test_roles.py`; 3 old tests updated to turn
   the switch on. Main suite 1094 passed, dashboard 270 passed, `tsc` clean.
 - NOT done: arming the server (three env values + container restart). Until then the switch cannot be turned on and everything stays shadow. Pilot limit (3, all used) still applies.
+
+### 2026-10-20: server armed for live delivery; health check follows the Settings switch (branch `fix/health-check-follows-live-switch`)
+- Armed the server (Kes's go): three `GHL_WRITE_*` lines added to the server `.env` (backup `.env.bak.20261020161936`), api restarted, health OK. Settings switch still OFF = shadow.
+- Found right after: `health_check._shadow_mode` looked only at the env, so once armed it would treat the system as live and report approved-but-unsent drafts as "stuck" while the switch is off.
+  It now needs armed AND the Settings switch (`_shadow_mode(db)`). Test added (armed + switch off = shadow; on = live); main suite 1095 passed.
+- Known: `ghl_test_call.py --send` and `ghl_add_additional_email.py --apply` are manual and env-only, so they are live on the armed server by design.

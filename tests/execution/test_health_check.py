@@ -177,7 +177,26 @@ def test_shadow_mode_detection_follows_the_switches(monkeypatch):
     monkeypatch.setenv("GHL_WRITE_MODE", "live")
     monkeypatch.setenv("GHL_WRITE_SHADOW_LOG_ONLY", "false")
     monkeypatch.setenv("GHL_WRITE_NOTIFY_FIELDS", "true")
-    assert hc._shadow_mode() is False
+    assert hc._shadow_mode() is True                                       # armed, but no Settings switch (no database): still shadow
+
+
+def test_armed_with_the_settings_switch_on_is_not_shadow_and_off_is(monkeypatch):
+    api_dir = _EXECUTION_DIR.parents[0] / "services" / "dashboard" / "api"
+    monkeypatch.syspath_prepend(str(api_dir))
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    import models
+    engine = create_engine("sqlite://")
+    models.Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "true")
+    monkeypatch.setenv("GHL_WRITE_MODE", "live")
+    monkeypatch.setenv("GHL_WRITE_SHADOW_LOG_ONLY", "false")
+    monkeypatch.setenv("GHL_WRITE_NOTIFY_FIELDS", "true")
+    assert hc._shadow_mode(db) is True                                     # armed, switch off
+    db.add(models.SystemConfig(key="live_delivery", value="on")); db.commit()
+    assert hc._shadow_mode(db) is False                                    # armed and switched on: really live
 
 
 def test_retired_category_events_are_not_counted_as_the_subclassifier_failing(monkeypatch):

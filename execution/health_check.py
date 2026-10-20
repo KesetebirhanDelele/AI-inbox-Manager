@@ -134,14 +134,15 @@ def evaluate(m: Dict[str, Any]) -> List[Finding]:
     return out
 
 
-def _shadow_mode() -> bool:
-    """True while the notification flow is on but every send is only logged (the three GHL write switches are not all live)."""
+def _shadow_mode(db=None) -> bool:
+    """True while the notification flow is on but every send is only logged: the server is not armed (three GHL write switches) OR the Settings switch is off."""
     import os
     if os.getenv("NOTIFY_ESCALATION_ENABLED", "").strip().lower() not in ("1", "true", "yes"):
         return False
     try:
         import ghl_client
-        return not ghl_client.GhlConfig.from_env().is_live
+        import roles
+        return not (ghl_client.GhlConfig.from_env().armed and roles.live_delivery_on(db))
     except Exception:
         return True
 
@@ -196,7 +197,7 @@ def collect_metrics(db, log_text: str, now: datetime) -> Dict[str, Any]:
             attempts_failed += 1
 
     return {
-        "shadow": _shadow_mode(),
+        "shadow": _shadow_mode(db),
         "events_retired_fallback": retired_fallback,
         "attempts_failed": attempts_failed,
         "permanent_deletes": count_permanent_deletes(log_text, max(since, NO_DELETE_SINCE)),
