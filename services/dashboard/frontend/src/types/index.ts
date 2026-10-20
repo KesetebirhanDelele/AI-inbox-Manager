@@ -311,7 +311,14 @@ export interface ReviewQueueItem {
   };
   draft: { subject?: string; body?: string; recipient_email?: string; status: string } | null;
   preview: { call: string; text: string; email_subject?: string } | null;
-  sequence: { status: string; started_at?: string; ack_channel?: string } | null;
+  sequence: {
+    status: string;
+    started_at?: string;
+    ack_channel?: string;
+    ack_kind?: string;
+    can_stop?: boolean;
+    replies?: { channel: string; text: string; received_at?: string; handled_as?: string }[];
+  } | null;
 }
 
 export interface CallbackItem {

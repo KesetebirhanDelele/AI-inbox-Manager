@@ -357,6 +357,11 @@ class ApiClient {
     return response.data;
   }
 
+  async stopFollowUps(notificationId: number): Promise<any> {
+    const response = await this.client.post(`/api/notifications/${notificationId}/sequence/close`);
+    return response.data;
+  }
+
   async rejectNotification(notificationId: number, reason?: string): Promise<any> {
     const response = await this.client.post(`/api/notifications/${notificationId}/reject`, {
       reason,

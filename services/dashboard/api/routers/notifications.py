@@ -26,6 +26,7 @@ from types import SimpleNamespace
 
 from models import (
     NotificationDraft,
+    NotificationInbound,
     NotificationSequence,
     StudentVerification,
     InterviewEvent,
@@ -386,6 +387,19 @@ def _send_draft_email(draft) -> dict:
 REVIEW_MAX_AGE_DAYS = 14
 
 
+def _follow_up_in_view(db, draft_id: int, now: datetime) -> bool:
+    """An approved notice stays on the Review screen while its follow-ups run, and for 24 hours after a reply, a stop or an acknowledgement."""
+    seq = db.query(NotificationSequence).filter(NotificationSequence.draft_id == draft_id).first()
+    if seq is None:
+        return False
+    if seq.status == "active":
+        return True
+    since = now - timedelta(hours=24)
+    if (seq.ack_at and seq.ack_at >= since) or (seq.closed_at and seq.closed_at >= since):
+        return True
+    return db.query(NotificationInbound.id).filter(NotificationInbound.sequence_id == seq.id, NotificationInbound.created_at >= since).first() is not None
+
+
 @router.get("/review-queue")
 async def get_review_queue(
     include_done: bool = Query(False, description="also list notices already decided: sent, approved (plan running or finished) or rejected"),
@@ -426,7 +440,9 @@ async def get_review_queue(
         if follow_up_of is not None and not include_done:
             continue                       # a reminder/reply about an interview the student was already told about: no decision needed
         if status_ in ("sent", "rejected", "approved") and not include_done:
-            continue                       # already decided (approved: the follow-up plan is running or finished): only under "Show finished"
+            if not (status_ in ("sent", "approved") and _follow_up_in_view(db, draft.id, datetime.utcnow())):
+                continue                   # already decided and quiet: only under "Show finished"
+            # an approved notice whose follow-ups are still running (or that had a reply or stop in the last 24 hours) stays in view: it can be stopped
         # Old mail is never a decision for today: anything received more than REVIEW_MAX_AGE_DAYS ago only shows with "Show finished".
         if not include_done and email is not None and email.received_date and email.received_date < datetime.utcnow() - timedelta(days=REVIEW_MAX_AGE_DAYS):
             continue
@@ -501,7 +517,12 @@ async def get_review_queue(
         if draft is not None:
             seq = db.query(NotificationSequence).filter(NotificationSequence.draft_id == draft.id).first()
             if seq is not None:
-                sequence = {"status": seq.status, "started_at": seq.started_at, "ack_channel": seq.ack_channel}
+                replies = (db.query(NotificationInbound).filter(NotificationInbound.sequence_id == seq.id)
+                           .order_by(NotificationInbound.id.desc()).limit(8).all())
+                sequence = {"status": seq.status, "started_at": seq.started_at, "ack_channel": seq.ack_channel, "ack_kind": seq.ack_kind,
+                            "can_stop": seq.status == "active",
+                            "replies": [{"channel": r.channel, "text": (r.text or "")[:300], "received_at": r.received_at, "handled_as": r.handled_as}
+                                        for r in reversed(replies) if r.handled_as != "echo"]}
 
         items.append({
             "event_id": event.id,

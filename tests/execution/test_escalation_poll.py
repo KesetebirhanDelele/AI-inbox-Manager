@@ -127,7 +127,7 @@ def test_the_same_reply_stops_the_sequence_when_the_ai_is_live_and_confident(db)
     assert seq.status == "acknowledged" and seq.ack_kind == "ai_inferred"
 
 
-def test_a_student_with_two_open_notices_has_each_reply_handled_once_for_both(db):
+def test_a_student_with_two_open_notices_has_each_reply_handled_once_and_answers_only_one(db):
     first = started(db)
     # a second interview for the same student: same GHL contact, a newer sequence
     M = db.models
@@ -148,7 +148,7 @@ def test_a_student_with_two_open_notices_has_each_reply_handled_once_for_both(db
 
     report = poll(db, FakeConv([msg("m1", "YES")]))
     assert report.new_messages == 1 and report.stopped == 1            # one message, handled once
-    assert first.status == "acknowledged" and second.status == "acknowledged"
+    assert sorted([first.status, second.status]) == ["acknowledged", "active"]       # a YES answers ONE notice; the other position keeps its follow-ups
     assert db.query(M.NotificationInbound).count() == 1                # and recorded once, no duplicate error
 
 

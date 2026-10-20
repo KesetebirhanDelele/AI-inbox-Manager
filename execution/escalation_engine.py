@@ -489,15 +489,36 @@ def handle_inbound_reply(db, phone: str, text: str, channel: str, now: datetime,
     return handle_reply_for_sequences(db, sequences, text, channel, now, alerts, completion_fn, env)
 
 
+def pick_target(sequences, channel: str, at: Optional[datetime]):
+    """
+    Which of a student's open notices a reply answers. A text or a call does not say which interview it is about, so it is
+    attributed to the notice whose message was SENT most recently before the reply, on the same channel first, then on any channel;
+    with nothing sent before it, to the newest notice. (The email link is tied to one notice and never needs this.)
+    """
+    for ch in (channel, None):
+        best = None
+        for seq in sequences:
+            times = [a.sent_at for a in seq.attempts
+                     if a.status == "sent" and a.sent_at and (ch is None or a.channel == ch) and (at is None or a.sent_at <= at)]
+            if times and (best is None or max(times) > best[0]):
+                best = (max(times), seq)
+        if best is not None:
+            return best[1]
+    return sequences[0]
+
+
 def handle_reply_for_sequences(db, sequences, text: str, channel: str, now: datetime,
                                alerts: Optional[RoleAlerts] = None, completion_fn=None,
-                               env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                               env: Optional[Dict[str, str]] = None, received_at: Optional[datetime] = None) -> Dict[str, Any]:
     """
     Decide what one student reply means for these (active) sequences: plain rules first (YES, STOP),
     then the AI reading, which only ever stops a sequence in live mode. Shared by the webhook and the poller.
+    STOP ends every open notice (the student opted out of us). A YES or an AI-understood reply answers ONE notice, the one `pick_target` chooses;
+    the student's other notices (other positions) keep their follow-ups. The notice that was answered is returned as "target".
     """
     M = _m()
     alerts = alerts or RoleAlerts(db=db)
+    target = pick_target(sequences, channel, received_at or now)
     rule = ra.classify_by_rule(text)
     if rule == "stop":
         for seq in sequences:
@@ -508,11 +529,10 @@ def handle_reply_for_sequences(db, sequences, text: str, channel: str, now: date
         db.commit()
         return {"handled": True, "action": "opted_out", "sequences": len(sequences)}
     if rule == "yes":
-        for seq in sequences:
-            acknowledge(db, seq, channel, "explicit", now)
-        return {"handled": True, "action": "acknowledged", "kind": "explicit", "sequences": len(sequences)}
+        acknowledge(db, target, channel, "explicit", now)
+        return {"handled": True, "action": "acknowledged", "kind": "explicit", "sequences": 1, "target": target}
 
-    seq = sequences[0]                                # the most recent open notice
+    seq = target                                      # the notice this reply answers
     analysis = ra.analyze_reply(text, _interview_summary(db, seq), completion_fn=completion_fn)
     mode = ra.analysis_mode(now, env)
     stops = ra.may_stop_sequence(analysis, mode)
@@ -522,10 +542,10 @@ def handle_reply_for_sequences(db, sequences, text: str, channel: str, now: date
     db.commit()
     if stops:
         acknowledge(db, seq, "ai", "ai_inferred", now)
-        return {"handled": True, "action": "acknowledged", "kind": "ai_inferred", "mode": mode}
+        return {"handled": True, "action": "acknowledged", "kind": "ai_inferred", "mode": mode, "target": seq}
     if analysis.outcome != "understood":
         alerts.student_reply(seq, _student_name(db, seq), text, analysis.outcome)
-    return {"handled": True, "action": "recorded", "outcome": analysis.outcome, "mode": mode}
+    return {"handled": True, "action": "recorded", "outcome": analysis.outcome, "mode": mode, "target": seq}
 
 
 # ── reading replies from the student's GHL Conversations ─────────────────────
@@ -628,8 +648,8 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RoleAlerts] = None,
                 _record_inbound(db, primary, message, "echo")
                 continue
             result = handle_reply_for_sequences(db, active, message.text, message.channel, now, alerts,
-                                                completion_fn, env)
-            _record_inbound(db, primary, message, _handled_as(result))
+                                                completion_fn, env, received_at=message.received_at)
+            _record_inbound(db, result.get("target") or primary, message, _handled_as(result))
             if result.get("action") in ("acknowledged", "opted_out"):
                 report.stopped += 1
 
@@ -646,8 +666,8 @@ def poll_replies(db, now: datetime, client, alerts: Optional[RoleAlerts] = None,
             # a clear spoken "don't call me again" or a plain yes to the agent's confirmation question is decided by
             # rule (same as a STOP / YES text); anything else goes to the normal reading with the student's words
             rule_text = {"stop": "stop", "confirmed": "yes"}.get(call.outcome) or call.human_words
-            result = handle_reply_for_sequences(db, active, rule_text, "call", now, alerts, completion_fn, env)
-            _record_inbound(db, primary, record, _handled_as(result), text=call.human_words)
+            result = handle_reply_for_sequences(db, active, rule_text, "call", now, alerts, completion_fn, env, received_at=call.created_at)
+            _record_inbound(db, result.get("target") or primary, record, _handled_as(result), text=call.human_words)
             if result.get("action") in ("acknowledged", "opted_out"):
                 report.stopped += 1
     return report

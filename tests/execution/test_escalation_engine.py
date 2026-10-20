@@ -295,6 +295,7 @@ def test_shadow_mode_records_the_ais_reading_but_never_stops_the_sequence(db):
     draft, student = make_draft(db)
     seq = eng.start_sequence(db, draft, student, T0)
     out = reply(db, "saw it, I will call them tomorrow", now=datetime(2026, 10, 10))
+    assert out.pop("target") is seq                                           # the notice the reply answers
     assert out == {"handled": True, "action": "recorded", "outcome": "understood", "mode": "shadow"}
     assert seq.status == "active"
     row = db.query(db.models.ReplyAnalysis).one()
@@ -535,3 +536,74 @@ def test_a_student_ghl_cannot_find_is_listed_for_verification_once_and_a_verifie
     eng.start_sequence(db, d2, s2, T0 + timedelta(hours=3))
     eng.tick(db, T0 + timedelta(hours=3, minutes=10), ch, al)
     assert db.query(M.StudentVerification).filter_by(student_id=s2.id).one().status == "verified"
+
+
+# -- two notices for one student: a text or call YES answers ONE of them ---------------------------------
+
+def _two_notices(db):
+    """Acme (older) and Beta (newer) notices for the same student; each had its first text/call sent at a known time."""
+    M = db.models
+    draft1, student = make_draft(db)
+    first = eng.start_sequence(db, draft1, student, T0)
+    mail = M.Email(email_id="2", subject="s2", from_address="hr@beta.com", received_date=T0)
+    db.add(mail); db.flush()
+    event = M.InterviewEvent(email_id=mail.id, student_id=student.id, sub_type="Interview Request", company_name="Beta", confidence=0.9)
+    db.add(event); db.flush()
+    draft2 = M.NotificationDraft(interview_event_id=event.id, recipient_email="student@example.com", email_subject="Interview 2",
+                                 email_body="Body", email_status="approved")
+    db.add(draft2); db.commit()
+    second = eng.start_sequence(db, draft2, student, T0 + timedelta(minutes=30))
+    for seq, at in ((first, T0), (second, T0 + timedelta(minutes=30))):
+        for a in seq.attempts:
+            if a.step == "start":
+                a.status, a.sent_at = "sent", at
+    db.commit()
+    return first, second
+
+
+def _answer(db, seqs, text, channel, at):
+    return eng.handle_reply_for_sequences(db, seqs, text, channel, at, alerts(), env={}, received_at=at)
+
+
+def test_a_text_yes_answers_only_the_notice_whose_text_was_sent_last(db):
+    first, second = _two_notices(db)
+    out = _answer(db, [second, first], "Yes", "sms", T0 + timedelta(minutes=40))      # after Beta's text
+    assert out["target"] is second and second.status == "acknowledged" and first.status == "active"
+
+
+def test_a_text_yes_before_the_newer_text_answers_the_older_notice(db):
+    first, second = _two_notices(db)
+    out = _answer(db, [second, first], "Yes", "sms", T0 + timedelta(minutes=10))      # Beta's text did not exist yet
+    assert out["target"] is first and first.status == "acknowledged" and second.status == "active"
+
+
+def test_a_call_yes_is_matched_by_the_call_not_by_a_later_text(db):
+    first, second = _two_notices(db)
+    for a in second.attempts:
+        if a.step == "start" and a.channel == "call":
+            a.status = "pending"                                                       # Beta never placed its call
+    db.commit()
+    out = _answer(db, [second, first], "yes", "call", T0 + timedelta(minutes=45))
+    assert out["target"] is first                                                      # the only call sent was Acme's
+
+
+def test_with_nothing_sent_yet_the_newest_notice_is_chosen(db):
+    first, second = _two_notices(db)
+    for seq in (first, second):
+        for a in seq.attempts:
+            a.status, a.sent_at = "pending", None
+    db.commit()
+    assert _answer(db, [second, first], "yes", "sms", T0 + timedelta(hours=1))["target"] is second
+
+
+def test_stop_ends_every_open_notice_of_the_student(db):
+    first, second = _two_notices(db)
+    out = _answer(db, [second, first], "STOP", "sms", T0 + timedelta(minutes=40))
+    assert out["action"] == "opted_out" and first.status == "opted_out" and second.status == "opted_out"
+
+
+def test_the_other_notice_keeps_its_pending_follow_ups(db):
+    first, second = _two_notices(db)
+    _answer(db, [second, first], "Yes", "sms", T0 + timedelta(minutes=40))
+    assert any(a.status == "pending" for a in first.attempts)
+    assert not any(a.status == "pending" for a in second.attempts)

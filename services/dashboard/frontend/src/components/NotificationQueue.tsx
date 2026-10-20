@@ -113,6 +113,14 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
     mutationFn: (id: number) => apiClient.verifyStudent(id, { full_name: vName, phone_number: vPhone, personal_email: vEmail }),
     onSuccess: refresh,
   });
+  const [stopping, setStopping] = useState(false);
+  const stopFollowUps = useMutation({
+    mutationFn: (id: number) => apiClient.stopFollowUps(id),
+    onSuccess: () => {
+      setStopping(false);
+      refresh();
+    },
+  });
   const [rejectingStudent, setRejectingStudent] = useState(false);
   const rejectStudent = useMutation({
     mutationFn: (id: number) => apiClient.rejectStudent(id),
@@ -354,9 +362,44 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
         ))}
 
         {item.sequence && (
-          <div className="text-sm text-gray-700">
-            Follow-up status: <strong>{item.sequence.status}</strong>
-            {item.sequence.ack_channel ? ` (confirmed by ${item.sequence.ack_channel})` : ''}
+          <div className="text-sm text-gray-700 space-y-2">
+            <div>
+              Follow-up status: <strong>{item.sequence.status}</strong>
+              {item.sequence.ack_channel ? ` (confirmed by ${item.sequence.ack_channel})` : ''}
+            </div>
+            {(item.sequence.replies ?? []).length > 0 && (
+              <div className="border border-gray-200 rounded p-2 space-y-1 bg-gray-50">
+                <div className="text-xs font-semibold text-gray-600 uppercase">Student replies</div>
+                {(item.sequence.replies ?? []).map((r, i) => (
+                  <div key={i} className="text-sm">
+                    <span className="text-xs text-gray-500">{r.channel}{r.received_at ? ` · ${fmtWhen(r.received_at)}` : ''}: </span>
+                    {r.text ? <span>&ldquo;{r.text}&rdquo;</span> : <span className="italic text-gray-500">(no words captured)</span>}
+                    {r.handled_as === 'yes_rule' && <span className="ml-2 text-xs text-green-700">stopped follow-ups</span>}
+                    {r.handled_as === 'stop_rule' && <span className="ml-2 text-xs text-red-700">STOP: all contact ended</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {item.sequence.can_stop && item.draft_id !== null && (
+              <div>
+                {!stopping ? (
+                  <button type="button" onClick={() => setStopping(true)}
+                    className="px-3 py-1.5 border border-red-300 text-red-700 rounded text-sm font-medium hover:bg-red-50">
+                    Stop follow-ups
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-red-800">Stop all remaining calls, texts and emails for THIS interview only?</span>
+                    <button type="button" disabled={stopFollowUps.isPending} onClick={() => stopFollowUps.mutate(item.draft_id as number)}
+                      className="px-3 py-1.5 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                      Yes, stop
+                    </button>
+                    <button type="button" onClick={() => setStopping(false)} className="px-3 py-1.5 border border-gray-300 rounded text-sm">Cancel</button>
+                  </div>
+                )}
+                {stopFollowUps.isError && <div className="text-sm text-red-800">Could not stop the follow-ups.</div>}
+              </div>
+            )}
           </div>
         )}
 

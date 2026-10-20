@@ -1488,3 +1488,13 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Found right after: `health_check._shadow_mode` looked only at the env, so once armed it would treat the system as live and report approved-but-unsent drafts as "stuck" while the switch is off.
   It now needs armed AND the Settings switch (`_shadow_mode(db)`). Test added (armed + switch off = shadow; on = live); main suite 1095 passed.
 - Known: `ghl_test_call.py --send` and `ghl_add_additional_email.py --apply` are manual and env-only, so they are live on the armed server by design.
+
+### 2026-10-20: text/call YES answers one notice, Stop button, replies on the card (branch `feat/reply-matching-stop-button`, not merged or deployed)
+- Why: Kenya's first live test: the text "Yes" stopped the whole sequence. With several open notices (different positions) the code acknowledged ALL of them for one text.
+  Kes: a YES to one must not turn off the others; need a manual stop per interview; want to see replies on the dashboard.
+- `escalation_engine.pick_target` + `handle_reply_for_sequences(received_at=...)`: YES / AI-understood answer one notice (most recent send on the same channel before the reply, else any channel, else newest);
+  STOP still stops all. The inbound row is recorded on the answered notice. The email "I got this" link was already per notice.
+- Review queue: approved notices with running follow-ups (or a reply/ack/stop in the last 24h) are listed by default; `sequence` now has `can_stop`, `ack_kind` and the last replies.
+  `NotificationQueue.tsx`: "Student replies" box and a confirmed "Stop follow-ups" button (calls the existing close endpoint). Needs `--build-web`.
+- Tests: 6 new in `tests/execution/test_escalation_engine.py`, 4 new in `services/dashboard/tests/test_follow_up_view.py`; 2 old expectations updated (YES answers one notice; target in the result). Main suite 1101, dashboard 274 passed, `tsc` clean.
+- Server step (needs Kes's go at deploy): `REPLY_AI_MODE=live` in the server `.env` (shadow period ended 2026-10-16, default `REPLY_AI_SHADOW_UNTIL`), so an AI-read confident "understood" reply stops follow-ups.
