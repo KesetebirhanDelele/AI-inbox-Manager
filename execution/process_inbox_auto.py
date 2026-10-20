@@ -1673,6 +1673,15 @@ def process_unread_emails(limit: Optional[int] = None, criteria: str = "UNSEEN")
         _log_process_run(stats, summary_file, status=_run_status(stats))
         _run_logged = True
 
+        # Tell the approver about new cards waiting for review (an email problem never fails the run).
+        try:
+            import review_alerts
+            _alert_db = get_db_session()
+            if _alert_db is not None:
+                logger.info(f"Review alert: {review_alerts.run(_alert_db)}")
+        except Exception as _alert_err:
+            logger.warning(f"Review alert failed (the run is unaffected): {_alert_err}")
+
         return stats
 
     except Exception as e:

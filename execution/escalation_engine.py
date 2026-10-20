@@ -186,6 +186,9 @@ class RoleAlerts:
         result = send(recipient_email=to, subject=f"[InboxGenius] {subject}", body=body, bcc="")
         return result.get("status") == "sent"
 
+    def review_needed(self, subject: str, body: str) -> bool:
+        return self._notify(subject, body, role="approver")
+
     def stale_drafts(self, subject: str, body: str) -> bool:
         return self._notify(subject, body, role="escalation_target")
 

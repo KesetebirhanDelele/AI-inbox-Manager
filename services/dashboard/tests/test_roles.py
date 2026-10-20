@@ -68,3 +68,19 @@ class TestPilotLimit:
         with patch("send_notification.send_email", return_value={"status": "sent"}):
             for n in range(2):
                 assert client.post(f"/api/notifications/{self._draft(db, n).id}/approve", cookies=auth_cookies).status_code == 200
+
+
+class TestAlertSettings:
+    def test_defaults_are_on_and_two_hours(self, client, db, auth_cookies):
+        data = client.get("/api/roles", cookies=auth_cookies).json()
+        assert data["review_alert_enabled"] is True and data["backup_after_hours"] == 2
+
+    def test_the_switch_and_the_backup_time_are_saved_without_a_deploy(self, client, db, auth_cookies):
+        r = client.put("/api/roles/alert-settings", json={"review_alert_enabled": False, "backup_after_hours": 3.5}, cookies=auth_cookies)
+        assert r.status_code == 200
+        data = client.get("/api/roles", cookies=auth_cookies).json()
+        assert data["review_alert_enabled"] is False and data["backup_after_hours"] == 3.5
+
+    def test_a_silly_backup_time_is_refused(self, client, db, auth_cookies):
+        for hours in (0, -1, 500):
+            assert client.put("/api/roles/alert-settings", json={"review_alert_enabled": True, "backup_after_hours": hours}, cookies=auth_cookies).status_code == 422

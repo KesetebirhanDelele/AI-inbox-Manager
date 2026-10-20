@@ -1449,3 +1449,14 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - `interviews.py` `_verdict` and `stats.py` `count_interview_requests`: an event of a student with verification `rejected` is `not_interview` (cross) and not counted in the tile.
 - Test: 1 added in `services/dashboard/tests/test_upcoming_verdict.py`. Dashboard suite 261 passed. Backend only.
 - Open question for Kes: if Olukayode IS one of ours, the student rejection was a mistake and must be undone.
+
+### 2026-10-20: email the approver when a new card needs review; backup after 2 hours (branch `feat/review-alert-approver`, not merged or deployed)
+- Why: nothing emailed anyone when a card appeared (shadow mode only gates delivery to students). The only alert was the stale-draft email to the Escalation role, switched
+  off on the server since 2026-10-09 and counting cards Review hides.
+- New `execution/open_cards.py` (cards Review shows: draft status, not follow-up, student not rejected, mail under 14 days old) and `execution/review_alerts.py`
+  (one email per run to the approver role, each card once via alert_log `review_needed`, silent baseline on first run, switch `review_alert_enabled`).
+  Hooked at the end of `process_inbox_auto` in try/except. `RoleAlerts.review_needed`.
+- `stale_draft_alerts.py`: uses `open_cards`; wait time from Settings (`stale_draft_business_hours`) before the env variable. Labels in `roles.py`: Escalation is now "Backup approver".
+- Settings: `PUT /api/roles/alert-settings`, new card on `RolesCard.tsx` (switch + backup hours). Needs `--build-web`.
+- Tests: `tests/execution/test_review_alerts.py` (9), 3 in `services/dashboard/tests/test_roles.py`. Main suite 1089, dashboard 264 passed, `tsc` clean.
+- Deployment notes: the backup only runs when `/etc/cron.d/inboxgenius-stale` is moved back (deploys do not touch host cron); the Backup approver email must be set on Settings.

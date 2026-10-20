@@ -246,6 +246,8 @@ class ApiClient {
     pilot_limit: number;
     pilot_used: number;
     business_hours: string;
+    review_alert_enabled: boolean;
+    backup_after_hours: number;
   }> {
     const response = await this.client.get('/api/roles');
     return response.data;
@@ -253,6 +255,11 @@ class ApiClient {
 
   async assignRole(role: string, email: string): Promise<any> {
     const response = await this.client.put(`/api/roles/${role}`, { email });
+    return response.data;
+  }
+
+  async setAlertSettings(review_alert_enabled: boolean, backup_after_hours: number): Promise<any> {
+    const response = await this.client.put('/api/roles/alert-settings', { review_alert_enabled, backup_after_hours });
     return response.data;
   }
 

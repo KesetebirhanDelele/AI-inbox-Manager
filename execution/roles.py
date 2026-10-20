@@ -4,7 +4,7 @@ Who receives what: ROLES that get assigned, never a person written into the code
   approver            approves student notifications and is told when a student needs a person (no response, a reply that
                       needs help, STOP, cannot be reached)
   callback_owner      takes the calls from students who call back about an interview
-  escalation_target   is told when a draft has sat unapproved too long (so it is NOT the approver)
+  escalation_target   the BACKUP: told when a card has sat undecided too long (so it is NOT the approver)
 
 Assignments live in the database (table role_assignments, edited on the dashboard's Settings page). When the work moves to
 recruiters this is a settings change, not a rewrite. An optional `scope` (for example a recruiter) is stored for that day but not used yet.
@@ -18,12 +18,12 @@ ROLES = ("approver", "callback_owner", "escalation_target")
 ROLE_LABELS: Dict[str, str] = {
     "approver": "Approver",
     "callback_owner": "Callback owner",
-    "escalation_target": "Escalation (stale drafts)",
+    "escalation_target": "Backup approver (escalation)",
 }
 ROLE_HELP: Dict[str, str] = {
-    "approver": "Approves student notifications; told when a student has not responded, replied needing help, opted out or cannot be reached.",
+    "approver": "Approves student notifications. Emailed when a new card needs review, and when a student has not responded, replied needing help, opted out or cannot be reached.",
     "callback_owner": "Takes interview callbacks from students, within one business hour during working hours.",
-    "escalation_target": "Told when a draft has been waiting for approval too long.",
+    "escalation_target": "Backup for the approver: emailed when a card has waited for a decision longer than the backup time below.",
 }
 ENV_FALLBACK: Dict[str, str] = {
     "approver": "APPROVER_ALERT_EMAIL",

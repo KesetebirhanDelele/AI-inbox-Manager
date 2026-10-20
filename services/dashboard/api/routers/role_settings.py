@@ -55,6 +55,8 @@ class RolesResponse(BaseModel):
     pilot_limit: int
     pilot_used: int
     business_hours: str
+    review_alert_enabled: bool = True
+    backup_after_hours: float = 2.0
 
 
 class RoleIn(BaseModel):
@@ -64,6 +66,11 @@ class RoleIn(BaseModel):
 
 class PilotIn(BaseModel):
     limit: int
+
+
+class AlertSettingsIn(BaseModel):
+    review_alert_enabled: bool
+    backup_after_hours: float
 
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -87,6 +94,8 @@ async def get_roles(db: Session = Depends(get_db), user: UserSession = Depends(g
     used = db.query(NotificationSequence).count()
     days = ", ".join(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][d] for d in hours.days)
     return RolesResponse(roles=out, pilot_limit=pilot_limit(db), pilot_used=used,
+                         review_alert_enabled=_execution("review_alerts").enabled(db),
+                         backup_after_hours=_execution("stale_draft_alerts").stale_minutes(None, db) / 60,
                          business_hours=f"{days}, {hours.start_hour:02d}:00 to {hours.end_hour:02d}:00 ({hours.tz})")
 
 
@@ -101,6 +110,25 @@ async def set_pilot_limit(body: PilotIn, db: Session = Depends(get_db), user: Us
         row.value = str(body.limit)
     db.commit()
     return {"pilot_limit": body.limit}
+
+
+def _set(db: Session, key: str, value: str) -> None:
+    row = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+    if row is None:
+        db.add(SystemConfig(key=key, value=value))
+    else:
+        row.value = value
+
+
+@router.put("/alert-settings")
+async def set_alert_settings(body: AlertSettingsIn, db: Session = Depends(get_db), user: UserSession = Depends(get_current_user)):
+    """The approver's "new card" email on or off, and how many business hours before the backup is told."""
+    if not 0.25 <= body.backup_after_hours <= 72:
+        raise HTTPException(status_code=422, detail="The backup time must be between 0.25 and 72 business hours")
+    _set(db, _execution("review_alerts").ENABLED_KEY, "on" if body.review_alert_enabled else "off")
+    _set(db, _execution("stale_draft_alerts").HOURS_KEY, str(body.backup_after_hours))
+    db.commit()
+    return {"review_alert_enabled": body.review_alert_enabled, "backup_after_hours": body.backup_after_hours}
 
 
 @router.put("/{role}")

@@ -26,10 +26,20 @@ for p in (_ROOT / "execution", _ROOT / "services" / "dashboard" / "api"):
 
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://2-29-47-89.nip.io/review")
 MAX_LISTED = 25
+HOURS_KEY = "stale_draft_business_hours"
 
 
-def stale_minutes(env: Optional[Dict[str, str]] = None) -> int:
+def stale_minutes(env: Optional[Dict[str, str]] = None, db=None) -> int:
+    """Business minutes before the backup is told: the Settings page value (system_config stale_draft_business_hours) wins over the env variable."""
     env = os.environ if env is None else env
+    if db is not None:
+        import roles
+        try:
+            hours = float(roles.get_setting(db, HOURS_KEY, ""))
+            if hours > 0:
+                return max(1, int(hours * 60))
+        except ValueError:
+            pass
     try:
         return max(1, int(env.get("STALE_DRAFT_BUSINESS_MINUTES") or 120))
     except ValueError:
@@ -44,9 +54,10 @@ def run(db, now: datetime, alerts=None, hours=None, env: Optional[Dict[str, str]
 
     hours = hours or BusinessHours.from_env(env)
     alerts = alerts or RoleAlerts(db=db)
-    threshold = stale_minutes(env)
+    threshold = stale_minutes(env, db)
 
-    drafts = db.query(M.NotificationDraft).filter(M.NotificationDraft.email_status == "draft").all()
+    from open_cards import open_review_drafts
+    drafts = open_review_drafts(db, now)               # only cards the Review screen shows (not follow-ups, rejected students or old mail)
 
     baseline = db.query(M.AlertLog).filter(M.AlertLog.kind == "stale_draft_baseline").first()
     if baseline is None:
@@ -84,7 +95,7 @@ def run(db, now: datetime, alerts=None, hours=None, env: Optional[Dict[str, str]
     body = (f"{len(stale)} student notification draft(s) have been waiting for approval for more than "
             f"{threshold / 60:g} business hours:\n\n" + "\n".join(lines) + more +
             f"\n\nThey are in the approval screen: {DASHBOARD_URL}\n"
-            "You are receiving this because you hold the escalation role; the approver has not acted on them.")
+            "You are receiving this because you hold the escalation role; the approver has not acted on them (you are the backup).")
     sent = alerts.stale_drafts(f"{len(stale)} notification draft(s) waiting for approval", body)
     if sent:
         for d in stale:
