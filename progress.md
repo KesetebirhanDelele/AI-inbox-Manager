@@ -17,7 +17,54 @@ Newest first.
 
 ---
 
-## RESUME HERE (state at the end of Monday 2026-10-12; read this first after a compact)
+## RESUME HERE (state at the end of Tuesday 2026-10-20; read this first after a compact)
+
+**One-line state:** InboxGenius is LIVE for students. The server is armed (`GHL_WRITE_*` set) and the Settings switch "Live delivery to students" is ON (turned on 16:24 UTC by the admin), so an approved card calls, texts and emails the student through GHL.
+`master` == `origin` == server `.deployed_commit` (check with `git rev-parse --short master` and `/opt/ai-inbox-manager/.deployed_commit`). The pilot limit is 0 (no limit); Kes set it. Older shadow-mode text further down is history.
+
+### How a card flows now
+| Step | What happens |
+|---|---|
+| New card | Created by the 2-hourly processing run (even UTC hours). At the end of that run `review_alerts` emails the Approver one email listing the new cards, each with a secure link. |
+| Approve | Either in the app (Review page, login) or from the email link: the link page asks for a one-time 6-digit code emailed to the approver (10 minutes, 5 wrong tries, 3 codes/hour/link, used up by the decision), then shows the card, the full original email and exactly what the student receives, then needs a confirm tap. A forwarded link is useless without the code. |
+| Student contact | Call + text + email via GHL at approval, then email at +2h, text+email at +4h, a call/text/email at 9 AM student-local on days 2 to 4; quiet hours respected; the plan stops at the interview time. |
+| Stop | A student "YES" (text/call), the email "I got this" link, an AI-read confident "understood" reply (`REPLY_AI_MODE=live`), STOP (stops every open notice), the approver's **Stop follow-ups** button on the card, or the live-delivery OFF switch (blunt, stops the next send for everyone). A text/call YES answers ONE notice only (`pick_target`: the notice whose message on that channel was sent most recently before the reply). |
+| Backup | If a card is undecided after the backup time (Settings, default 2 business hours) the Backup approver gets an email with their own links (cron `inboxgenius-stale`, every 15 min, back ON). Overdue callbacks (open > 1 business hour) go to the Callback backup, else the Escalation holder. |
+| Visibility | Review card: follow-up status, "Student replies" box, kept in view 24h after a reply. Reports > Overview: "Student follow-up: did they get it?" (started, acknowledged by channel, waiting, no response, STOP, stopped, average minutes). |
+
+### Settings that matter (Settings page; nothing needs a redeploy)
+Roles (Approver kesetebirhan@gmail.com, Callback owner robelyn@colaberry.com, Backup approver/Escalation jackie@colaberry.com, Callback backup unset = falls back to Escalation), master switch for staff email alerts, new-card email on/off, backup time, **live delivery switch (needs the server armed + typed GO LIVE to turn on)**, pilot limit.
+Arming/disarming is a server `.env` step (RUNBOOK §16, 2026-10-20 entries). Backups: `.env.bak.20261020161936` (before arming) and one taken just before `REPLY_AI_MODE=live`.
+
+### Verified live on 2026-10-20
+- Kenya, card 146 (real): approved in the app at 16:29 UTC, call/email/text handed to GHL, text "Yes" at 16:30, acknowledged 16:35, 12 pending steps cancelled.
+- Mock card 147 (student 29 = Kes from the roster): alert email delivered, approved through the link (before the code step existed), text arrived, "Yes" at ~17:53, acknowledged 17:55.
+- Mock card 149: alert email delivered, code email delivered, card opened with the code, **rejected** through the link, code used up. Kes tested the code flow on his phone inside Gmail (minimising the Gmail window to read the code works) and reports it worked.
+- Roster Apps Script `syncRoster` failed once on 19 Oct; hourly runs since all completed (one-off).
+
+### NOT verified live yet (do not report these as done)
+- That the phone CALL and the EMAIL of a live send reached the person (only the text round trip was seen both times).
+- The Approve path with the new code step on real traffic (it was verified in tests and by the reject test; 147 predates the code step).
+- A real approver alert for a genuinely new interview card, and the 2-hour backup alert actually emailing (cron runs and logs "nothing stale").
+- The AI reply reading (live), per-position YES matching and the Stop button on real traffic.
+- Student flags: "NOT ON THE ROSTER / NOT IN GHL" warnings still apply to many cards; check them before approving.
+
+### Open items and decisions (Kes)
+- Olukayode (student verification `rejected`, ConnectiveTalent card 145 hidden from Review): if he is one of ours the rejection was a mistake and must be reversed on the server.
+- About 10 cards sit in "draft" status; some may be hidden from Review (follow-ups, rejected students, mail older than 14 days). Not reviewed.
+- Inbox schedule stays every 2 hours (Kes decided not to change it); "Run Now" exists. Approver alerts arrive at the end of each run, so up to about 2 hours after the employer email.
+- Student 29 (Kes, from the roster, no phone on file) stays in the students table; `execution/mock_notification.py --student-id 29 --create` makes another marked test card (approving it with live delivery ON really contacts him).
+- Students need a GHL contact (found by email first); manual scripts `ghl_test_call.py --send` and `ghl_add_additional_email.py --apply` ignore the Settings switch.
+
+### Working rules that bit this session
+- Commands with many quotes: write a small script file (scratchpad) instead of a long heredoc one-liner; the shell tool rejected several.
+- Deploys are refused during minutes 0-11 of even UTC hours (a scheduled run may be executing); wait until minute 13.
+- Check the dashboard "Students Notified" tile means sends, not acknowledgements; use the new follow-up card for acknowledgements.
+- Verify live state from the server (`/opt/ai-inbox-manager/.deployed_commit`, read-only SQL via a copied .sql file) before reporting, never from memory.
+
+---
+
+## (older) RESUME HERE as of 2026-10-12 (superseded by the block above; describes the shadow-mode period)
 
 **One-line state:** InboxGenius is live on Hetzner (`master` == `origin` == server; check with `git rev-parse --short master` and `/opt/ai-inbox-manager/.deployed_commit`). Email classification, folders, the review screens, the Dashboard and Reports are all LIVE. The student-notification flow (call + text + email via GHL, follow-ups until the student confirms) is BUILT, deployed and ON IN SHADOW: escalation enabled, channels `ghl`, NO `GHL_WRITE_*` switch set, so the app only LOGS what it would send and nothing reaches a student through it. The old one-email Approve is OFF. On 2026-10-12 Kes ran a one-contact LIVE mock test (call, text, email) on three staff contacts through `execution/ghl_test_call.py` (it turns the live switches on for that one process only): the texts were delivered and one call was placed; see "Where we are in the testing". Detail: the dated log right below this block, `directives/student-notification-escalation.md`, `docs/test-plan-student-notifications.md`, `docs/voice-agent-outbound-interview-prompt.md`, `docs/use-cases.html` (artifact https://claude.ai/artifact/FRzyZVP1uBnsvMPEViEZiw, updated 2026-10-12 with a 4-minute walkthrough tab).
 
