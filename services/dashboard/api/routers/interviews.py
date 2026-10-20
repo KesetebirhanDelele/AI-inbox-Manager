@@ -97,8 +97,10 @@ class UpcomingInterview(BaseModel):
 _VERDICT_RANK = {"not_interview": 0, "pending": 1, "real": 2}
 
 
-def _verdict(event, statuses, cancellations) -> str:
+def _verdict(event, statuses, cancellations, rejected_students=frozenset()) -> str:
     """Tick / cross / undecided for one upcoming interview, from what people decided in Review and from later cancellations (no LLM)."""
+    if event.student_id in rejected_students:             # the approver said this is not a student we can find: Review hides their cards
+        return "not_interview"
     name = (event.company_name or "").strip().lower()
     if name and any(sid == event.student_id and (c or "").strip().lower() == name and cid > event.id for sid, c, cid in cancellations):
         return "not_interview"
@@ -140,12 +142,13 @@ async def get_upcoming_interviews(
     notice_status: dict = {}
     for event_id, status in db.query(NotificationDraft.interview_event_id, NotificationDraft.email_status).all():
         notice_status.setdefault(event_id, []).append(status)
+    rejected_students = {row.student_id for row in db.query(StudentVerification.student_id).filter(StudentVerification.status == "rejected").all()}
     cancellations = db.query(InterviewEvent.student_id, InterviewEvent.company_name, InterviewEvent.id).filter(InterviewEvent.sub_type == "Interview Cancelled").all()
 
     upcoming = []
     for event, student in results:
         key = (event.student_id, (event.company_name or "").strip().lower(), event.interview_date, event.interview_time)
-        verdict = _verdict(event, notice_status.get(event.id, []), cancellations)
+        verdict = _verdict(event, notice_status.get(event.id, []), cancellations, rejected_students)
         if event.id in follow_up_ids:
             continue
         if key in seen:                                   # the same interview again: keep the most certain verdict

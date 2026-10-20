@@ -101,18 +101,19 @@ class EngineeringKPIs(BaseModel):
 def count_interview_requests(db: Session, since: datetime) -> int:
     """
     Interviews announced since `since`, for the dashboard tile: one per interview event, so an email that only repeats an announced interview
-    (follow-up), a cancellation, or an interview whose notices were ALL rejected by a person does not count. Pending and approved ones do.
+    (follow-up), a cancellation, an interview whose notices were ALL rejected, or one for a student the approver rejected, does not count. Pending and approved ones do.
     Rejecting a card in Review therefore lowers the tile; an event with no notice yet still counts.
     """
-    from models import InterviewFollowUp
+    from models import InterviewFollowUp, StudentVerification
     events = db.query(InterviewEvent).filter(InterviewEvent.created_at >= since, InterviewEvent.sub_type != "Interview Cancelled").all()
     if not events:
         return 0
     follow_ups = {row.event_id for row in db.query(InterviewFollowUp.event_id).all()}
+    rejected_students = {row.student_id for row in db.query(StudentVerification.student_id).filter(StudentVerification.status == "rejected").all()}
     statuses: Dict[int, List[str]] = {}
     for event_id, status in db.query(NotificationDraft.interview_event_id, NotificationDraft.email_status).all():
         statuses.setdefault(event_id, []).append(status)
-    return sum(1 for e in events if e.id not in follow_ups and not (statuses.get(e.id) and all(st == "rejected" for st in statuses[e.id])))
+    return sum(1 for e in events if e.id not in follow_ups and e.student_id not in rejected_students and not (statuses.get(e.id) and all(st == "rejected" for st in statuses[e.id])))
 
 
 @router.get("/summary", response_model=SummaryStats)

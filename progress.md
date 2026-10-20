@@ -1442,3 +1442,10 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - `DashboardPage.tsx` + `types/index.ts`: new "Real?" column: green tick, red cross, grey dash. Needs `--build-web`.
 - Tests: `services/dashboard/tests/test_upcoming_verdict.py` (4). Dashboard suite 260 passed, `tsc` clean.
 - Deferred: follow-ups stay hidden (not shown with a cross); a cancellation with no company cannot cross anything out; assessments follow the same notice rule.
+
+### 2026-10-20: a rejected student's interview is a cross, not "undecided" (branch `fix/rejected-student-not-real`, not merged or deployed)
+- Why: Kes saw Olukayode / ConnectiveTalent in Upcoming with a grey dash but no card in Review. Server check (read-only): event 167, draft 145 `draft`, student verification
+  `rejected`. Review hides every card of a rejected student, so nobody could ever decide it, while Upcoming called it "pending".
+- `interviews.py` `_verdict` and `stats.py` `count_interview_requests`: an event of a student with verification `rejected` is `not_interview` (cross) and not counted in the tile.
+- Test: 1 added in `services/dashboard/tests/test_upcoming_verdict.py`. Dashboard suite 261 passed. Backend only.
+- Open question for Kes: if Olukayode IS one of ours, the student rejection was a mistake and must be undone.

@@ -40,3 +40,14 @@ def test_identical_events_show_once_with_the_most_certain_verdict(client, db, au
     make_notification_draft(db, first, email_status="rejected")
     make_notification_draft(db, second, email_status="approved")
     assert _verdicts(client, auth_cookies) == {first.id: "real"}
+
+
+def test_a_rejected_student_is_not_an_interview_even_with_a_pending_notice(client, db, auth_cookies):
+    from models import StudentVerification
+    student = make_student(db)
+    ev = make_interview_event(db, make_email(db, email_id="o"), student=student, company="ConnectiveTalent", interview_date="2099-12-31")
+    make_notification_draft(db, ev, email_status="draft")
+    db.add(StudentVerification(student_id=student.id, status="rejected", basis="gmail_guess"))
+    db.commit()
+    assert _verdicts(client, auth_cookies)[ev.id] == "not_interview"
+    assert client.get("/api/stats/summary", cookies=auth_cookies).json()["today_interview_requests"] == 0
