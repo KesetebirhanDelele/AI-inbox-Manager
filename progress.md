@@ -1498,3 +1498,6 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
   `NotificationQueue.tsx`: "Student replies" box and a confirmed "Stop follow-ups" button (calls the existing close endpoint). Needs `--build-web`.
 - Tests: 6 new in `tests/execution/test_escalation_engine.py`, 4 new in `services/dashboard/tests/test_follow_up_view.py`; 2 old expectations updated (YES answers one notice; target in the result). Main suite 1101, dashboard 274 passed, `tsc` clean.
 - Server step (needs Kes's go at deploy): `REPLY_AI_MODE=live` in the server `.env` (shadow period ended 2026-10-16, default `REPLY_AI_SHADOW_UNTIL`), so an AI-read confident "understood" reply stops follow-ups.
+
+### 2026-10-20: reply-reading AI switched live on the server (docs only)
+- `REPLY_AI_MODE=live` added to the server `.env` (backed up first), api restarted, cron container reports mode live. RUNBOOK §16 updated. Deployed f6491e4 (reply matching, Stop button, replies on the card).
