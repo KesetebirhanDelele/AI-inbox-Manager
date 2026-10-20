@@ -73,3 +73,16 @@ STAFF_ALERTS_KEY = "staff_email_alerts"
 def staff_alerts_on(db) -> bool:
     """The master switch on the Settings page: off stops EVERY email to a role holder (approver, backup, callback owner, callback backup)."""
     return get_setting(db, STAFF_ALERTS_KEY, "on").strip().lower() not in ("off", "false", "0", "no")
+
+
+LIVE_DELIVERY_KEY = "live_delivery"
+
+
+def live_delivery_on(db) -> bool:
+    """The Settings switch for LIVE delivery to students. Default OFF, and any doubt (no database, unreadable setting) means off."""
+    if db is None:
+        return False
+    try:
+        return get_setting(db, LIVE_DELIVERY_KEY, "off").strip().lower() in ("on", "true", "1", "yes")
+    except Exception:
+        return False

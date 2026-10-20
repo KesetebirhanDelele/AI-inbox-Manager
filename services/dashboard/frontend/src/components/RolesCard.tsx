@@ -13,6 +13,7 @@ const RolesCard = () => {
   const [pilot, setPilot] = useState('');
   const [reviewAlert, setReviewAlert] = useState(true);
   const [staffAlerts, setStaffAlerts] = useState(true);
+  const [goLive, setGoLive] = useState('');
   const [backupHours, setBackupHours] = useState('2');
 
   useEffect(() => {
@@ -35,6 +36,10 @@ const RolesCard = () => {
   const saveAlerts = useMutation({
     mutationFn: () => apiClient.setAlertSettings(reviewAlert, Number(backupHours), staffAlerts),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roles'] }),
+  });
+  const saveLive = useMutation({
+    mutationFn: (enabled: boolean) => apiClient.setLiveDelivery(enabled, goLive),
+    onSuccess: () => { setGoLive(''); queryClient.invalidateQueries({ queryKey: ['roles'] }); queryClient.invalidateQueries({ queryKey: ['review-queue'] }); },
   });
   const errorOf = (e: unknown) => (e as { response?: { data?: { detail?: string } } } | null)?.response?.data?.detail;
 
@@ -82,6 +87,40 @@ const RolesCard = () => {
           </div>
         ))}
         {save.isError && <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">{errorOf(save.error) || 'Could not save.'}</div>}
+
+        <div className={`border rounded-md p-3 space-y-2 ${data.live_delivery.live ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}>
+          <div className="font-medium text-gray-900">Live delivery to students</div>
+          <div className="text-sm">
+            {data.live_delivery.live ? (
+              <span className="font-semibold text-red-700">LIVE: approved cards call, text and email real students.</span>
+            ) : (
+              <span className="font-semibold text-gray-700">Shadow: nothing is sent to students. Approving only logs what would be sent.</span>
+            )}
+          </div>
+          <div className="text-xs text-gray-500">
+            Server armed for live delivery: <strong>{data.live_delivery.armed ? 'yes' : 'no'}</strong>. Switch: <strong>{data.live_delivery.switch_on ? 'on' : 'off'}</strong>.
+            {data.live_delivery.changed_at ? ` Last changed by ${data.live_delivery.changed_by || 'unknown'} at ${data.live_delivery.changed_at}.` : ''}
+            {!data.live_delivery.armed && ' The server must be armed (a server step) before this switch can be turned on.'} Turning it off takes effect on the next send.
+            The pilot limit below still applies.
+          </div>
+          {data.live_delivery.switch_on ? (
+            <button type="button" disabled={saveLive.isPending} onClick={() => saveLive.mutate(false)}
+              className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+              Turn OFF live delivery (back to shadow)
+            </button>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input value={goLive} onChange={(e) => setGoLive(e.target.value)} placeholder="Type GO LIVE to confirm"
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md" />
+              <button type="button" disabled={saveLive.isPending || !data.live_delivery.armed || goLive.trim().toUpperCase() !== 'GO LIVE'}
+                onClick={() => saveLive.mutate(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                Turn ON live delivery
+              </button>
+            </div>
+          )}
+          {saveLive.isError && <div className="text-sm text-red-800">{errorOf(saveLive.error) || 'Could not save.'}</div>}
+        </div>
 
         <div className="border border-gray-200 rounded-md p-3 space-y-2">
           <div className="font-medium text-gray-900">Email alerts to staff</div>

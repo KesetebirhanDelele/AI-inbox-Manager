@@ -1472,3 +1472,13 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 
 ### 2026-10-20: stale-draft (approver backup) cron switched back on (docs only; server file moved, no code change)
 - On the server `/etc/cron.d/inboxgenius-stale` is back (moved from `/opt/ai-inbox-manager/disabled-cron/`). RUNBOOK §16 updated. Watch `/opt/ai-inbox-manager/logs/stale.log` after the first business-hours run.
+
+### 2026-10-20: live-delivery switch on the Settings page (branch `feat/live-delivery-switch`, not merged or deployed; server NOT armed)
+- Why: Kes wants to turn shadow mode off and on at will. Shadow vs live was only three env values on the server (restart needed).
+- Two keys: `GhlConfig.armed` (the three env values) and `GhlConfig.live_switch` (Settings, `system_config.live_delivery`, default off); `is_live = armed and live_switch`.
+  `GhlChannel.send` reads the switch from the database on every send; `roles.live_delivery_on` returns False for no database or any error. Review's `delivery_live` uses both keys.
+- `PUT /api/roles/live-delivery`: turning on needs the server armed (else 422) and the typed words GO LIVE; turning off needs nothing. `GET /api/roles` returns `live_delivery`
+  {armed, switch_on, live, changed_by, changed_at}. UI: red card on Settings with status, confirmation box and a red OFF button. Needs `--build-web`.
+- Tests: 2 in `test_ghl_channels.py` (env live + switch off = shadow; on then off; missing db = off), 1 in `test_notifications.py`, 5 in `services/dashboard/tests/test_roles.py`; 3 old tests updated to turn
+  the switch on. Main suite 1094 passed, dashboard 270 passed, `tsc` clean.
+- NOT done: arming the server (three env values + container restart). Until then the switch cannot be turned on and everything stays shadow. Pilot limit (3, all used) still applies.

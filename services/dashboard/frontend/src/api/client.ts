@@ -249,6 +249,7 @@ class ApiClient {
     review_alert_enabled: boolean;
     backup_after_hours: number;
     staff_alerts_enabled: boolean;
+    live_delivery: { armed: boolean; switch_on: boolean; live: boolean; changed_by: string; changed_at: string };
   }> {
     const response = await this.client.get('/api/roles');
     return response.data;
@@ -261,6 +262,11 @@ class ApiClient {
 
   async setAlertSettings(review_alert_enabled: boolean, backup_after_hours: number, staff_alerts_enabled: boolean): Promise<any> {
     const response = await this.client.put('/api/roles/alert-settings', { review_alert_enabled, backup_after_hours, staff_alerts_enabled });
+    return response.data;
+  }
+
+  async setLiveDelivery(enabled: boolean, confirm_text: string): Promise<any> {
+    const response = await this.client.put('/api/roles/live-delivery', { enabled, confirm_text });
     return response.data;
   }
 

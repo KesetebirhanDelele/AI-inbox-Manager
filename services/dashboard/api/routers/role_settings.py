@@ -58,6 +58,7 @@ class RolesResponse(BaseModel):
     review_alert_enabled: bool = True
     backup_after_hours: float = 2.0
     staff_alerts_enabled: bool = True
+    live_delivery: dict = {}
 
 
 class RoleIn(BaseModel):
@@ -98,6 +99,7 @@ async def get_roles(db: Session = Depends(get_db), user: UserSession = Depends(g
     return RolesResponse(roles=out, pilot_limit=pilot_limit(db), pilot_used=used,
                          review_alert_enabled=_execution("review_alerts").enabled(db),
                          staff_alerts_enabled=roles.staff_alerts_on(db),
+                         live_delivery=live_delivery_status(db),
                          backup_after_hours=_execution("stale_draft_alerts").stale_minutes(None, db) / 60,
                          business_hours=f"{days}, {hours.start_hour:02d}:00 to {hours.end_hour:02d}:00 ({hours.tz})")
 
@@ -121,6 +123,40 @@ def _set(db: Session, key: str, value: str) -> None:
         db.add(SystemConfig(key=key, value=value))
     else:
         row.value = value
+
+
+class LiveIn(BaseModel):
+    enabled: bool
+    confirm_text: str = ""
+
+
+def live_delivery_status(db: Session) -> dict:
+    """Armed = the server .env allows live writes; switch = the Settings choice; live = both. Who and when changed it last."""
+    roles = _execution("roles")
+    armed = bool(_execution("ghl_client").GhlConfig.from_env().armed)
+    switch = roles.live_delivery_on(db)
+    return {"armed": armed, "switch_on": switch, "live": armed and switch,
+            "changed_by": roles.get_setting(db, roles.LIVE_DELIVERY_KEY + "_changed_by", ""),
+            "changed_at": roles.get_setting(db, roles.LIVE_DELIVERY_KEY + "_changed_at", "")}
+
+
+@router.put("/live-delivery")
+async def set_live_delivery(body: LiveIn, db: Session = Depends(get_db), user: UserSession = Depends(get_current_user)):
+    """
+    Turn live delivery to students on or off. Off needs nothing and takes effect on the very next send.
+    On needs the server to be armed (env) and the typed words GO LIVE, so it can neither be clicked by accident nor left waiting for the server to be armed later.
+    """
+    roles = _execution("roles")
+    if body.enabled:
+        if not _execution("ghl_client").GhlConfig.from_env().armed:
+            raise HTTPException(status_code=422, detail="The server is not armed for live delivery, so this switch cannot be turned on yet. Arming is a server step.")
+        if body.confirm_text.strip().upper() != "GO LIVE":
+            raise HTTPException(status_code=422, detail="Type GO LIVE to confirm that real students will be called, texted and emailed.")
+    _set(db, roles.LIVE_DELIVERY_KEY, "on" if body.enabled else "off")
+    _set(db, roles.LIVE_DELIVERY_KEY + "_changed_by", user.username)
+    _set(db, roles.LIVE_DELIVERY_KEY + "_changed_at", datetime.utcnow().isoformat(timespec="seconds") + "Z")
+    db.commit()
+    return live_delivery_status(db)
 
 
 @router.put("/alert-settings")

@@ -84,3 +84,43 @@ class TestAlertSettings:
     def test_a_silly_backup_time_is_refused(self, client, db, auth_cookies):
         for hours in (0, -1, 500):
             assert client.put("/api/roles/alert-settings", json={"review_alert_enabled": True, "backup_after_hours": hours}, cookies=auth_cookies).status_code == 422
+
+
+class TestLiveDeliverySwitch:
+    ARM = (("GHL_WRITE_MODE", "live"), ("GHL_WRITE_SHADOW_LOG_ONLY", "false"), ("GHL_WRITE_NOTIFY_FIELDS", "true"))
+
+    def _clear(self, monkeypatch):
+        for k, _ in self.ARM:
+            monkeypatch.delenv(k, raising=False)
+
+    def test_default_is_shadow_and_not_armed(self, client, db, auth_cookies, monkeypatch):
+        self._clear(monkeypatch)
+        live = client.get("/api/roles", cookies=auth_cookies).json()["live_delivery"]
+        assert live["armed"] is False and live["switch_on"] is False and live["live"] is False
+
+    def test_it_cannot_be_turned_on_while_the_server_is_not_armed(self, client, db, auth_cookies, monkeypatch):
+        self._clear(monkeypatch)
+        r = client.put("/api/roles/live-delivery", json={"enabled": True, "confirm_text": "GO LIVE"}, cookies=auth_cookies)
+        assert r.status_code == 422 and "not armed" in r.json()["detail"]
+        assert client.get("/api/roles", cookies=auth_cookies).json()["live_delivery"]["switch_on"] is False
+
+    def test_turning_it_on_needs_the_typed_words(self, client, db, auth_cookies, monkeypatch):
+        for k, v in self.ARM:
+            monkeypatch.setenv(k, v)
+        assert client.put("/api/roles/live-delivery", json={"enabled": True}, cookies=auth_cookies).status_code == 422
+        assert client.put("/api/roles/live-delivery", json={"enabled": True, "confirm_text": "yes"}, cookies=auth_cookies).status_code == 422
+        assert client.get("/api/roles", cookies=auth_cookies).json()["live_delivery"]["live"] is False
+
+    def test_on_then_off_and_who_changed_it_is_recorded(self, client, db, auth_cookies, monkeypatch):
+        for k, v in self.ARM:
+            monkeypatch.setenv(k, v)
+        on = client.put("/api/roles/live-delivery", json={"enabled": True, "confirm_text": "go live"}, cookies=auth_cookies).json()
+        assert on["armed"] and on["switch_on"] and on["live"] and on["changed_by"] and on["changed_at"].endswith("Z")
+        off = client.put("/api/roles/live-delivery", json={"enabled": False}, cookies=auth_cookies).json()      # off needs no confirmation
+        assert off["switch_on"] is False and off["live"] is False
+
+    def test_armed_with_the_switch_off_is_not_live(self, client, db, auth_cookies, monkeypatch):
+        for k, v in self.ARM:
+            monkeypatch.setenv(k, v)
+        live = client.get("/api/roles", cookies=auth_cookies).json()["live_delivery"]
+        assert live["armed"] is True and live["live"] is False

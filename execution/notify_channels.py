@@ -431,6 +431,10 @@ class GhlChannel:
         return {cfg.field_call: call_script(ctx)}
 
     def send(self, ctx: SendContext) -> ChannelResult:
+        if ctx.db is not None:                      # the Settings switch is read on EVERY send, so turning it off stops the next one
+            import dataclasses
+            import roles
+            self.client.config = dataclasses.replace(self.client.config, live_switch=roles.live_delivery_on(ctx.db))
         cfg = self.client.config
         phone = to_e164(getattr(ctx.student, "phone_number", None))
         if phone is not None and opted_out_in_app(ctx.db, phone, self.name):

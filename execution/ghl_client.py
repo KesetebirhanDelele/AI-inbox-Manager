@@ -90,6 +90,7 @@ class GhlConfig:
     write_mode: str = "shadow"
     shadow_log_only: bool = True
     write_notify_fields: bool = False
+    live_switch: bool = True                   # the Settings page switch (system_config live_delivery); callers with a database set it, default keeps env-only tools working
     min_interval_seconds: float = 0.2          # shared rate limit: about 5 calls a second
     field_email_subject: str = "Support Issue Ticket #2"
     field_email_body: str = "Message:"
@@ -129,9 +130,14 @@ class GhlConfig:
         return bool(self.conversations_api_key and self.location_id)
 
     @property
-    def is_live(self) -> bool:
-        """All three switches are needed: mode, log-only off, and the notification-fields area on."""
+    def armed(self) -> bool:
+        """The server is ARMED for live delivery: the three env switches (mode, log-only off, notification-fields area on)."""
         return self.write_mode == "live" and not self.shadow_log_only and self.write_notify_fields
+
+    @property
+    def is_live(self) -> bool:
+        """Live = armed on the server AND the Settings switch on. Either one off means shadow: nothing is written, nobody is contacted."""
+        return self.armed and self.live_switch
 
 
 def _is_disguised_timeout_401(resp: Any) -> bool:

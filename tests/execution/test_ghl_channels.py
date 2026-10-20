@@ -341,6 +341,7 @@ def test_the_channel_skips_a_student_who_asked_us_to_stop_and_makes_no_ghl_call(
     models.Base.metadata.create_all(eng)
     db = sessionmaker(bind=eng)()
     db.add(models.NotificationOptOut(phone_tail="9725550100", channel="call", source="stop_call"))
+    db.add(models.SystemConfig(key="live_delivery", value="on"))              # armed by the env AND switched on in Settings
     db.commit()
     g = FakeGhl(live=True)
     c = ctx()
@@ -457,3 +458,27 @@ def test_the_likely_person_is_listed_before_strangers_who_share_a_name_word():
                              "phone_number": "2404869244"})()
     text = nc.possible_ghl_matches(WithNames(contact=False), student)
     assert text.startswith("kwadjossan issac kpakpavi <isaackpakpavi@gmail.com>, phone ending 9243")
+
+
+def test_armed_on_the_server_but_the_settings_switch_off_is_still_shadow():
+    import models
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    eng = create_engine("sqlite://")
+    models.Base.metadata.create_all(eng)
+    db = sessionmaker(bind=eng)()
+    g = FakeGhl(live=True)                                                     # env: all three live switches
+    c = ctx()
+    c.db = db                                                                  # Settings switch never turned on (default off)
+    r = channel("call", g).send(c)
+    assert r.status == nc.DRY_RUN                                              # shadow: the client reports nothing was written
+    db.add(models.SystemConfig(key="live_delivery", value="on")); db.commit()
+    assert channel("call", g).send(c).status == nc.SENT                       # on: the same send goes out
+    db.query(models.SystemConfig).filter_by(key="live_delivery").one().value = "off"; db.commit()
+    assert channel("call", g).send(c).status == nc.DRY_RUN                   # off again: the very next send is shadow
+
+
+def test_a_missing_database_or_unreadable_setting_means_off():
+    import roles
+    assert roles.live_delivery_on(None) is False
+    assert roles.live_delivery_on(object()) is False

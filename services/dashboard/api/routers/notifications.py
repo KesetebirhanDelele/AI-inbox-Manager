@@ -47,10 +47,11 @@ def _escalation_enabled() -> bool:
     return os.getenv("NOTIFY_ESCALATION_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
-def _delivery_is_live() -> bool:
-    """True only when the three GHL write switches are all live: otherwise every send is just logged (shadow) and no student is notified."""
+def _delivery_is_live(db=None) -> bool:
+    """True only when the server is armed (three GHL write switches) AND the Settings switch is on: otherwise every send is just logged (shadow)."""
     try:
-        return bool(_execution_module("ghl_client").GhlConfig.from_env().is_live)
+        cfg = _execution_module("ghl_client").GhlConfig.from_env()
+        return bool(cfg.armed and _execution_module("roles").live_delivery_on(db))
     except Exception:
         return False
 
@@ -403,7 +404,7 @@ async def get_review_queue(
     authenticity = _execution_module("email_authenticity")
     nc = _execution_module("notify_channels")
     escalation_on = _escalation_enabled()
-    delivery_live = escalation_on and _delivery_is_live()
+    delivery_live = escalation_on and _delivery_is_live(db)
 
     rows = (
         db.query(InterviewEvent, NotificationDraft, Student, Email)

@@ -432,6 +432,8 @@ class TestReviewQueue:
         monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "true")
         for k, v in (("GHL_WRITE_MODE", "live"), ("GHL_WRITE_SHADOW_LOG_ONLY", "false"), ("GHL_WRITE_NOTIFY_FIELDS", "true")):
             monkeypatch.setenv(k, v)                      # all three switches live: the notice really goes out
+        from models import SystemConfig
+        db.add(SystemConfig(key="live_delivery", value="on")); db.commit()                 # and the Settings switch is on
         data = self._queue(client, auth_cookies)
         assert data["escalation_enabled"] is True and "call, a text and an email" in data["items"][0]["will_happen"]
 
@@ -555,5 +557,15 @@ class TestShadowModeIsSaidPlainly:
         monkeypatch.setenv("GHL_WRITE_MODE", "live")
         monkeypatch.setenv("GHL_WRITE_SHADOW_LOG_ONLY", "false")
         monkeypatch.setenv("GHL_WRITE_NOTIFY_FIELDS", "true")
+        from models import SystemConfig
+        db.add(SystemConfig(key="live_delivery", value="on")); db.commit()
         data = self._item(client, db, auth_cookies)
         assert data["delivery_live"] is True and data["items"][0]["will_happen"].startswith("Starts a call")
+
+    def test_armed_but_the_settings_switch_off_is_still_shadow(self, client, db, auth_cookies, monkeypatch):
+        monkeypatch.setenv("NOTIFY_ESCALATION_ENABLED", "true")
+        monkeypatch.setenv("GHL_WRITE_MODE", "live")
+        monkeypatch.setenv("GHL_WRITE_SHADOW_LOG_ONLY", "false")
+        monkeypatch.setenv("GHL_WRITE_NOTIFY_FIELDS", "true")
+        data = self._item(client, db, auth_cookies)
+        assert data["delivery_live"] is False and "SHADOW" in data["items"][0]["will_happen"]
