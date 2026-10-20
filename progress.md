@@ -1517,3 +1517,6 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - `execution/mock_notification.py`: `--find`, dry run, `--create` makes a marked mock card for ONE existing student and sends the approver alert; approving it with live delivery ON really contacts that student.
 - Tests: `services/dashboard/tests/test_approval_links.py` (9), 3 in `tests/execution/test_review_alerts.py`, `tests/execution/test_mock_notification.py` (5). Main suite 1109, dashboard 286 passed, `tsc` clean.
 - Not verified live: real email delivery of the link and the page on a phone (that is the test after deploy).
+
+### 2026-10-20: mock notification tool can take the student from the roster (branch `feat/mock-from-roster`)
+- Kes has no student row (his record is on the roster sheet only). `mock_notification.py --from-roster "<name>"` finds exactly one roster entry, shows it masked, and with `--create` adds the student row (assigned Gmail = first roster email, personal = last; no phone, GHL is found by email) then the mock card. Tests: 2 new (1111 passed in the main suite). Backend only.

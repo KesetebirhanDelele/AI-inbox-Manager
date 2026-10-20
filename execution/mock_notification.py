@@ -3,6 +3,7 @@ Make a MOCK interview notification card for ONE existing student (normally the t
 the alert email to the approver, the tap-to-approve link, and (when live delivery is on) the real call, text and email to that student.
 
   python execution/mock_notification.py --find kes                  list matching students (id, name, masked contact); changes nothing
+  python execution/mock_notification.py --from-roster "Kesetebirhan"   the student is on the roster sheet but has no row yet: DRY RUN, then add --create
   python execution/mock_notification.py --student-id 12             DRY RUN: says what it would create; changes nothing
   python execution/mock_notification.py --student-id 12 --create    creates the mock email, interview and draft card, then sends the approver alert
 
@@ -42,6 +43,28 @@ def find_students(db, text: str):
             .order_by(M.Student.id).limit(20).all())
 
 
+def student_from_roster(db, name_part: str, rows, create: bool):
+    """
+    The student row for ONE roster entry whose name contains `name_part` (exactly one must match). The roster's first email is the application
+    (assigned) Gmail and the last is the personal email, as in the sheet's column order. Returns (student_or_None, roster_row); with create=False nothing is written.
+    """
+    import models as M
+    wanted = name_part.strip().lower()
+    matches = [r for r in rows if wanted and wanted in r.name.lower()]
+    if len(matches) != 1:
+        raise SystemExit(f"{len(matches)} roster entries match {name_part!r}; need exactly one.")
+    row = matches[0]
+    username = row.name.strip().lower().replace(" ", ".")
+    student = db.query(M.Student).filter(M.Student.username == username).first()
+    if student is None and create:
+        from log_interview import upsert_student
+        assigned = row.emails[0] if len(row.emails) > 1 else None
+        personal = row.emails[-1] if row.emails else None
+        upsert_student(db=db, username=username, full_name=row.name.strip(), personal_email=personal, assigned_gmail=assigned)
+        student = db.query(M.Student).filter(M.Student.username == username).first()
+    return student, row
+
+
 def create_mock(db, student_id: int, now: datetime = None):
     """Create the mock email, interview event and open draft card for this student. Returns (event, draft)."""
     import models as M
@@ -77,6 +100,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Create a mock interview notification card for one existing student.")
     ap.add_argument("--find", help="list students whose name, username or email contains this text")
     ap.add_argument("--student-id", type=int)
+    ap.add_argument("--from-roster", help="use the roster sheet entry whose name contains this text (creates the student row with --create)")
     ap.add_argument("--create", action="store_true", help="really create the mock card and send the approver alert (default: dry run)")
     ap.add_argument("--no-alert", action="store_true", help="create the card but do not send the approver alert email")
     args = ap.parse_args(argv)
@@ -92,8 +116,16 @@ def main(argv=None) -> int:
         for s in find_students(db, args.find):
             print(f"id={s.id} name={s.full_name!r} phone={_mask(s.phone_number or '')} email={_mask(s.personal_email or s.assigned_gmail or '')}")
         return 0
+    if args.from_roster:
+        import student_roster
+        student, row = student_from_roster(db, args.from_roster, student_roster.fetch_roster(), create=args.create)
+        print(f"Roster entry: {row.name!r}, status {row.status!r}, {len(row.emails)} email(s): " + ", ".join(_mask(e) for e in row.emails))
+        if student is None:
+            print("No student row yet. DRY RUN: --create would add one from this roster entry (no phone: the app finds the GHL contact by email), then the mock card.")
+            return 0
+        args.student_id = student.id
     if not args.student_id:
-        ap.error("give --student-id (or --find to look one up)")
+        ap.error("give --student-id or --from-roster (or --find to look one up)")
     student = db.get(M.Student, args.student_id)
     if student is None:
         print(f"No student with id {args.student_id}.")

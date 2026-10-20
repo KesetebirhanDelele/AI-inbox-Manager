@@ -62,3 +62,24 @@ def test_the_card_is_a_normal_open_card_the_approver_alert_would_announce(db):
     sent = []
     cap = type("C", (), {"review_needed": lambda self, s, b: sent.append(b) or True})()
     assert ra.run(db, alerts=cap)["alerted"] == 1 and "TEST Company (mock)" in sent[0] and "/approve/" in sent[0]
+
+
+def test_a_student_row_is_made_from_exactly_one_roster_entry_only_when_asked(db):
+    from student_roster import RosterRow
+    rows = [RosterRow(name="Kesetebirhan Yirdaw", status="Active", agent="Karthik", emails=["app@example.com", "me@example.com"]),
+            RosterRow(name="Someone Else", status="Active", emails=["x@example.com"])]
+    student, row = mn.student_from_roster(db, "kesetebirhan", rows, create=False)
+    assert student is None and row.name == "Kesetebirhan Yirdaw"                               # dry run writes nothing
+    assert db.query(db.models.Student).filter_by(username="kesetebirhan.yirdaw").count() == 0
+    student, _ = mn.student_from_roster(db, "kesetebirhan", rows, create=True)
+    assert student.full_name == "Kesetebirhan Yirdaw" and student.personal_email == "me@example.com" and student.assigned_gmail == "app@example.com"
+    again, _ = mn.student_from_roster(db, "kesetebirhan", rows, create=True)
+    assert again.id == student.id                                                              # twice does not duplicate
+
+
+def test_zero_or_several_roster_matches_are_refused(db):
+    from student_roster import RosterRow
+    rows = [RosterRow(name="Ann Lee", status="Active", emails=["a@example.com"]), RosterRow(name="Ann Lo", status="Active", emails=["b@example.com"])]
+    for fragment in ("nobody", "ann", ""):
+        with pytest.raises(SystemExit):
+            mn.student_from_roster(db, fragment, rows, create=True)
