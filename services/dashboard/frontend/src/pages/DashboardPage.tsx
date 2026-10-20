@@ -386,6 +386,7 @@ const DashboardPage = () => {
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Position</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date &amp; Time</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Real?</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -413,6 +414,15 @@ const DashboardPage = () => {
                           ) : '—'}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-gray-600 text-xs">{iv.interview_type ? TYPE_LABELS[iv.interview_type] || iv.interview_type : '—'}</td>
+                        <td className="px-3 py-2 text-center text-base font-bold">
+                          {iv.verdict === 'real' ? (
+                            <span className="text-green-600" title="Approved in Review: a real interview">✓</span>
+                          ) : iv.verdict === 'not_interview' ? (
+                            <span className="text-red-600" title="Not an interview: rejected in Review, or cancelled">✗</span>
+                          ) : (
+                            <span className="text-gray-400" title="Not decided yet: see Review">–</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}

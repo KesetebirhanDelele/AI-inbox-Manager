@@ -1434,3 +1434,11 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
   notices are ALL rejected. Pending and approved count; an event with no notice counts. Rejecting a card lowers the tile. "total_interview_requests" (all time) is unchanged.
 - Tests: `services/dashboard/tests/test_interview_tile.py` (4). Dashboard suite 256 passed. Backend-only: no web rebuild.
 - Note: today's count of already-processed emails is rebuilt from interview events, so past days may also change.
+
+### 2026-10-19: tick / cross / dash on each Upcoming interview (branch `feat/upcoming-real-mark`, not merged or deployed)
+- Why: Kes could not tell real interviews from non-interviews in the Upcoming table (Sonata 07:30 was a cancelled position, still listed).
+- `services/dashboard/api/routers/interviews.py`: `/upcoming` rows get `verdict`: `real` (a notice approved or sent), `not_interview` (every notice rejected, or a LATER
+  "Interview Cancelled" event of the same student names the same company), `pending` (undecided). Identical events collapsed into one row keep the most certain verdict.
+- `DashboardPage.tsx` + `types/index.ts`: new "Real?" column: green tick, red cross, grey dash. Needs `--build-web`.
+- Tests: `services/dashboard/tests/test_upcoming_verdict.py` (4). Dashboard suite 260 passed, `tsc` clean.
+- Deferred: follow-ups stay hidden (not shown with a cross); a cancellation with no company cannot cross anything out; assessments follow the same notice rule.

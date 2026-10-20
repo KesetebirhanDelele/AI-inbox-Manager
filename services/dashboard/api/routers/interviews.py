@@ -88,9 +88,25 @@ class UpcomingInterview(BaseModel):
     meeting_link: Optional[str]
     contact_name: Optional[str]
     contact_email: Optional[str]
+    verdict: str = "pending"        # "real" (a person approved a notice), "not_interview" (all notices rejected, or cancelled later), "pending"
 
     class Config:
         from_attributes = True
+
+
+_VERDICT_RANK = {"not_interview": 0, "pending": 1, "real": 2}
+
+
+def _verdict(event, statuses, cancellations) -> str:
+    """Tick / cross / undecided for one upcoming interview, from what people decided in Review and from later cancellations (no LLM)."""
+    name = (event.company_name or "").strip().lower()
+    if name and any(sid == event.student_id and (c or "").strip().lower() == name and cid > event.id for sid, c, cid in cancellations):
+        return "not_interview"
+    if any(st in ("approved", "sent") for st in statuses):
+        return "real"
+    if statuses and all(st == "rejected" for st in statuses):
+        return "not_interview"
+    return "pending"
 
 
 @router.get("/upcoming", response_model=List[UpcomingInterview])
@@ -120,15 +136,26 @@ async def get_upcoming_interviews(
     # A repeat of an interview the student was already told about is linked as a follow-up: hide it. Several events for the SAME student,
     # company, date and time are one interview: show it once. A rejected notice only means "do not tell the student", so it never hides the interview.
     follow_up_ids = {row.event_id for row in db.query(InterviewFollowUp.event_id).all()}
-    seen = set()
+    seen = {}
+    notice_status: dict = {}
+    for event_id, status in db.query(NotificationDraft.interview_event_id, NotificationDraft.email_status).all():
+        notice_status.setdefault(event_id, []).append(status)
+    cancellations = db.query(InterviewEvent.student_id, InterviewEvent.company_name, InterviewEvent.id).filter(InterviewEvent.sub_type == "Interview Cancelled").all()
 
     upcoming = []
     for event, student in results:
         key = (event.student_id, (event.company_name or "").strip().lower(), event.interview_date, event.interview_time)
-        if event.id in follow_up_ids or key in seen:
+        verdict = _verdict(event, notice_status.get(event.id, []), cancellations)
+        if event.id in follow_up_ids:
             continue
-        seen.add(key)
+        if key in seen:                                   # the same interview again: keep the most certain verdict
+            row = upcoming[seen[key]]
+            if _VERDICT_RANK[verdict] > _VERDICT_RANK[row.verdict]:
+                row.verdict = verdict
+            continue
+        seen[key] = len(upcoming)
         upcoming.append(UpcomingInterview(
+            verdict=verdict,
             interview_event_id=event.id,
             student_name=student.full_name if student else "Unknown",
             company_name=event.company_name,

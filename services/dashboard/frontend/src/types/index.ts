@@ -172,6 +172,7 @@ export interface UpcomingInterview {
   meeting_link?: string;
   contact_name?: string;
   contact_email?: string;
+  verdict?: 'real' | 'not_interview' | 'pending';
 }
 
 // Checklist types
