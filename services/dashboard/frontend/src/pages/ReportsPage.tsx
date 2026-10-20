@@ -185,6 +185,39 @@ const WeeklySummary = () => {
         </div>
       </div>
 
+      {data.follow_ups && (
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="bg-gray-200 px-6 py-3 text-center">
+            <h2 className="text-base font-bold text-gray-800">Student follow-up: did they get it?</h2>
+            <p className="text-xs text-gray-600 mt-1">Notices approved in this date range, and how each ended. One notice is one approved interview card.</p>
+          </div>
+          <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { label: 'Notices started', value: data.follow_ups.started, color: 'text-purple-600' },
+              { label: 'Acknowledged', value: data.follow_ups.acknowledged, color: 'text-green-600' },
+              { label: 'Still waiting', value: data.follow_ups.waiting, color: 'text-yellow-600' },
+              { label: 'No response (plan finished)', value: data.follow_ups.no_response, color: 'text-red-500' },
+              { label: 'Opted out (STOP)', value: data.follow_ups.opted_out, color: 'text-red-600' },
+              { label: 'Stopped by approver', value: data.follow_ups.stopped_by_approver, color: 'text-gray-600' },
+              { label: 'Interview came first', value: data.follow_ups.interview_passed, color: 'text-gray-600' },
+              { label: 'Avg minutes to acknowledge', value: data.follow_ups.avg_minutes_to_acknowledge ?? '—', color: 'text-blue-600' },
+            ].map((s) => (
+              <div key={s.label} className="bg-gray-50 rounded-lg p-4 text-center">
+                <div className={`text-3xl font-bold ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-gray-500 mt-1 font-medium">{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div className="px-6 pb-5 text-sm text-gray-700 text-center">
+            Acknowledged by:{' '}
+            <strong>{data.follow_ups.acknowledged_by.sms}</strong> text,{' '}
+            <strong>{data.follow_ups.acknowledged_by.call}</strong> call,{' '}
+            <strong>{data.follow_ups.acknowledged_by.email}</strong> email link,{' '}
+            <strong>{data.follow_ups.acknowledged_by.ai}</strong> reply read by the AI
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

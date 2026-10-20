@@ -669,6 +669,36 @@ def _current_week_central() -> tuple:
     return monday, monday + timedelta(days=6)
 
 
+def follow_up_summary(db: Session, range_start: datetime, range_end: datetime) -> dict:
+    """
+    How the student notices that STARTED in the range ended up: acknowledged (and through which channel), still waiting, no response after the whole plan,
+    opted out (STOP), stopped by the approver, or the interview came first. One notice = one approved card with a follow-up plan.
+    """
+    from models import NotificationSequence
+    rows = db.query(NotificationSequence).filter(NotificationSequence.started_at >= range_start, NotificationSequence.started_at < range_end).all()
+    by_status: Dict[str, int] = {}
+    channels = {"sms": 0, "call": 0, "email": 0, "ai": 0}
+    minutes = []
+    for seq in rows:
+        by_status[seq.status] = by_status.get(seq.status, 0) + 1
+        if seq.status == "acknowledged":
+            ch = seq.ack_channel if seq.ack_channel in channels else "ai"
+            channels[ch] += 1
+            if seq.ack_at and seq.started_at:
+                minutes.append(max(0.0, (seq.ack_at - seq.started_at).total_seconds() / 60))
+    return {
+        "started": len(rows),
+        "acknowledged": by_status.get("acknowledged", 0),
+        "acknowledged_by": channels,
+        "waiting": by_status.get("active", 0),
+        "no_response": by_status.get("exhausted", 0),
+        "opted_out": by_status.get("opted_out", 0),
+        "stopped_by_approver": by_status.get("closed", 0),
+        "interview_passed": by_status.get("interview_passed", 0),
+        "avg_minutes_to_acknowledge": round(sum(minutes) / len(minutes), 1) if minutes else None,
+    }
+
+
 @router.get("/weekly-summary")
 async def get_weekly_summary(
     start_date: Optional[date] = Query(None, description="First day of the range (default: Monday of this week, Central time)"),
@@ -724,6 +754,7 @@ async def get_weekly_summary(
         "processing_runs": len(runs),
         "successful_runs": successful_runs,
         "students_notified": sent_count,
+        "follow_ups": follow_up_summary(db, range_start, range_end),
         "top_companies": [{"company": r.company_name, "count": r.cnt} for r in top_companies],
     }
 

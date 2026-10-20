@@ -1501,3 +1501,10 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 
 ### 2026-10-20: reply-reading AI switched live on the server (docs only)
 - `REPLY_AI_MODE=live` added to the server `.env` (backed up first), api restarted, cron container reports mode live. RUNBOOK §16 updated. Deployed f6491e4 (reply matching, Stop button, replies on the card).
+
+### 2026-10-20: acknowledgement report on Reports > Overview (branch `feat/ack-report`, not merged or deployed)
+- Why: Kes asked where acknowledgements show. "Students Notified" counts sends (drafts with a sent timestamp), not replies; the only place was the Review card.
+- `services/dashboard/api/routers/stats.py`: `follow_up_summary` added to `GET /api/stats/weekly-summary` as `follow_ups`: notices started in the range, acknowledged (split text / call / email link / AI-read reply),
+  still waiting, no response (plan finished), opted out, stopped by approver, interview came first, average minutes to acknowledge. `students_notified` unchanged.
+- `ReportsPage.tsx`: new "Student follow-up: did they get it?" card under the Overview tiles. Needs `--build-web`.
+- Tests: `services/dashboard/tests/test_follow_up_report.py` (3). Dashboard suite 277 passed, `tsc` clean.
