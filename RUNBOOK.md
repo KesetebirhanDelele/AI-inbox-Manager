@@ -102,8 +102,9 @@ Entry point: `python execution/process_inbox_auto.py`
    `MAX_EMAILS_PER_RUN` (default **100**). Handles are **IMAP UIDs**.
 4. **Pre-run budget check**: abort before any API call if
    `len(emails) × ~$0.015 > MAX_COST_PER_RUN_USD` (default `5.0`).
-   ⚠️ that per-email estimate uses gpt-4o pricing but the model is gpt-4o-mini —
-   it over-estimates ~17× (see [§15](#15-known-issues--deferred-work)).
+   The estimate now uses gpt-4o-mini rates (~$0.0009/email; fixed 2026-10-21, it
+   used gpt-4o rates before and over-stated ~17×), so the guardrail only trips
+   above ~5,500 emails in one run.
 5. **Classify** (16 parallel workers):
    - `pre_classify_by_sender()` — deterministic sender-domain rules, **no AI call**
      for obvious senders (LinkedIn, Indeed, etc.)
@@ -596,12 +597,12 @@ rm tmp/process.lock             # if the PID is dead / lock > 3h old
   default; `classify_email()` does not override it).
 - Deterministic `pre_classify_by_sender()` skips the API entirely for many
   emails.
-- Real spend ≈ **$0.10–0.15 per run** (~800k input + ~15k output tokens at
-  gpt-4o-mini rates) → **~$1.50–2.00/day** across 12 runs.
-- The **`estimated cost: $X` line in the logs over-states this ~17×** because
-  `_compute_cost()` in `process_inbox_auto.py` hard-codes gpt-4o pricing
-  ($2.50 / $10 per M) instead of gpt-4o-mini ($0.15 / $0.60 per M). Safe (fails
-  toward aborting), but misleading — see [§15](#15-known-issues--deferred-work).
+- Logged cost (`process_runs.gpt_cost_usd`, the dashboard "AI Cost Today" tile)
+  is computed from real token counts at gpt-4o-mini rates. **Rows before
+  2026-10-21 were computed at gpt-4o rates and are ~16.7× too high** (multiply by
+  0.06 for the real figure); they were not rewritten. Measured 2026-10-21: ~$0.40/day
+  real (~$12/month) at ~620 emails/day, about 27% of mail skipping the LLM. Confirm
+  against the OpenAI usage page — the app's figure is an estimate, not the invoice.
 - Charges bill to the OpenAI account that owns the key in the `OPENAI_API_KEY`
   secret. Verify the account at platform.openai.com → Billing/Usage.
 
@@ -688,10 +689,6 @@ Render (see `progress.md` open item 5).
 
 ## 15. Known issues & deferred work
 
-- **Cost estimate is ~17× too high.** `_compute_cost()` /
-  `_EST_COST_PER_EMAIL_USD` in `process_inbox_auto.py` use gpt-4o pricing while
-  the model is gpt-4o-mini. Fix: use gpt-4o-mini rates ($0.15 / $0.60 per M) or
-  read the model from one constant. Low risk, avoids false cost-guardrail aborts.
 - **Interview / known-company emails are re-classified every run.** They're kept
   UNSEEN in INBOX on purpose, so each 2 h run re-fetches and re-classifies them.
   Deferred fix: stamp a durable `InboxGenius-Processed` Gmail label and exclude

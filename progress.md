@@ -1578,3 +1578,9 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - New table `approval_codes` (migration 011): salted hash, 10 minutes, 5 wrong tries, used up by the decision it unlocks. Router rewritten: GET shows state only; `send-code` (a button on the page, so scanners send nothing; 3 codes per hour per link; the code email is a security email and ignores the staff-alert master switch);
   `open` {code} returns the card and the full original email; approve/reject need confirm + code. A refused approval keeps the code and link usable. `ApprovePage.tsx`: "Confirm it is you" screen with "Email me a code", code box, "Show the card". The alert email explains the code step.
 - Tests: `services/dashboard/tests/test_approval_links.py` rewritten (18); dashboard and main suites pass; `tsc` clean. Needs `--build-web`.
+
+### 2026-10-21: logged GPT cost now uses gpt-4o-mini rates (branch `fix/gpt-cost-mini-pricing`, not merged or deployed)
+- Why: the classifier runs gpt-4o-mini ($0.15 / $0.60 per M tokens) but `_compute_cost()` priced it at gpt-4o ($2.50 / $10), so every logged cost, the "AI Cost Today" tile and the pre-run budget check were ~16.7x too high. Found while costing the system for Ali.
+- `execution/process_inbox_auto.py`: constants renamed `_GPT_INPUT_PRICE_PER_M` / `_GPT_OUTPUT_PRICE_PER_M` with the mini rates; `_EST_COST_PER_EMAIL_USD` now ~$0.0009. New `tests/execution/test_cost_pricing.py` (3).
+- `RUNBOOK.md` §4 step 4, §11, §15 updated. Old `process_runs` rows were NOT rewritten (still ~16.7x high; multiply by 0.06). Needs a deploy (`scripts/deploy_hetzner.sh`, no web rebuild) before the dashboard shows the lower numbers.
+- Deferred: whether `subclassify_interview` (gpt-4o, ~5 calls/day) tokens are included in the logged cost; confirm monthly spend against the OpenAI usage page.

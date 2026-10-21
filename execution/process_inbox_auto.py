@@ -928,23 +928,26 @@ def _run_status(stats: Dict[str, Any]) -> str:
 # skipped (move/delete) to prevent compounding an already expensive run.
 _MAX_COST_PER_RUN_USD: float = float(os.getenv("MAX_COST_PER_RUN_USD", "5.0"))
 
-# gpt-4o pricing (USD per million tokens) — update if OpenAI changes pricing.
-_GPT4O_INPUT_PRICE_PER_M: float = 2.50
-_GPT4O_OUTPUT_PRICE_PER_M: float = 10.00
+# Pricing (USD per million tokens) for the classifier model, gpt-4o-mini
+# (execution/classify_email.py, call_claude_api default). Update if the model or
+# OpenAI's price changes. These were gpt-4o rates ($2.50 / $10.00) until 2026-10-21,
+# which over-stated every logged cost about 17x.
+_GPT_INPUT_PRICE_PER_M: float = 0.15
+_GPT_OUTPUT_PRICE_PER_M: float = 0.60
 
 # Conservative per-email cost estimate used for the pre-run budget check.
 # Based on: ~3500 input tokens (prompt + email) + ~650 output tokens per call.
 _EST_COST_PER_EMAIL_USD: float = (
-    (3500 / 1_000_000) * _GPT4O_INPUT_PRICE_PER_M
-    + (650 / 1_000_000) * _GPT4O_OUTPUT_PRICE_PER_M
-)  # ≈ $0.015 per email
+    (3500 / 1_000_000) * _GPT_INPUT_PRICE_PER_M
+    + (650 / 1_000_000) * _GPT_OUTPUT_PRICE_PER_M
+)  # ≈ $0.0009 per email
 
 
 def _compute_cost(input_tokens: int, output_tokens: int) -> float:
     """Return estimated USD cost from actual token counts."""
     return (
-        (input_tokens / 1_000_000) * _GPT4O_INPUT_PRICE_PER_M
-        + (output_tokens / 1_000_000) * _GPT4O_OUTPUT_PRICE_PER_M
+        (input_tokens / 1_000_000) * _GPT_INPUT_PRICE_PER_M
+        + (output_tokens / 1_000_000) * _GPT_OUTPUT_PRICE_PER_M
     )
 
 
