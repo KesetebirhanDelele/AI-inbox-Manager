@@ -67,7 +67,8 @@ def callback_item(db: Session, req: CallbackRequest, now: Optional[datetime] = N
 @router.get("", response_model=List[CallbackOut])
 async def list_callbacks(include_done: bool = Query(False), db: Session = Depends(get_db),
                          user: UserSession = Depends(get_current_user)):
-    q = db.query(CallbackRequest)
+    # only callers matched to a roster student are interview callbacks; "ignored" rows and old unmatched rows are never shown
+    q = db.query(CallbackRequest).filter(CallbackRequest.student_id.isnot(None), CallbackRequest.status != "ignored")
     if not include_done:
         q = q.filter(CallbackRequest.status == "open")
     return [callback_item(db, r) for r in q.order_by(CallbackRequest.received_at).limit(200).all()]
@@ -80,5 +81,17 @@ async def mark_called_back(callback_id: int, db: Session = Depends(get_db), user
         raise HTTPException(status_code=404, detail="Callback not found")
     if req.status != "done":
         req.status, req.done_by, req.done_at = "done", user.username, datetime.utcnow()
+        db.commit()
+    return {"id": req.id, "status": req.status, "done_by": req.done_by}
+
+
+@router.post("/{callback_id}/cancel")
+async def cancel_callback(callback_id: int, db: Session = Depends(get_db), user: UserSession = Depends(get_current_user)):
+    """The notice was wrong (not a real interview callback, or already handled): clear it and stop the overdue clock. The row is kept for the record."""
+    req = db.get(CallbackRequest, callback_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail="Callback not found")
+    if req.status == "open":
+        req.status, req.done_by, req.done_at = "cancelled", user.username, datetime.utcnow()
         db.commit()
     return {"id": req.id, "status": req.status, "done_by": req.done_by}

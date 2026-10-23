@@ -22,10 +22,22 @@ class TestCallbacks:
         assert len(rows) == 1 and rows[0]["student_name"] == student.full_name and rows[0]["status"] == "open"
         assert rows[0]["interviews"] == ["Acme Corp, Data Analyst"] and rows[0]["caller_number"] == "+19725550100" and "due_at" in rows[0]
 
-    def test_an_unknown_caller_is_listed_without_a_student(self, client, db, auth_cookies):
-        add_callback(db, None)
-        row = client.get("/api/callbacks", cookies=auth_cookies).json()[0]
-        assert row["student_id"] is None and row["student_name"] is None
+    def test_a_caller_not_on_the_roster_is_never_listed(self, client, db, auth_cookies):
+        add_callback(db, None, call_id="old-unmatched")
+        add_callback(db, None, status="ignored", call_id="ignored")
+        assert client.get("/api/callbacks", cookies=auth_cookies).json() == []
+        assert client.get("/api/callbacks?include_done=true", cookies=auth_cookies).json() == []
+
+    def test_cancel_clears_it_records_who_and_keeps_the_row(self, client, db, auth_cookies):
+        req = add_callback(db, make_student(db))
+        resp = client.post(f"/api/callbacks/{req.id}/cancel", cookies=auth_cookies)
+        assert resp.status_code == 200 and resp.json()["status"] == "cancelled" and resp.json()["done_by"]
+        assert client.get("/api/callbacks", cookies=auth_cookies).json() == []
+        assert client.get("/api/callbacks?include_done=true", cookies=auth_cookies).json()[0]["status"] == "cancelled"
+        assert client.post("/api/callbacks/999/cancel", cookies=auth_cookies).status_code == 404
+        done = add_callback(db, make_student(db, username="z", full_name="Z"), call_id="c2")
+        client.post(f"/api/callbacks/{done.id}/done", cookies=auth_cookies)
+        assert client.post(f"/api/callbacks/{done.id}/cancel", cookies=auth_cookies).json()["status"] == "done"   # a finished callback is not rewritten
 
     def test_called_back_closes_it_records_who_and_hides_it(self, client, db, auth_cookies):
         req = add_callback(db, make_student(db))

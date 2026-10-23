@@ -435,7 +435,7 @@ class InterviewFollowUp(Base):
 class CallbackRequest(Base):
     """
     A student called the AI receptionist back about an interview. The callback owner (a ROLE) must call them back within one business hour.
-    One row per receptionist call (ghl_call_id is unique, so a call is handled once). status: open | done. The AI never calls back.
+    One row per receptionist call (ghl_call_id is unique, so a call is handled once). status: open | done | cancelled (staff said the notice was wrong) | ignored (caller matched nobody on the roster). The AI never calls back.
     """
     __tablename__ = "callback_requests"
 

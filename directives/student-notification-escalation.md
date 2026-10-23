@@ -283,7 +283,7 @@ Nobody is written into the code. Three ROLES are assigned on the dashboard's Set
   receptionist's newest calls (read-only), keeps the ones about an interview (`is_interview_callback`: the caller mentions an interview together with returning/missing a call, text or email, OR the
   receptionist used the prescribed "Interview Support will call you back" wording), finds the student (GHL contact email, else either phone number; never guessed when two match) and stores a
   `callback_requests` row (one per call).
-- The `callback_owner` role is emailed; the approval screen shows "Callbacks waiting" and flags the student's cards; Interviews shows "Callback needed". The owner clicks **Called back** to clear it.
+- The `callback_owner` role is emailed; the approval screen shows "Callbacks waiting" and flags the student's cards; Interviews shows "Callback needed". The owner clicks **Called back** to clear it, or **Cancel** when the notice is wrong (kept for the record as `cancelled`). A caller who matches nobody on the roster is not an interview callback: it is stored as `ignored` and is never shown or alerted.
 - Open after ONE BUSINESS HOUR (9-17 Mon-Fri Central by default): the `escalation_target` role is emailed once. Calls from before the feature was switched on are a silent baseline.
 - Receptionist prompt wording (the person is not named): take the caller's name and best number, say a team member will call back within one business hour during working hours, end the call, never offer to
   call back itself. Optional GHL action "Update contact field" can write the caller's best number and availability to a contact field for Rob's convenience; our app does NOT depend on it (the call time comes from the call log).

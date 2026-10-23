@@ -5,7 +5,8 @@ A student who calls the Colaberry number reaches the AI receptionist (a GHL Voic
 message and says a team member will call back within one business hour; THE AI NEVER CALLS BACK. This module turns that call into work for a person:
 
   * poll_callbacks   reads the receptionist's newest calls from GHL (read-only), keeps the ones about an interview, finds the student (by the GHL contact's email
-                     or either phone number), stores a CallbackRequest and emails the callback_owner ROLE.
+                     or either phone number), stores a CallbackRequest and emails the callback_owner ROLE. A caller who matches nobody on the roster is
+                     NOT an interview callback (vendors, sales, wrong numbers): it is stored as status "ignored" (so it is handled once) and never shown or alerted.
   * check_overdue    emails the callback_backup ROLE (escalation_target while nobody holds it) once when a callback is still open after one business hour.
   * The dashboard shows "Callback needed" on the student's interviews until the callback owner clicks "Called back".
 
@@ -147,7 +148,7 @@ def _describe(db, student, said: str, received_at: datetime, number: str, hours)
             + "\n".join(context_lines(db, student, req, hours)) + "\n\nPlease call them back"
             + (f" by {deadline.strftime('%a %I:%M %p')} (one business hour, working hours)" if deadline else " within one business hour during working hours")
             + ". The AI receptionist only took the message and does not call back.\n"
-            "When you have called, click \"Called back\" in the approval screen so this clears.")
+            "When you have called, click \"Called back\" in the approval screen so this clears (or \"Cancel\" if this notice is wrong).")
     return who, body
 
 
@@ -157,7 +158,7 @@ def poll_callbacks(db, client, now: datetime, alerts, agent_id: str, hours=None,
     from business_hours import BusinessHours
     hours = hours or BusinessHours.from_env(env)
     baseline = _baseline(db, now)
-    result = {"read": 0, "callbacks": 0, "alerted": 0, "before_baseline": 0}
+    result = {"read": 0, "callbacks": 0, "alerted": 0, "before_baseline": 0, "ignored": 0}
     seen = {r.ghl_call_id for r in db.query(M.CallbackRequest.ghl_call_id).all()}
     for raw in client.voice_ai_agent_calls(agent_id):
         call = gcv.parse_call_log(raw)
@@ -179,13 +180,17 @@ def poll_callbacks(db, client, now: datetime, alerts, agent_id: str, hours=None,
         student = find_student(db, number, contact)
         req = M.CallbackRequest(ghl_call_id=call.id, contact_id=raw.get("contactId"), student_id=student.id if student else None,
                                 caller_number=number, received_at=call.created_at, duration_seconds=call.duration,
-                                said=call.human_words[:1000], status="open")
+                                said=call.human_words[:1000], status="open" if student else "ignored")
         db.add(req)
         db.commit()
+        if student is None:
+            result["ignored"] += 1
+            continue
         result["callbacks"] += 1
 
     # alert for every open callback that has not been announced yet (also retries one stored while nobody held the callback_owner role)
-    for req in db.query(M.CallbackRequest).filter(M.CallbackRequest.status == "open", M.CallbackRequest.alerted_at.is_(None)).all():
+    for req in db.query(M.CallbackRequest).filter(M.CallbackRequest.status == "open", M.CallbackRequest.student_id.isnot(None),
+                                                  M.CallbackRequest.alerted_at.is_(None)).all():
         student = db.get(M.Student, req.student_id) if req.student_id else None
         who, body = _describe(db, student, req.said or "", req.received_at, req.caller_number or "", hours)
         if alerts.callback_needed(f"Callback needed: {who}", body):
@@ -200,7 +205,8 @@ def check_overdue(db, now: datetime, alerts, hours=None, env: Optional[Dict[str,
     import models as M
     from business_hours import BusinessHours, business_minutes_between
     hours = hours or BusinessHours.from_env(env)
-    late = [r for r in db.query(M.CallbackRequest).filter(M.CallbackRequest.status == "open", M.CallbackRequest.sla_alerted_at.is_(None)).all()
+    late = [r for r in db.query(M.CallbackRequest).filter(M.CallbackRequest.status == "open", M.CallbackRequest.student_id.isnot(None),
+                                                  M.CallbackRequest.sla_alerted_at.is_(None)).all()
             if business_minutes_between(r.received_at, now, hours) >= SLA_BUSINESS_MINUTES]
     if not late:
         return 0

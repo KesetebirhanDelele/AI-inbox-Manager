@@ -241,6 +241,11 @@ class ApiClient {
     return response.data;
   }
 
+  async cancelCallback(callbackId: number): Promise<any> {
+    const response = await this.client.post(`/api/callbacks/${callbackId}/cancel`);
+    return response.data;
+  }
+
   async getRoles(): Promise<{
     roles: { role: string; label: string; help: string; email: string; active: boolean; source: string }[];
     pilot_limit: number;

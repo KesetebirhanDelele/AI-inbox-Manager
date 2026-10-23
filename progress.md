@@ -17,6 +17,14 @@ Newest first.
 
 ---
 
+### 2026-10-23: callbacks need a roster match; Cancel button on callback cards (branch `fix/callback-roster-match`, NOT yet committed/merged/deployed)
+- **Why:** a SimpleHire sales call ("looking for David Freni ... checking candidates") showed up as an Overdue interview callback because the receptionist's own "Interview Support will call you back" wording passed `is_interview_callback`. Kes: no roster match = not an interview inquiry, hide it; roster match but not interview content = hide it; and a Cancel button for wrong notices.
+- **Changed:** `execution/callbacks.py` (no student match -> row stored as status `ignored`, never alerted, handled once; owner alert and overdue escalation also require a student), `routers/callback_requests.py` (list hides unmatched/`ignored` rows incl. old ones; new `POST /api/callbacks/{id}/cancel` -> status `cancelled`, records who/when, a finished callback is not rewritten), `routers/notifications.py` (review queue hides unmatched), `client.ts` + `NotificationQueue.tsx` (Cancel button with a confirm, next to Called back), `models.py` comment, tests in `tests/execution/test_callbacks.py` and `services/dashboard/tests/test_callbacks_api.py`.
+- **No migration:** status column is String(10); `cancelled` (9) and `ignored` (7) fit. The existing unmatched Shirley/SimpleHire row stays in the table but is hidden by the list filter.
+- **Deferred:** a student calling from a number/email not on the roster is now hidden (by Kes's decision); if that bites, revisit with an "Other calls" section. Needs deploy via `scripts/deploy_hetzner.sh` after merge.
+
+---
+
 ## RESUME HERE (state at the end of Tuesday 2026-10-20; read this first after a compact)
 
 **One-line state:** InboxGenius is LIVE for students. The server is armed (`GHL_WRITE_*` set) and the Settings switch "Live delivery to students" is ON (turned on 16:24 UTC by the admin), so an approved card calls, texts and emails the student through GHL.

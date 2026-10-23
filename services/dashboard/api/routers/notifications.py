@@ -575,7 +575,7 @@ async def get_review_queue(
     from routers.callback_requests import callback_item
     from models import CallbackRequest
     callbacks = [callback_item(db, r).model_dump() for r in
-                 db.query(CallbackRequest).filter(CallbackRequest.status == "open").order_by(CallbackRequest.received_at).limit(50).all()]
+                 db.query(CallbackRequest).filter(CallbackRequest.status == "open", CallbackRequest.student_id.isnot(None)).order_by(CallbackRequest.received_at).limit(50).all()]
     return {"escalation_enabled": escalation_on, "delivery_live": delivery_live, "count": len(items), "items": items, "callbacks": callbacks}
 
 

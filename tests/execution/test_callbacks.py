@@ -144,18 +144,21 @@ def test_the_first_run_is_a_baseline_so_old_calls_never_alert_then_a_new_callbac
     assert again["callbacks"] == 0 and len(mail.sent) == 1                               # one call, one alert
 
 
-def test_a_sales_call_creates_nothing_and_an_unknown_caller_still_creates_a_callback(db):
+def test_a_sales_call_creates_nothing_and_a_caller_not_on_the_roster_is_ignored_not_alerted(db):
     add_role(db, "callback_owner", "owner@example.com")
     mail = Mail()
     cb.poll_callbacks(db, FakeGhl([]), utc(2026, 10, 6, 9), alerts(db, mail), "agent-1", CHI)          # baseline
     calls = [log(SALES, id="s1", at="2026-10-06T15:30:00.000Z"), log(CALLBACK, id="u1", number="+10001112222", at="2026-10-06T15:31:00.000Z")]
     out = cb.poll_callbacks(db, FakeGhl(calls), utc(2026, 10, 6, 10, 40), alerts(db, mail), "agent-1", CHI)
-    assert out["callbacks"] == 1
+    assert out["callbacks"] == 0 and out["ignored"] == 1 and mail.sent == []
     req = db.query(db.models.CallbackRequest).one()
-    assert req.student_id is None and "an unknown caller" in mail.sent[0]["subject"]
+    assert req.student_id is None and req.status == "ignored"
+    again = cb.poll_callbacks(db, FakeGhl(calls), utc(2026, 10, 6, 10, 50), alerts(db, mail), "agent-1", CHI)
+    assert again["ignored"] == 0 and db.query(db.models.CallbackRequest).count() == 1                  # handled once
 
 
 def test_with_no_callback_owner_the_callback_is_still_stored_and_the_alert_is_retried_never_lost(db):
+    add_student(db, phone_number="972-555-0100")
     mail = Mail()
     cb.poll_callbacks(db, FakeGhl([]), utc(2026, 10, 6, 9), alerts(db, mail), "agent-1", CHI)
     out = cb.poll_callbacks(db, FakeGhl([log(CALLBACK, at="2026-10-06T15:30:00.000Z")]), utc(2026, 10, 6, 10, 40), alerts(db, mail), "agent-1", CHI)
@@ -170,7 +173,9 @@ def test_with_no_callback_owner_the_callback_is_still_stored_and_the_alert_is_re
 # ── one business hour ─────────────────────────────────────────────────────────────────────
 
 def make_request(db, received_at, status="open"):
-    req = db.models.CallbackRequest(ghl_call_id=f"id{received_at.timestamp()}", received_at=received_at, status=status, caller_number="+19725550100")
+    student = db.query(db.models.Student).first() or add_student(db, phone_number="972-555-0100")
+    req = db.models.CallbackRequest(ghl_call_id=f"id{received_at.timestamp()}", received_at=received_at, status=status, caller_number="+19725550100",
+                                    student_id=student.id)
     db.add(req)
     db.commit()
     return req
@@ -230,11 +235,10 @@ def test_the_overdue_email_tells_the_escalation_role_why_they_called_and_what_we
         assert expected in body, expected
 
 
-def test_an_unknown_caller_says_so_in_the_overdue_email(db):
+def test_an_open_callback_with_no_roster_student_is_never_escalated(db):
     add_role(db, "escalation_target", "escalation@example.com")
     req = make_request(db, utc(2026, 10, 6, 10))
-    req.said = "I was returning a phone call."
+    req.student_id = None                                                  # old row from before the roster check
     db.commit()
     mail = Mail()
-    cb.check_overdue(db, utc(2026, 10, 6, 11, 5), alerts(db, mail), CHI)
-    assert "could not match this number to a student" in mail.sent[0]["body"] and "returning a phone call" in mail.sent[0]["body"]
+    assert cb.check_overdue(db, utc(2026, 10, 6, 11, 5), alerts(db, mail), CHI) == 0 and mail.sent == []

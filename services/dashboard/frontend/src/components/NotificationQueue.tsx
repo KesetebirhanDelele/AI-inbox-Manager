@@ -40,13 +40,13 @@ const ago = (iso: string) => {
 /** One student who called back about an interview: the callback owner calls them and clicks "Called back". */
 const CallbackRow = ({ cb }: { cb: CallbackItem }) => {
   const queryClient = useQueryClient();
-  const done = useMutation({
-    mutationFn: () => apiClient.markCalledBack(cb.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reviewQueue'] });
-      queryClient.invalidateQueries({ queryKey: ['interviewEvents'] });
-    },
-  });
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['reviewQueue'] });
+    queryClient.invalidateQueries({ queryKey: ['interviewEvents'] });
+  };
+  const done = useMutation({ mutationFn: () => apiClient.markCalledBack(cb.id), onSuccess: refresh });
+  const cancel = useMutation({ mutationFn: () => apiClient.cancelCallback(cb.id), onSuccess: refresh });
+  const busy = done.isPending || cancel.isPending;
   return (
     <li className={`p-3 rounded border text-sm flex flex-wrap items-start justify-between gap-3 ${cb.overdue ? 'bg-red-50 border-red-300' : 'bg-white border-red-200'}`}>
       <div className="space-y-1">
@@ -63,14 +63,26 @@ const CallbackRow = ({ cb }: { cb: CallbackItem }) => {
         {cb.interviews.length > 0 && <div className="text-xs text-gray-600">Their interviews: {cb.interviews.join(' | ')}</div>}
         {cb.said && <div className="text-xs text-gray-500">They said: &ldquo;{cb.said.slice(0, 200)}&rdquo;</div>}
       </div>
-      <button
-        type="button"
-        disabled={done.isPending}
-        onClick={() => done.mutate()}
-        className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-      >
-        {done.isPending ? 'Saving...' : 'Called back'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm('Cancel this callback notice? Use this only when it is not a real interview callback.')) cancel.mutate();
+          }}
+          className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+        >
+          {cancel.isPending ? 'Cancelling...' : 'Cancel'}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => done.mutate()}
+          className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+        >
+          {done.isPending ? 'Saving...' : 'Called back'}
+        </button>
+      </div>
     </li>
   );
 };
@@ -592,7 +604,7 @@ const NotificationQueue = ({ mode = 'decide' }: { mode?: 'decide' | 'verify' }) 
           <h2 className="text-base font-bold text-red-800">Callbacks waiting ({data.callbacks.length})</h2>
           <p className="text-xs text-gray-600">
             These students called back about an interview. The AI receptionist only took the message: please call them back within one
-            business hour, then click &ldquo;Called back&rdquo;.
+            business hour, then click &ldquo;Called back&rdquo;. If a notice is wrong, click &ldquo;Cancel&rdquo;.
           </p>
           <ul className="space-y-2">
             {data.callbacks.map((c) => <CallbackRow key={c.id} cb={c} />)}
