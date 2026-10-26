@@ -286,6 +286,20 @@ const DashboardPage = () => {
                 <div className={`text-3xl font-bold ${runsLoading || !lastRun ? 'text-gray-400' : lastRun.status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
                   {runsLoading ? <Skel /> : lastRun ? (lastRun.status === 'success' ? 'OK' : 'Failed') : '—'}
                 </div>
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-bold text-gray-800 truncate">Last run</dt>
+                  <dd className="mt-1 text-xs text-gray-500 truncate">
+                    {lastRun ? `${formatDateCST(lastRun.run_timestamp)} · ${lastRun.total_emails} emails` : 'No run yet'}
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </Link>
+
+      </div>
 
       {showOffers && (
         <div className="mt-6 bg-white shadow rounded-lg p-5">
@@ -320,21 +334,6 @@ const DashboardPage = () => {
           )}
         </div>
       )}
-
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-bold text-gray-800 truncate">Last run</dt>
-                  <dd className="mt-1 text-xs text-gray-500 truncate">
-                    {lastRun ? `${formatDateCST(lastRun.run_timestamp)} · ${lastRun.total_emails} emails` : 'No run yet'}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </Link>
-
-      </div>
 
       {/* Quick Actions Banner */}
       {stats && stats.pending_approvals > 0 && (

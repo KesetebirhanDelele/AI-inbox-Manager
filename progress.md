@@ -17,6 +17,13 @@ Newest first.
 
 ---
 
+### 2026-10-25 (2): fix the Offers panel placement (merged to master and deployed 2026-10-26)
+- **Bug (mine, from the entry below):** the "Offers today" panel was inserted INSIDE the "Last run" card, which is a link to Reports > System. So it rendered squeezed into the 4th column and clicking "Show the email" jumped to Reports > System. The type-check passed because the markup was still valid; only a browser showed it.
+- **Fix:** `DashboardPage.tsx`: the panel now sits after the closing of the card grid, full width, outside any link. No logic change.
+- **Note:** an offer whose email has neither a roster address nor a matching greeting name (e.g. the Mercor one) correctly shows "Student not identified".
+
+---
+
 ### 2026-10-25: "Offers Today" drill-through (merged to master and deployed 2026-10-25)
 - **Why:** the dashboard showed "1 Offers Today" but nothing said who was offered or what the offer was. Kes asked for a drill-through on the number.
 - **Changed:** `DashboardPage.tsx` (the Offers card is now a button that opens an "Offers today" panel: student, company - role, received time, sender, subject, and a "Show the email" toggle with the full text), `routers/stats.py` (`/api/stats/offers` now also returns `student_name`, `student_match`, `full_body` (capped at 8000 chars)), `execution/resolve_student.py` (new pure `match_roster_student`), tests in `services/dashboard/tests/test_stats.py` (`TestOffersDetail`).
