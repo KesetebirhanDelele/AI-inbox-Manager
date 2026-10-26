@@ -249,3 +249,37 @@ class TestRunProcessingStatus:
         data = resp.json()
         assert data["locked"] is True
         assert data["lock_info"]["pid"] == 1234
+
+
+class TestOffersDetail:
+    """The dashboard's "Offers Today" drill-through: who was offered and the details."""
+
+    def _offer(self, db, body, subject="Offer of employment"):
+        from conftest import make_email, make_classification
+        email = make_email(db, subject=subject)
+        email.full_body = body
+        db.commit()
+        make_classification(db, email, category="Offer", company="Acme Corp")
+        return email
+
+    def test_offer_names_the_student_whose_email_is_in_the_message(self, client, db, auth_cookies):
+        from conftest import make_student
+        make_student(db, username="kenya", full_name="Kenya Smith", personal_email="kenya@example.com")
+        self._offer(db, "We are pleased to offer the role. Reply to kenya@example.com")
+        row = client.get("/api/stats/offers", cookies=auth_cookies).json()[0]
+        assert row["student_name"] == "Kenya Smith" and "email" in row["student_match"]
+        assert row["company_name"] == "Acme Corp" and "pleased to offer" in row["full_body"]
+
+    def test_offer_uses_the_greeting_name_only_when_exactly_one_student_fits(self, client, db, auth_cookies):
+        from conftest import make_student
+        make_student(db, username="kenya", full_name="Kenya Smith", personal_email="k@example.com")
+        self._offer(db, "Dear Kenya, we would like to offer you the position.")
+        assert client.get("/api/stats/offers", cookies=auth_cookies).json()[0]["student_name"] == "Kenya Smith"
+
+    def test_offer_with_two_possible_students_or_none_is_not_guessed(self, client, db, auth_cookies):
+        from conftest import make_student
+        make_student(db, username="k1", full_name="Kenya Smith", personal_email="k1@example.com")
+        make_student(db, username="k2", full_name="Kenya Jones", personal_email="k2@example.com")
+        self._offer(db, "Dear Kenya, we would like to offer you the position.")
+        row = client.get("/api/stats/offers", cookies=auth_cookies).json()[0]
+        assert row["student_name"] is None and row["student_match"] is None

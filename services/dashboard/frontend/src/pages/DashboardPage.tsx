@@ -123,6 +123,7 @@ const DashboardPage = () => {
 
 
 
+  const [showOffers, setShowOffers] = useState(false);
   const todayCST = format(toZonedTime(new Date(), 'America/Chicago'), 'yyyy-MM-dd');
   // Compare in Central time: received_date is UTC, so slicing it was a day off in the evening.
   const cstDay = (iso: string) => format(toZonedTime(new Date(iso), 'America/Chicago'), 'yyyy-MM-dd');
@@ -251,8 +252,13 @@ const DashboardPage = () => {
           </div>
         </Link>
 
-        {/* Offers Received Today */}
-        <div className="bg-gray-200 overflow-hidden shadow rounded-lg">
+        {/* Offers Received Today: click to see who was offered and the details */}
+        <button
+          type="button"
+          onClick={() => setShowOffers((v) => !v)}
+          aria-expanded={showOffers}
+          className="bg-gray-200 overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow text-left"
+        >
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
@@ -263,12 +269,14 @@ const DashboardPage = () => {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-bold text-gray-800 truncate">Offers Today</dt>
-                  <dd className="mt-1 text-xs text-gray-500">Monthly goal is on Reports</dd>
+                  <dd className="mt-1 text-xs text-primary-600">
+                    {showOffers ? 'Hide the details' : todayOffers.length > 0 ? 'Click to see who and the details' : 'Monthly goal is on Reports'}
+                  </dd>
                 </dl>
               </div>
             </div>
           </div>
-        </div>
+        </button>
 
         {/* Last run: one line; the full history and system numbers are on Reports > System */}
         <Link to="/reports?tab=system" className="bg-gray-200 overflow-hidden shadow rounded-lg hover:shadow-lg transition-shadow">
@@ -278,6 +286,41 @@ const DashboardPage = () => {
                 <div className={`text-3xl font-bold ${runsLoading || !lastRun ? 'text-gray-400' : lastRun.status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
                   {runsLoading ? <Skel /> : lastRun ? (lastRun.status === 'success' ? 'OK' : 'Failed') : '—'}
                 </div>
+
+      {showOffers && (
+        <div className="mt-6 bg-white shadow rounded-lg p-5">
+          <h2 className="text-base font-bold text-gray-900 mb-3">Offers today ({todayOffers.length})</h2>
+          {todayOffers.length === 0 ? (
+            <p className="text-sm text-gray-600">No offers received today.</p>
+          ) : (
+            <ul className="space-y-3">
+              {todayOffers.map((o: any) => (
+                <li key={o.id} className="border border-gray-200 rounded p-3 text-sm space-y-1">
+                  <div className="font-semibold text-gray-900">
+                    {o.student_name || 'Student not identified'}
+                    {o.student_name ? (
+                      <span className="ml-2 text-xs font-normal text-gray-500">({o.student_match})</span>
+                    ) : (
+                      <span className="ml-2 text-xs font-normal text-orange-700">read the email below to see who it is for</span>
+                    )}
+                  </div>
+                  <div className="text-gray-800">
+                    {[o.company_name, o.position].filter(Boolean).join(' - ') || 'Company and role not found'}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    Received {formatDateCST(o.received_date)} &middot; from {o.from_address} &middot; subject: {o.subject}
+                  </div>
+                  <details className="text-xs text-gray-700">
+                    <summary className="cursor-pointer text-primary-600">Show the email</summary>
+                    <pre className="mt-2 whitespace-pre-wrap font-sans bg-gray-50 p-2 rounded max-h-80 overflow-auto">{o.full_body || o.body_preview}</pre>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>

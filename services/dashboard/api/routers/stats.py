@@ -414,9 +414,20 @@ async def get_offers(
         .limit(limit)
         .all()
     )
+    import sys
+    from pathlib import Path
+    exec_dir = str(Path(__file__).resolve().parents[4] / "execution")
+    if exec_dir not in sys.path:
+        sys.path.insert(0, exec_dir)
+    from resolve_student import match_roster_student
+    roster = db.query(Student).filter(Student.is_active.is_(True)).all()
     result = []
     for email, cls in rows:
+        found = match_roster_student(f"{email.subject or ''} {email.full_body or email.body_preview or ''}", roster)
         result.append({
+            "student_name": found["student"].full_name if found else None,
+            "student_match": found["how"] if found else None,
+            "full_body": (email.full_body or "")[:8000],
             "id": email.id,
             "subject": email.subject,
             "from_address": email.from_address,

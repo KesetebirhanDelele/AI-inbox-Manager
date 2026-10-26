@@ -17,6 +17,14 @@ Newest first.
 
 ---
 
+### 2026-10-25: "Offers Today" drill-through (merged to master and deployed 2026-10-25)
+- **Why:** the dashboard showed "1 Offers Today" but nothing said who was offered or what the offer was. Kes asked for a drill-through on the number.
+- **Changed:** `DashboardPage.tsx` (the Offers card is now a button that opens an "Offers today" panel: student, company - role, received time, sender, subject, and a "Show the email" toggle with the full text), `routers/stats.py` (`/api/stats/offers` now also returns `student_name`, `student_match`, `full_body` (capped at 8000 chars)), `execution/resolve_student.py` (new pure `match_roster_student`), tests in `services/dashboard/tests/test_stats.py` (`TestOffersDetail`).
+- **How the student is found:** emails do not store a recipient, so it is best-effort from the offer's own text: a roster email address written in it, else the greeting name ("Dear Kenya") matching exactly one roster student. Two possible students or none = "Student not identified" (never guessed); the full email is one click away.
+- **Deferred:** a reliable student link needs the recipient header stored with each email (the same gap noted in `backfill_event_students.py`); not done here.
+
+---
+
 ### 2026-10-23: callbacks need a roster match; Cancel button on callback cards (branch `fix/callback-roster-match`, NOT yet committed/merged/deployed)
 - **Why:** a SimpleHire sales call ("looking for David Freni ... checking candidates") showed up as an Overdue interview callback because the receptionist's own "Interview Support will call you back" wording passed `is_interview_callback`. Kes: no roster match = not an interview inquiry, hide it; roster match but not interview content = hide it; and a Cancel button for wrong notices.
 - **Changed:** `execution/callbacks.py` (no student match -> row stored as status `ignored`, never alerted, handled once; owner alert and overdue escalation also require a student), `routers/callback_requests.py` (list hides unmatched/`ignored` rows incl. old ones; new `POST /api/callbacks/{id}/cancel` -> status `cancelled`, records who/when, a finished callback is not rewritten), `routers/notifications.py` (review queue hides unmatched), `client.ts` + `NotificationQueue.tsx` (Cancel button with a confirm, next to Called back), `models.py` comment, tests in `tests/execution/test_callbacks.py` and `services/dashboard/tests/test_callbacks_api.py`.

@@ -170,6 +170,34 @@ def find_student_name_in_body(body_content: str) -> Optional[str]:
     return None
 
 
+def match_roster_student(text: str, students: List[Any]) -> Optional[Dict[str, Any]]:
+    """
+    Best-effort: which roster student an email (e.g. a job offer) is about, from its own text only. Deterministic, never guesses between two people.
+    Order: (1) a roster email address written in the text, (2) the greeting name ("Dear Kenya,") matching the first name or full name of exactly one student.
+    `students` are objects with full_name, personal_email, assigned_gmail. Returns {"student": obj, "how": "..."} or None.
+    """
+    if not text:
+        return None
+    low = text.lower()
+    by_email = {}
+    for st in students:
+        for addr in (st.personal_email, st.assigned_gmail):
+            if addr and addr.strip().lower() in low:
+                by_email[st.id] = st
+    if len(by_email) == 1:
+        return {"student": next(iter(by_email.values())), "how": "their email address is in the message"}
+    if by_email:
+        return None
+    hint = find_student_name_in_body(text)
+    if hint:
+        h = hint.strip().lower()
+        hits = [st for st in students if (st.full_name or "").strip().lower() == h
+                or ((st.full_name or "").strip().lower().split() or [""])[0] == h.split()[0]]
+        if len(hits) == 1:
+            return {"student": hits[0], "how": f'the greeting says "{hint}"'}
+    return None
+
+
 def resolve_student(
     email_data: Dict[str, Any],
 ) -> Dict[str, Any]:
