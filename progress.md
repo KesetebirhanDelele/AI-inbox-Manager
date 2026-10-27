@@ -1642,3 +1642,10 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Risk accepted: evidence is in-sample and thin (6 approved interviews). Kes judges about 30 of the 100 replayed cards on 2026-10-28 (Review > Gate review). Rollback is one line (see RUNBOOK §16).
 - Open: Ali has not been asked whether assessment (online test) notices should stay, go as an SMS reminder, or be dropped (draft ready; needs his number and Kes's OK to send).
 
+
+### 2026-10-27: Ali's decision on assessment notices (docs only; branch `docs/ali-assessment-decision`)
+- Contact: Ali (owner/CEO), ali@colaberry.com (confirmed by Kes 2026-10-27).
+- Ali chose **A**: when a student gets an online assessment email, the student gets an SMS reminder. This is how it already works once an approver approves (template `next_round_assessment`, same call/text/email reminder sequence as interviews; the interview gate skips Assessment mail), so no code change was needed for the decision itself.
+- Update email to Ali drafted in Kes's Gmail (not sent).
+- Found while checking the real assessment notices (events 180, 179, 162, 155, 136, 126): the assessment SMS can run past the 320-character rule (events 179 = 334, 162 = 329, before the reference number is added) because it appends the interview "Format: video / Use the meeting link in the employer's invitation email" sentence, which does not belong on a test. NOT fixed; waiting for Kes's OK on the wording change.
+- Three real assessment notices are waiting for an approver: events 180 (Martin Sprocket), 179 (Twenix), 136 (IDR). None approved by Claude; approving contacts the real student.
