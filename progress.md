@@ -1630,3 +1630,9 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
   (2) "A position/requisition was cancelled" (events 142, 143, 146) was read as an interview cancellation; the prompt alone did not fix it with gpt-4o-mini, so `closes_a_position_not_an_interview` (words, not the label) turns a cancellation that names a closed role and never mentions an interview/call/meeting into no-news. (3) `interview_gate_replay.py --refresh` re-judges already replayed mail (verdicts overwritten, a person's decision never).
 - Kes decided: the round/format flag stays on the dashboard card only (no Gmail label, no new email classification); gate recall for gates 1 and 2 and a browser UI check are out of scope for now.
 - Tests: main suite 1146, dashboard 316 passed.
+
+### 2026-10-27: round flag filled from facts (branch `feat/round-flag`)
+- Why: only 2 of 29 news cards had a round ("2nd round · Phone" badge), because the model is told never to guess. Kes: build it.
+- `interview_gate.infer_round`: for a new interview or reschedule whose round the model left "unknown", read the words (R1/R2/R3, first/second/third/final round, intro call); two different rounds in one email stay unknown. Else count the student's earlier ANNOUNCED
+  interviews at the same company (distinct date/time; assessments, cancellations, rejected notices excluded): one earlier = 2nd, two = 3rd, none or four+ = unknown (no earlier mail does not prove a 1st). The model's own answer is never overruled.
+- Tests: main suite 1150, dashboard 318 passed.

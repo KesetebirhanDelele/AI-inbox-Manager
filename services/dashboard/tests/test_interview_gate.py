@@ -246,3 +246,21 @@ def test_assess_turns_a_position_cancellation_into_no_news(db):
     kept = g.assess(db, "Re: Representation", "hr@acme.com", "The position has been cancelled, so the interview will not be scheduled.",
                     call=fake_model(verdict="cancellation", confidence=0.9))
     assert kept["result"]["verdict"] == "cancellation" and not g.would_hide_card(kept["result"])
+
+
+def test_assess_fills_an_unknown_round_from_the_words_but_never_overrules_the_model(db):
+    out = g.assess(db, "Invitation: Video technical discussion R2 - Tiger", "hr@tiger.com", "Please join the call.",
+                   call=fake_model(verdict="new_interview", round="unknown", format="video"))
+    assert out["result"]["round"] == "2nd" and g.label(out["result"]) == "2nd round · Video"
+    kept = g.assess(db, "Interview R2", "hr@tiger.com", "Please join the call.", call=fake_model(verdict="new_interview", round="final", format="phone"))
+    assert kept["result"]["round"] == "final"
+
+
+def test_assess_infers_the_round_from_the_students_earlier_interview(db):
+    student = make_student(db)
+    first = make_email(db, email_id="r1", subject="Phone screen", from_address="hr@acme.com", received_date=NOW - timedelta(days=5))
+    event = make_interview_event(db, first, student=student, sub_type="Phone Screen", company="Acme Corp", interview_date="2026-10-22")
+    make_notification_draft(db, event, email_status="approved")
+    out = g.assess(db, "Next interview", "hr@acme.com", "We would like to meet you in person.", received=NOW, company="Acme Corp", student_id=student.id,
+                   call=fake_model(verdict="new_interview", round="unknown", format="in-person"))
+    assert out["result"]["round"] == "2nd"

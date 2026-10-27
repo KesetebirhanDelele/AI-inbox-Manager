@@ -176,6 +176,37 @@ def closes_a_position_not_an_interview(subject: str, new_text: str) -> bool:
     return bool(_POSITION_CLOSED.search(text)) and not _MEETING_WORD.search(text)
 
 
+_ROUND_WORDS = (
+    ("final", re.compile(r"\bfinal (?:round|interview|stage)\b|\blast round\b", re.I)),
+    ("3rd", re.compile(r"\b(?:third|3rd) (?:round|interview|stage)\b|\bround (?:3|three)\b|\bR3\b", re.I)),
+    ("2nd", re.compile(r"\b(?:second|2nd) (?:round|interview|stage)\b|\bround (?:2|two)\b|\bR2\b", re.I)),
+    ("1st", re.compile(r"\b(?:first|1st) (?:round|interview|stage)\b|\bround (?:1|one)\b|\bR1\b|\binitial interview\b|\bintro(?:duction|ductory)? call\b", re.I)),
+)
+_NOT_A_ROUND = ("Interview Cancelled", "Assessment", "Job Machine")
+_ANNOUNCED = ("draft", "approved", "sent")
+
+
+def infer_round(subject: str, new_text: str, history: List[Dict[str, Any]], company: Optional[str]) -> str:
+    """
+    The round of an interview, from facts only: '1st', '2nd', '3rd', 'final' or 'unknown'.
+    1. The words of the email ("R2", "second round", "final interview"). Two different rounds named in one email = unknown.
+    2. Else the student's earlier ANNOUNCED interviews at the same company (distinct date/time, assessments and cancellations excluded):
+       one earlier means this is the 2nd, two earlier the 3rd. Zero earlier does not prove a 1st (the history may be incomplete), so it stays unknown.
+    """
+    text = f"{subject or ''}. {(new_text or '')[:1500]}"
+    found = {name for name, rx in _ROUND_WORDS if rx.search(text)}
+    if len(found) == 1:
+        return found.pop()
+    if found:
+        return "unknown"
+    key = _company_key(company)
+    if not key:
+        return "unknown"
+    moments = {(h.get("date"), (h.get("time") or "")[:5]) for h in history
+               if _company_key(h.get("company")) == key and h.get("status") in _ANNOUNCED and h.get("sub_type") not in _NOT_A_ROUND and h.get("date")}
+    return {1: "2nd", 2: "3rd"}.get(len(moments), "unknown")
+
+
 def would_hide_card(result: Optional[Dict[str, Any]]) -> bool:
     """True when the verdict says there is no news for the student AND the model is sure. No result = never hide."""
     return bool(result) and result["verdict"] not in SHOWS_CARD and result["confidence"] >= CONFIDENCE_FLOOR
@@ -303,6 +334,8 @@ def assess(db, subject: str, from_address: str, body: str, received: Optional[da
             out["error"] = "unreadable answer"
         else:
             result["refers_to_event_id"] = history[result["refers_to"] - 1].get("event_id") if result["refers_to"] else None
+            if result["verdict"] in ("new_interview", "reschedule") and result["round"] == "unknown":
+                result["round"] = infer_round(subject, new_text, history, company)         # facts fill what the model left unknown; it is never overruled
             if result["verdict"] == "cancellation" and closes_a_position_not_an_interview(subject, new_text):
                 # The model reads "the role has been cancelled" as an interview cancellation (events 142, 143, 146); the words decide, not the label.
                 result.update(verdict="not_interview", confidence=max(result["confidence"], 0.9), refers_to=None, refers_to_event_id=None,

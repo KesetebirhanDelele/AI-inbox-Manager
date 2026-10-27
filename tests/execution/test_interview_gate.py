@@ -186,3 +186,34 @@ def test_a_real_interview_cancellation_is_kept():
     assert not g.closes_a_position_not_an_interview("Canceled: Sehrish Khan: 15-30 Minutes Meeting", "Thank you for scheduling a phone screen!")
     assert not g.closes_a_position_not_an_interview("Cancelled", "Your call on Friday has been cancelled.")
     assert not g.closes_a_position_not_an_interview("Hello", "Thanks for your time.")
+
+
+def _prior(**kw):
+    return {"company": "Acme Corp", "status": "sent", "sub_type": "Phone Screen", "date": "2026-10-20", "time": "10:00", **kw}
+
+
+def test_round_from_the_words_of_the_email():
+    assert g.infer_round("Invitation: Video technical discussion R2 - Sehrish", "", [], None) == "2nd"
+    assert g.infer_round("Interview", "This is your final round interview.", [], None) == "final"
+    assert g.infer_round("Interview", "Congratulations, the third round is next week.", [], None) == "3rd"
+    assert g.infer_round("Third round interview", "", [], None) == "3rd"
+    assert g.infer_round("Intro call with Tiger Analytics", "", [], None) == "1st"
+
+
+def test_two_different_rounds_in_one_email_are_not_guessed():
+    assert g.infer_round("R1 and R2 schedule", "", [], None) == "unknown"
+    assert g.infer_round("Final round, replacing the second round", "", [], None) == "unknown"
+
+
+def test_round_from_earlier_announced_interviews_at_the_same_company():
+    assert g.infer_round("Interview", "Please pick a time.", [_prior()], "Acme Corp") == "2nd"
+    assert g.infer_round("Interview", "x", [_prior(), _prior(date="2026-10-22")], "ACME corp inc") == "3rd"
+    assert g.infer_round("Interview", "x", [_prior(), _prior(date="2026-10-22"), _prior(date="2026-10-24")], "Acme Corp") == "unknown"   # four or more: not claimed
+
+
+def test_history_rounds_ignore_repeats_rejected_other_companies_assessments_and_cancellations():
+    history = [_prior(), _prior(), _prior(status="rejected", date="2026-10-21"), _prior(company="Other Inc", date="2026-10-22"),
+               _prior(sub_type="Assessment", date="2026-10-23"), _prior(sub_type="Interview Cancelled", date="2026-10-24"), _prior(date=None)]
+    assert g.infer_round("Interview", "x", history, "Acme Corp") == "2nd"                  # only the one distinct, announced, dated interview counts
+    assert g.infer_round("Interview", "x", [], "Acme Corp") == "unknown"                  # no earlier mail: do not claim a 1st
+    assert g.infer_round("Interview", "x", [_prior()], None) == "unknown"                 # no company: cannot match
