@@ -237,3 +237,12 @@ def test_replay_passes_the_emails_category_so_assessments_are_skipped(db):
     assert seen["category"] == "Assessment"
     row = db.query(InterviewGateReview).one()
     assert row.verdict is None and "not screened" in row.error
+
+
+def test_assess_turns_a_position_cancellation_into_no_news(db):
+    out = g.assess(db, "An update on your recent application", "talent@vizient.com", "At this time, the role has been cancelled.",
+                   call=fake_model(verdict="cancellation", confidence=0.8))
+    assert out["result"]["verdict"] == "not_interview" and out["result"]["confidence"] >= 0.9 and g.would_hide_card(out["result"])
+    kept = g.assess(db, "Re: Representation", "hr@acme.com", "The position has been cancelled, so the interview will not be scheduled.",
+                    call=fake_model(verdict="cancellation", confidence=0.9))
+    assert kept["result"]["verdict"] == "cancellation" and not g.would_hide_card(kept["result"])

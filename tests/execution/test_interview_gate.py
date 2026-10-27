@@ -169,3 +169,20 @@ def test_the_pipeline_tells_the_gate_the_category(monkeypatch):
     monkeypatch.setattr(g, "assess", lambda *a, **k: seen.update(k) or {"result": None, "error": "x", "new_text": "", "quoted_chars": 0, "history": [], "cost_usd": 0})
     pia.process_interview_email(dict(EMAIL), 1, cls)
     assert seen["category"] == "Phone Screen"
+
+
+VIZIENT = "Dear Binoy, Thank you for your interest in our Sr Analyst position at Vizient. At this time, the role has been cancelled. We hope you remain enthusiastic."
+USAA = "Thank you for your interest in the Business Intelligence Analyst position at USAA. This position has been cancelled and is no longer available."
+
+
+def test_a_cancelled_position_is_not_an_interview_cancellation():
+    assert g.closes_a_position_not_an_interview("An update on your recent application", VIZIENT)
+    assert g.closes_a_position_not_an_interview("Thank You for Applying", USAA)
+    assert g.closes_a_position_not_an_interview("Update", "The requisition has been closed and filled.")
+
+
+def test_a_real_interview_cancellation_is_kept():
+    assert not g.closes_a_position_not_an_interview("RE: Representation Mail", "the position has been cancelled, so the interview will no longer be scheduled.")
+    assert not g.closes_a_position_not_an_interview("Canceled: Sehrish Khan: 15-30 Minutes Meeting", "Thank you for scheduling a phone screen!")
+    assert not g.closes_a_position_not_an_interview("Cancelled", "Your call on Friday has been cancelled.")
+    assert not g.closes_a_position_not_an_interview("Hello", "Thanks for your time.")

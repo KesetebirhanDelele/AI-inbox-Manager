@@ -1627,6 +1627,6 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 
 ### 2026-10-27: gate skips Assessment mail, job-requisition cancellations are not interview cancellations, replay `--refresh` (branch `feat/interview-gate`)
 - Why: Kes's review of the gate. (1) The gate called an Assessment notice (event 180) "not an interview"; in live mode that would have suppressed the notice the system sends on purpose. `interview_gate.SKIPPED_CATEGORIES = ("Assessment",)`: no model call, no verdict, the existing notice is untouched.
-  (2) "A position/requisition was cancelled" (events 142, 143, 146) was read as an interview cancellation; the prompt now limits `cancellation` to an interview or meeting. (3) `interview_gate_replay.py --refresh` re-judges already replayed mail (verdicts overwritten, a person's decision never).
+  (2) "A position/requisition was cancelled" (events 142, 143, 146) was read as an interview cancellation; the prompt alone did not fix it with gpt-4o-mini, so `closes_a_position_not_an_interview` (words, not the label) turns a cancellation that names a closed role and never mentions an interview/call/meeting into no-news. (3) `interview_gate_replay.py --refresh` re-judges already replayed mail (verdicts overwritten, a person's decision never).
 - Kes decided: the round/format flag stays on the dashboard card only (no Gmail label, no new email classification); gate recall for gates 1 and 2 and a browser UI check are out of scope for now.
-- Tests: main suite 1144, dashboard 315 passed.
+- Tests: main suite 1146, dashboard 316 passed.

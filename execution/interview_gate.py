@@ -164,6 +164,18 @@ def call_model(prompt: str) -> Dict[str, Any]:
             "input_tokens": response.usage.prompt_tokens, "output_tokens": response.usage.completion_tokens}
 
 
+_POSITION_CLOSED = re.compile(
+    r"\b(?:position|role|requisition|opening|vacancy|job|posting)\b[^.\n]{0,60}\b(?:cancel+ed|closed|filled|withdrawn|no longer (?:available|open))\b"
+    r"|\b(?:cancel+ed|closed|filled|withdrawn)\b[^.\n]{0,30}\b(?:position|role|requisition|opening|vacancy|job|posting)\b", re.I)
+_MEETING_WORD = re.compile(r"interview|phone screen|screening|meeting|\bcall\b|appointment|scheduled|invitation|invite", re.I)
+
+
+def closes_a_position_not_an_interview(subject: str, new_text: str) -> bool:
+    """True when the new text says a job/role/requisition was cancelled or filled and never mentions an interview, call or meeting."""
+    text = f"{subject or ''}. {new_text or ''}"
+    return bool(_POSITION_CLOSED.search(text)) and not _MEETING_WORD.search(text)
+
+
 def would_hide_card(result: Optional[Dict[str, Any]]) -> bool:
     """True when the verdict says there is no news for the student AND the model is sure. No result = never hide."""
     return bool(result) and result["verdict"] not in SHOWS_CARD and result["confidence"] >= CONFIDENCE_FLOOR
@@ -291,6 +303,10 @@ def assess(db, subject: str, from_address: str, body: str, received: Optional[da
             out["error"] = "unreadable answer"
         else:
             result["refers_to_event_id"] = history[result["refers_to"] - 1].get("event_id") if result["refers_to"] else None
+            if result["verdict"] == "cancellation" and closes_a_position_not_an_interview(subject, new_text):
+                # The model reads "the role has been cancelled" as an interview cancellation (events 142, 143, 146); the words decide, not the label.
+                result.update(verdict="not_interview", confidence=max(result["confidence"], 0.9), refers_to=None, refers_to_event_id=None,
+                              reason="A job position was cancelled; no interview or meeting is mentioned.")
             out["result"] = result
     except Exception as e:                                  # noqa: BLE001 - the gate must never break the pipeline
         out["error"] = f"{type(e).__name__}: {e}"
