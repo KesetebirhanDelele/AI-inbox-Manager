@@ -156,3 +156,16 @@ def test_the_sender_check_goes_into_the_prompt_as_facts():
     p = g.build_prompt("Confirm interview availability", "jobs@talent-hub.com", "Please confirm your availability.", [], check)
     assert "SENDER CHECK: likely_job_board" in p and "job-board mailers" in p
     assert "(not available)" in g.build_prompt("s", "a@b.com", "x", [])
+
+
+def test_a_closed_position_is_not_an_interview_cancellation_in_the_prompt():
+    p = g.build_prompt("Update on your application", "hr@acme.com", "The position has been cancelled.", [])
+    assert "requisition or application that is closed, filled or cancelled is NOT a cancellation" in p
+
+
+def test_the_pipeline_tells_the_gate_the_category(monkeypatch):
+    seen = {}
+    calls, cls = _pipeline(monkeypatch, "shadow", NOT_INTERVIEW)
+    monkeypatch.setattr(g, "assess", lambda *a, **k: seen.update(k) or {"result": None, "error": "x", "new_text": "", "quoted_chars": 0, "history": [], "cost_usd": 0})
+    pia.process_interview_email(dict(EMAIL), 1, cls)
+    assert seen["category"] == "Phone Screen"

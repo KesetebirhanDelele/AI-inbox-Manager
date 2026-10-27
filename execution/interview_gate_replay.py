@@ -43,12 +43,15 @@ def candidates(db, since=None, limit=100, include_done=False):
 def replay(db, pairs, assess=None, apply=True):
     """Runs the gate on each pair; returns [(email, out)]. Saves rows when `apply`."""
     import interview_gate
+    from models import Classification
     assess = assess or interview_gate.assess
     results = []
     for event, email in pairs:
+        latest = (db.query(Classification).filter(Classification.email_id == email.id)
+                  .order_by(Classification.classification_timestamp.desc()).first())
         out = assess(db, email.subject, email.from_address, email.full_body or email.body_preview or "",
                      received=email.received_date, exclude_email_id=email.id, company=event.company_name, student_id=event.student_id,
-                     interview_date=event.interview_date, interview_time=event.interview_time)
+                     interview_date=event.interview_date, interview_time=event.interview_time, category=latest.category if latest else None)
         results.append((email, out))
         if apply:
             interview_gate.record_review(db, out, email.id, event.id, mode=interview_gate.gate_mode(), source="replay")
@@ -60,6 +63,7 @@ def main(argv=None) -> int:
     ap.add_argument("--apply", action="store_true", help="call the model and save the verdicts (default: list only)")
     ap.add_argument("--limit", type=int, default=100)
     ap.add_argument("--since", help="only mail received on/after this date (YYYY-MM-DD)")
+    ap.add_argument("--refresh", action="store_true", help="also re-judge emails already replayed (verdicts are overwritten, a person's decision never is)")
     args = ap.parse_args(argv)
     from process_inbox_auto import get_db_session
     db = get_db_session()
@@ -67,7 +71,7 @@ def main(argv=None) -> int:
         print("No database connection.")
         return 1
     since = datetime.strptime(args.since, "%Y-%m-%d") if args.since else None
-    pairs = candidates(db, since=since, limit=args.limit)
+    pairs = candidates(db, since=since, limit=args.limit, include_done=args.refresh)
     print(f"{len(pairs)} past interview email(s) to replay (estimated cost ${len(pairs) * EST_COST_PER_EMAIL_USD:.3f}).")
     if not args.apply:
         for event, email in pairs[:20]:

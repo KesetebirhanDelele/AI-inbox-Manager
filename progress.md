@@ -1618,3 +1618,15 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Tests: `tests/execution/test_quoted_text.py` (10), `tests/execution/test_interview_gate.py` (17, incl. the pipeline hook off/shadow/live), `services/dashboard/tests/test_interview_gate.py` (10, incl. the Lorena case). Main suite 1141, dashboard 309 passed, `tsc` clean.
 - NOT done: the replay over real past notifications (needs a deploy to the server; the model is only mocked in tests), prompt quality on real mail (unmeasured), setting `INTERVIEW_GATE_MODE=shadow` on the server. Deferred: a Gmail label for flagged mail.
 
+
+### 2026-10-26 (later): gate history by company / date-time, sender check as facts (branch `feat/interview-gate`, deployed to the server as fe88c0b, not merged)
+- Why: first replay of 100 past interview cards agreed with past decisions on 55 of 87; switching to gpt-4o did not help (54 of 87, ~17x cost). Causes found: the original interview was often not in the history (a Calendly reminder and the recruiter invite share no sender or subject), and the gate could not see job-board signals.
+- `interview_gate.load_history` also pulls earlier mail that made an event for the same company or the same interview date and time (only this student's when known); `assess` passes company/student/date/time and gives the model the `email_authenticity` result as advisory facts; the prompt no longer says the mail is "already thought to be an interview". Replay and the pipeline hook pass the event/extracted fields.
+- Re-run on the same 100 (gpt-4o-mini, $0.023): news 43 -> 29, agreement with past decisions 55 -> 67 of 87 (32 -> 20 disagreements), the 6 verified-approved cards all still "news", no card moved from no-news to news. IN-SAMPLE: the prompt was changed after looking at these 100, so the figure needs fresh mail (shadow mode) to be trusted.
+- Tests: main suite 1142, dashboard 312 passed. Still not done: `INTERVIEW_GATE_MODE` is off on the server; round detection still mostly "unknown" (2 of 29).
+
+### 2026-10-27: gate skips Assessment mail, job-requisition cancellations are not interview cancellations, replay `--refresh` (branch `feat/interview-gate`)
+- Why: Kes's review of the gate. (1) The gate called an Assessment notice (event 180) "not an interview"; in live mode that would have suppressed the notice the system sends on purpose. `interview_gate.SKIPPED_CATEGORIES = ("Assessment",)`: no model call, no verdict, the existing notice is untouched.
+  (2) "A position/requisition was cancelled" (events 142, 143, 146) was read as an interview cancellation; the prompt now limits `cancellation` to an interview or meeting. (3) `interview_gate_replay.py --refresh` re-judges already replayed mail (verdicts overwritten, a person's decision never).
+- Kes decided: the round/format flag stays on the dashboard card only (no Gmail label, no new email classification); gate recall for gates 1 and 2 and a browser UI check are out of scope for now.
+- Tests: main suite 1144, dashboard 315 passed.

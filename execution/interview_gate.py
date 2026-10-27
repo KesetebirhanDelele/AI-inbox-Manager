@@ -34,6 +34,8 @@ LINKS_TO_ORIGINAL = ("follow_up", "confirmation")
 ROUNDS = ("1st", "2nd", "3rd", "final", "unknown")
 FORMATS = ("phone", "video", "in-person", "unknown")
 CONFIDENCE_FLOOR = 0.7
+# A test the candidate completes alone has its own notice (template next_round_assessment); "not an interview" must never suppress it.
+SKIPPED_CATEGORIES = ("Assessment",)
 HISTORY_LIMIT = 10
 NEW_TEXT_LIMIT = 3000
 FREE_MAIL = {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "icloud.com", "live.com", "msn.com", "proton.me", "protonmail.com"}
@@ -44,7 +46,7 @@ and lead-generation mailers, reminders, replies). Decide whether its NEW text (w
 Verdicts (choose exactly one):
 - new_interview: arranges an interview that is not in the history yet (a first interview, or a 2nd / 3rd / final round).
 - reschedule: moves an interview already in the history to a different date or time.
-- cancellation: cancels an interview.
+- cancellation: cancels or withdraws an INTERVIEW or meeting. A job opening, position, requisition or application that is closed, filled or cancelled is NOT a cancellation: answer not_interview.
 - follow_up: a reminder, directions, a document, or logistics about an interview already in the history. No new time.
 - confirmation: repeats or confirms an interview already in the history at the same time.
 - not_interview: nothing about arranging, moving or cancelling an interview (a courtesy reply, thanks, an attachment, a job board mailer).
@@ -258,7 +260,8 @@ def load_history(db, subject: str, from_address: str, before: Optional[datetime]
 
 def assess(db, subject: str, from_address: str, body: str, received: Optional[datetime] = None,
            exclude_email_id: Optional[int] = None, call: Callable[[str], Dict[str, Any]] = call_model, company: Optional[str] = None,
-           student_id: Optional[int] = None, interview_date: Optional[str] = None, interview_time: Optional[str] = None) -> Dict[str, Any]:
+           student_id: Optional[int] = None, interview_date: Optional[str] = None, interview_time: Optional[str] = None,
+           category: Optional[str] = None) -> Dict[str, Any]:
     """
     The gate's answer for one email. Never raises: on any failure `result` is None and `error` says why, which the caller treats as "do nothing".
     Returns {"result", "error", "new_text", "quoted_chars", "history", "cost_usd"}.
@@ -266,6 +269,9 @@ def assess(db, subject: str, from_address: str, body: str, received: Optional[da
     from text_cleaning import clean_email_text
 
     out: Dict[str, Any] = {"result": None, "error": None, "new_text": "", "quoted_chars": 0, "history": [], "cost_usd": 0.0}
+    if category in SKIPPED_CATEGORIES:
+        out["error"] = f"{category}: not screened by the interview gate"       # no model call, no verdict: the existing notice stays as it is
+        return out
     try:
         new_text, quoted = split_reply(clean_email_text(body or ""))
         out["new_text"], out["quoted_chars"] = new_text, len(quoted)

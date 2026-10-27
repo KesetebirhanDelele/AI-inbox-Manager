@@ -192,3 +192,48 @@ def test_assess_passes_the_sender_check_to_the_model(db):
     out = g.assess(db, "Confirm interview availability", "jobs@talent-hub.com",
                    "Please confirm your availability for an interview. Unsubscribe", call=call)
     assert "SENDER CHECK: " in call.seen["prompt"] and out["sender_check"] is not None
+
+
+def test_assessment_mail_is_never_screened_and_never_calls_the_model(db):
+    def boom(prompt):
+        raise AssertionError("the model must not be called for an assessment")
+    out = g.assess(db, "Pending Assessment(s)", "hr@acme.com", "Please complete your assessment.", call=boom, category="Assessment")
+    assert out["result"] is None and "not screened" in out["error"] and not g.would_hide_card(out["result"])
+
+
+def test_refresh_rejudges_replayed_mail_but_keeps_a_persons_decision(db):
+    first, event = seed_thread(db)
+    pairs = replay_mod.candidates(db)
+
+    def assess(db_, subject, from_address, body, received=None, exclude_email_id=None, **kw):
+        return g.assess(db_, subject, from_address, body, received=received, exclude_email_id=exclude_email_id, call=fake_model(), **kw)
+
+    replay_mod.replay(db, pairs, assess=assess)
+    row = db.query(InterviewGateReview).one()
+    row.human_decision, row.decided_by = "real", "kes"
+    db.commit()
+    assert replay_mod.candidates(db) == []                                                    # normally nothing left to do
+    again = replay_mod.candidates(db, include_done=True)
+    assert [e.id for e, _ in again] == [event.id]                                              # --refresh offers it again
+    replay_mod.replay(db, again, assess=lambda *a, **k: g.assess(*a, call=fake_model(verdict="new_interview", confidence=0.9), **k))
+    row = db.query(InterviewGateReview).one()
+    assert row.verdict == "new_interview" and row.human_decision == "real" and row.decided_by == "kes"
+
+
+def test_replay_passes_the_emails_category_so_assessments_are_skipped(db):
+    student = make_student(db)
+    email = make_email(db, email_id="as", subject="Pending Assessment", from_address="hr@acme.com", received_date=NOW)
+    event = make_interview_event(db, email, student=student, sub_type="Assessment", company="Acme")
+    from models import Classification
+    db.add(Classification(email_id=email.id, category="Assessment", confidence=0.95))
+    db.commit()
+    seen = {}
+
+    def assess(db_, subject, from_address, body, **kw):
+        seen.update(kw)
+        return g.assess(db_, subject, from_address, body, call=lambda p: (_ for _ in ()).throw(AssertionError("no model call")), **{k: v for k, v in kw.items() if k != "received"})
+
+    replay_mod.replay(db, [(event, email)], assess=assess)
+    assert seen["category"] == "Assessment"
+    row = db.query(InterviewGateReview).one()
+    assert row.verdict is None and "not screened" in row.error
