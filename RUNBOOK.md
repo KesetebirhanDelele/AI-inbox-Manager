@@ -801,6 +801,7 @@ Render (see `progress.md` open item 5).
   (Render's free PostgreSQL expired). Backend moved to Render Docker.
 - **2026-06-27** — Two-pass Spam Review system added.
 - (pre-2026-06) — Railway backend + Windows Task Scheduler era. **Deprecated.**
+- **2026-10-26 (this fork, NOT yet deployed)** — Third interview screen (`execution/interview_gate.py`, `quoted_text.py`; gpt-4o-mini, ~$0.0005/email) behind `INTERVIEW_GATE_MODE=off|shadow|live` (default off). New table `interview_gate_reviews` (created by `create_all`; migration 012). Shadow records verdicts only; live lets the verdict hide cards and links follow-ups. Replay of past mail: `python execution/interview_gate_replay.py [--apply]` in the cron container. Review > "Gate review (testing)" collects Kes's real / not-real decisions. Needs `--build-web` to deploy.
 
 ---
 

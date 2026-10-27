@@ -16,6 +16,8 @@ import type {
   NotificationSummary,
   NotificationDetail,
   ReviewQueue,
+  GateReviewItem,
+  GateSummary,
   StudentInfo,
   InterviewRequest,
   UpcomingInterview,
@@ -323,6 +325,21 @@ class ApiClient {
     const response = await this.client.get('/api/notifications/review-queue', {
       params: { include_done: includeDone },
     });
+    return response.data;
+  }
+
+  async getGateReviews(show: string): Promise<GateReviewItem[]> {
+    const response = await this.client.get('/api/interview-gate/reviews', { params: { show, limit: 200 } });
+    return response.data;
+  }
+
+  async getGateSummary(): Promise<GateSummary> {
+    const response = await this.client.get('/api/interview-gate/summary');
+    return response.data;
+  }
+
+  async decideGateReview(id: number, decision: 'real' | 'not_real' | 'clear', note?: string): Promise<any> {
+    const response = await this.client.post(`/api/interview-gate/reviews/${id}/decision`, { decision, note });
     return response.data;
   }
 

@@ -1607,3 +1607,14 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - `execution/process_inbox_auto.py`: constants renamed `_GPT_INPUT_PRICE_PER_M` / `_GPT_OUTPUT_PRICE_PER_M` with the mini rates; `_EST_COST_PER_EMAIL_USD` now ~$0.0009. New `tests/execution/test_cost_pricing.py` (3).
 - `RUNBOOK.md` §4 step 4, §11, §15 updated. Old `process_runs` rows were NOT rewritten (still ~16.7x high; multiply by 0.06). Needs a deploy (`scripts/deploy_hetzner.sh`, no web rebuild) before the dashboard shows the lower numbers.
 - Deferred: whether `subclassify_interview` (gpt-4o, ~5 calls/day) tokens are included in the logged cost; confirm monthly spend against the OpenAI usage page.
+
+### 2026-10-26: third interview screen ("gate") + quoted-reply stripping, shadow-first (branch `feat/interview-gate`, not committed, merged or deployed)
+- Why: Rutendo / Lorena Ortiz: a one-line reply ("I've attached the job description") carried the confirmed-interview thread under it, so the extractor read Oct 29 10:30 and a card was made, and the authenticity check said "looks genuine".
+  Kes: add a cheap LLM step that reads the new text plus the last 10 emails; unrelated mail gets no card and no flag; reschedules and 2nd/3rd rounds get a card flagged with round and format; test it against past notifications in shadow mode.
+- New: `execution/quoted_text.py` (cuts the older thread; a mail that starts with a header or a forward banner is kept whole), `execution/interview_gate.py` (prompt, parser, decision, history loader, `record_review`),
+  `execution/interview_gate_replay.py` (past mail, dry run by default), `routers/gate_review.py` (`/api/interview-gate/summary|reviews|reviews/{id}/decision`), model `InterviewGateReview` + migration 012 (new table only),
+  `GateReview.tsx` + a "Gate review (testing)" tab, a flag and a "gate says no news" badge on the card. Hooked in `process_interview_email` (`INTERVIEW_GATE_MODE`, default off).
+- Live mode only: the sub-classifier and `email_authenticity` read the sender's new text; a confident no-news verdict makes no event; follow_up/confirmation with a known original is linked (`InterviewFollowUp`, reason "gate: ...") with no notice.
+- Tests: `tests/execution/test_quoted_text.py` (10), `tests/execution/test_interview_gate.py` (17, incl. the pipeline hook off/shadow/live), `services/dashboard/tests/test_interview_gate.py` (10, incl. the Lorena case). Main suite 1141, dashboard 309 passed, `tsc` clean.
+- NOT done: the replay over real past notifications (needs a deploy to the server; the model is only mocked in tests), prompt quality on real mail (unmeasured), setting `INTERVIEW_GATE_MODE=shadow` on the server. Deferred: a Gmail label for flagged mail.
+

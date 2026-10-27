@@ -4,14 +4,15 @@ import { apiClient } from '../api/client';
 import { useSearchParams } from 'react-router-dom';
 import ApprovalsContent from '../components/ApprovalsContent';
 import NotificationQueue from '../components/NotificationQueue';
+import GateReview from '../components/GateReview';
 
-type TabType = 'notifications' | 'verify' | 'approvals';
+type TabType = 'notifications' | 'verify' | 'approvals' | 'gate';
 
 const ReviewPage = () => {
   const [searchParams] = useSearchParams();
   const requested = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<TabType>(
-    requested === 'approvals' ? requested : 'notifications',
+    requested === 'approvals' || requested === 'gate' ? requested : 'notifications',
   );
 
   // Same query the tabs use (cached), only to show how many students are waiting to be identified or verified.
@@ -22,6 +23,7 @@ const ReviewPage = () => {
     { id: 'notifications', name: 'Student notifications' },
     { id: 'verify', name: waitingCount > 0 ? `Verify students (${waitingCount})` : 'Verify students' },
     { id: 'approvals', name: 'Classification review' },
+    { id: 'gate', name: 'Gate review (testing)' },
   ];
 
   return (
@@ -60,6 +62,7 @@ const ReviewPage = () => {
         {activeTab === 'notifications' && <NotificationQueue />}
         {activeTab === 'verify' && <NotificationQueue mode="verify" />}
         {activeTab === 'approvals' && <ApprovalsContent />}
+        {activeTab === 'gate' && <GateReview />}
       </div>
     </div>
   );

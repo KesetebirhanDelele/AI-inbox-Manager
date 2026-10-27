@@ -580,3 +580,37 @@ class ApprovalCode(Base):
     expires_at = Column(DateTime, nullable=False)
     attempts = Column(Integer, nullable=False, default=0)
     consumed_at = Column(DateTime)
+
+
+class InterviewGateReview(Base):
+    """
+    What the third screen (execution/interview_gate.py) made of one email, and what a person decided about it.
+
+    One row per email (a replay updates it). `human_decision` is Kes's call on whether the email was news about a real interview:
+    'real' or 'not_real'. In shadow mode this is how the gate is tested against people's judgement before it is allowed to hide anything.
+    New table only (production relies on create_all, which cannot add columns to existing tables).
+    """
+    __tablename__ = "interview_gate_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email_id = Column(Integer, ForeignKey("emails.id"), nullable=False, unique=True, index=True)
+    event_id = Column(Integer, ForeignKey("interview_events.id"), index=True)          # the event the pipeline made, if any
+    source = Column(String(10), nullable=False, default="live")                         # 'live' (pipeline) | 'replay' (past mail)
+    mode = Column(String(10))                                                           # gate mode when it ran
+    verdict = Column(String(20), index=True)                                            # null = the gate failed (error says why)
+    round = Column(String(10))
+    format = Column(String(15))
+    confidence = Column(Float)
+    reason = Column(String(300))
+    refers_to_event_id = Column(Integer)
+    would_hide = Column(Boolean, default=False, index=True)                             # live mode would have shown no card
+    error = Column(String(300))
+    new_text = Column(Text)                                                             # what the gate read (the quoted thread removed)
+    quoted_chars = Column(Integer)
+    history = Column(JSON)                                                              # the earlier emails it was shown
+    cost_usd = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    human_decision = Column(String(10), index=True)                                     # 'real' | 'not_real' | null (undecided)
+    human_note = Column(String(300))
+    decided_by = Column(String(100))
+    decided_at = Column(DateTime)

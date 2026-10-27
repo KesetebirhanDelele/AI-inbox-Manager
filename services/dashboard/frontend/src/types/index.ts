@@ -264,6 +264,7 @@ export interface ReviewQueueItem {
   draft_id: number | null;
   follow_up_of?: number | null;
   suggestion?: { action: 'reject' | 'check' | 'approve'; text: string } | null;
+  gate?: { verdict: string; flag: string | null; confidence: number | null; reason: string | null; would_hide: boolean; mode: string | null } | null;
   state: 'ready' | 'needs_verification' | 'blocked' | 'needs_student' | 'no_draft' | 'approved' | 'failed' | string;
   blockers: string[];
   warnings: string[];
@@ -380,4 +381,40 @@ export interface StudentInfo {
   is_active: boolean;
   last_synced_at?: string;
   created_at?: string;
+}
+
+/** One email the third interview screen looked at, next to what a person decided (Review > Gate review). */
+export interface GateReviewItem {
+  id: number;
+  email_id: number;
+  subject: string;
+  from_address: string;
+  received_date: string;
+  gate_says: 'real' | 'not_real' | 'unsure';
+  verdict: string | null;
+  confidence: number | null;
+  reason: string | null;
+  error: string | null;
+  flag: string | null;
+  source: string;
+  new_text: string | null;
+  quoted_chars: number | null;
+  history: { received?: string; subject?: string; category?: string; sub_type?: string; date?: string; time?: string; company?: string; status?: string }[];
+  event: { id: number; sub_type: string; company: string | null; date: string | null; time: string | null; format: string | null } | null;
+  notice_status: string | null;
+  human_decision: 'real' | 'not_real' | null;
+  human_note: string | null;
+  decided_by: string | null;
+}
+
+export interface GateSummary {
+  total: number;
+  decided: number;
+  undecided: number;
+  mode: string;
+  agree: number;
+  hid_a_real_one: number;
+  showed_a_non_interview: number;
+  gate_unsure: number;
+  cost_usd: number;
 }

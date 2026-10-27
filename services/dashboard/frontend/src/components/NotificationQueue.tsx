@@ -227,6 +227,18 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
           </div>
         )}
 
+        {/* Third screen's opinion: the round and format flag, and (testing) whether it would have hidden this card */}
+        {item.gate && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {item.gate.flag && <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">{item.gate.flag}</span>}
+            {item.gate.would_hide && (
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800" title={item.gate.reason || ''}>
+                Gate says: no news in this email{item.gate.reason ? ` (${item.gate.reason})` : ''}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Is the email genuine? */}
         <div className="border border-gray-200 rounded-md">
           <button

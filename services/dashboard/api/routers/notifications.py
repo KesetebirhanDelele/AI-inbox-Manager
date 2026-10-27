@@ -26,6 +26,7 @@ from types import SimpleNamespace
 
 from models import (
     NotificationDraft,
+    InterviewGateReview,
     NotificationInbound,
     NotificationSequence,
     StudentVerification,
@@ -480,8 +481,12 @@ async def get_review_queue(
                 warnings.insert(0, w)
 
         text = clean_email_text((email.full_body or email.body_preview) if email else "")
+        gate_mod = _execution_module("interview_gate")
+        gate_row = db.query(InterviewGateReview).filter(InterviewGateReview.event_id == event.id).first()
+        # Live mode judges what the sender just wrote; the older thread under a reply would make any reply look like an interview.
+        auth_text = _execution_module("quoted_text").new_text_only(text) if gate_mod.gate_mode() == "live" else text
         check = authenticity.assess(
-            email.subject if email else "", email.from_address if email else "", text[:6000], event.company_name)
+            email.subject if email else "", email.from_address if email else "", auth_text[:6000], event.company_name)
         if check["verdict"] == "likely_job_board":
             warnings.insert(0, "This looks like a job-board mailer, not a real interview invitation. Please read the email before approving.")
 
@@ -560,6 +565,9 @@ async def get_review_queue(
                 "received_date": email.received_date, "excerpt": text[:1500],
             },
             "authenticity": check,
+            "gate": None if gate_row is None or gate_row.verdict is None else {
+                "verdict": gate_row.verdict, "flag": gate_mod.label({"verdict": gate_row.verdict, "round": gate_row.round, "format": gate_row.format}),
+                "confidence": gate_row.confidence, "reason": gate_row.reason, "would_hide": bool(gate_row.would_hide), "mode": gate_row.mode},
             "draft": None if draft is None else {
                 "subject": draft.email_subject, "body": draft.email_body,
                 "recipient_email": draft.recipient_email, "status": draft.email_status,

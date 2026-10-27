@@ -277,6 +277,19 @@ Before deploying to production:
 - [ ] Logging configured and producing expected output
 - [ ] WhatsApp message format reviewed and approved
 
+## Third screen: the interview gate (2026-10-26, branch `feat/interview-gate`, not deployed)
+
+Runs only on mail the earlier steps already called interview-related. `execution/interview_gate.py` (gpt-4o-mini, about $0.0005 per email) reads the sender's NEW
+text (the quoted thread under a reply is cut off by `execution/quoted_text.py`) plus the last 10 emails from the same sender, and answers: `new_interview`, `reschedule`,
+`cancellation` (a student card), `follow_up`, `confirmation` (no card, linked to the original event) or `not_interview` (no card, no flag), with the round (1st/2nd/3rd/final)
+and format (phone/video/in-person). It hides a card only when it is at least 70% sure; a model error or an unreadable answer never hides anything.
+
+`INTERVIEW_GATE_MODE`: `off` (default, nothing runs), `shadow` (verdict saved in `interview_gate_reviews`, behaviour unchanged), `live` (the verdict decides, and the sub-classifier and the
+authenticity check read only the sender's new text). Past mail is replayed with `execution/interview_gate_replay.py`; Review > "Gate review (testing)" lets a person mark each email
+real / not real, and the totals (agree, hid a real one, showed a non-interview) are the evidence for switching to live.
+
+Why: a one-line courtesy reply carried the whole confirmed-interview thread under it, so the extractor read a date and a card was made (Rutendo / Lorena Ortiz, 2026-10-26).
+
 ## Revision History
 
 - **v1.0** (2026-01-28): Initial directive created with full pipeline specification

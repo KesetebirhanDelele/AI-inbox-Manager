@@ -779,8 +779,30 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
         _logger = logging.getLogger(__name__)
 
         extracted = classification.get("extracted_data") or {}
-        sub_classification = _build_sub_classification(email_data, classification)
+
+        # ── Third screen (INTERVIEW_GATE_MODE off|shadow|live): is this NEW interview news, or a reply inside a thread? ──
+        gate_mode, gate_out, gate_result = "off", None, None
+        try:
+            import interview_gate
+            gate_mode = interview_gate.gate_mode()
+            if gate_mode != "off":
+                gate_out = interview_gate.assess(db, email_data.get("subject", ""), email_data.get("sender_email", ""),
+                                                 email_data.get("body_content", ""), exclude_email_id=email_db_id)
+                gate_result = gate_out["result"]
+        except Exception as e:
+            _logger.warning(f"Interview gate skipped: {e}")
+        sub_input = email_data
+        if gate_mode == "live" and gate_out and gate_out.get("quoted_chars"):
+            sub_input = dict(email_data, body_content=gate_out["new_text"])      # live only: read what the sender just wrote, not the thread
+
+        sub_classification = _build_sub_classification(sub_input, classification)
         sub_type = sub_classification["interview_sub_type"]
+
+        if gate_mode == "live" and gate_result and interview_gate.would_hide_card(gate_result)                 and not (gate_result["verdict"] in interview_gate.LINKS_TO_ORIGINAL and gate_result.get("refers_to_event_id")):
+            interview_gate.record_review(db, gate_out, email_db_id, None, gate_mode)
+            classification["_not_an_interview"] = True
+            _logger.info(f"Interview gate ({gate_result['verdict']}): no news for the student, no event. {gate_result['reason']}")
+            return False
 
         if classification.get("category") in _NEEDS_SUBCLASSIFIER and not _is_job_machine_interview(sub_classification):
             classification["_not_an_interview"] = True
@@ -844,6 +866,17 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
             f"Created InterviewEvent {event_result['id']}: "
             f"{sub_type} at {extracted.get('company_name')}"
         )
+
+        if gate_out is not None:
+            interview_gate.record_review(db, gate_out, email_db_id, event_result["id"], gate_mode)
+            if gate_mode == "live" and interview_gate.would_hide_card(gate_result) and gate_result.get("refers_to_event_id"):
+                try:
+                    from interview_followup import record_follow_up
+                    record_follow_up(db, event_result["id"], gate_result["refers_to_event_id"], reason=f"gate: {gate_result['verdict']}")
+                    _logger.info(f"Interview gate ({gate_result['verdict']}): linked to event {gate_result['refers_to_event_id']}, no student notice")
+                    return True
+                except Exception as e:
+                    _logger.warning(f"Gate follow-up link skipped ({e}); a normal notice is created")
 
         # ── A reminder/reply about an interview the student was already told about is not news: link it, no notice ──
         try:
