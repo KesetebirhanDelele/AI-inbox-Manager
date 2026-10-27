@@ -59,7 +59,7 @@ def test_prompt_carries_new_text_history_and_the_rules():
 
 
 def test_prompt_without_history_says_so():
-    assert "(no earlier emails from this sender)" in g.build_prompt("s", "a@b.com", "hello", [])
+    assert "(no earlier related emails)" in g.build_prompt("s", "a@b.com", "hello", [])
 
 
 def test_new_text_is_capped():
@@ -149,3 +149,10 @@ def test_live_an_unsure_or_failed_gate_never_hides_a_card(monkeypatch):
     assert pia.process_interview_email(dict(EMAIL), 1, cls) is True and len(calls["events"]) == 1
     calls, cls = _pipeline(monkeypatch, "live", None, error="openai down")
     assert pia.process_interview_email(dict(EMAIL), 1, cls) is True and len(calls["events"]) == 1
+
+
+def test_the_sender_check_goes_into_the_prompt_as_facts():
+    check = {"verdict": "likely_job_board", "against": ["Uses wording typical of job-board mailers: \"confirm your availability\"."], "for": []}
+    p = g.build_prompt("Confirm interview availability", "jobs@talent-hub.com", "Please confirm your availability.", [], check)
+    assert "SENDER CHECK: likely_job_board" in p and "job-board mailers" in p
+    assert "(not available)" in g.build_prompt("s", "a@b.com", "x", [])

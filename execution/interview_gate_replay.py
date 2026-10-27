@@ -47,7 +47,8 @@ def replay(db, pairs, assess=None, apply=True):
     results = []
     for event, email in pairs:
         out = assess(db, email.subject, email.from_address, email.full_body or email.body_preview or "",
-                     received=email.received_date, exclude_email_id=email.id)
+                     received=email.received_date, exclude_email_id=email.id, company=event.company_name, student_id=event.student_id,
+                     interview_date=event.interview_date, interview_time=event.interview_time)
         results.append((email, out))
         if apply:
             interview_gate.record_review(db, out, email.id, event.id, mode=interview_gate.gate_mode(), source="replay")

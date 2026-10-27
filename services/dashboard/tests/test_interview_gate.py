@@ -152,8 +152,8 @@ def test_replay_judges_past_mail_with_only_older_history_and_changes_nothing_els
     pairs = replay_mod.candidates(db)
     assert [e.id for e, _ in pairs] == [ev2.id, event.id]                                                # newest first
 
-    def assess(db_, subject, from_address, body, received=None, exclude_email_id=None):
-        return g.assess(db_, subject, from_address, body, received=received, exclude_email_id=exclude_email_id, call=fake_model())
+    def assess(db_, subject, from_address, body, received=None, exclude_email_id=None, **kw):
+        return g.assess(db_, subject, from_address, body, received=received, exclude_email_id=exclude_email_id, call=fake_model(), **kw)
 
     replay_mod.replay(db, pairs, assess=assess)
     rows = {r.email_id: r for r in db.query(InterviewGateReview).all()}
@@ -161,3 +161,34 @@ def test_replay_judges_past_mail_with_only_older_history_and_changes_nothing_els
     assert rows[lorena.id].history and rows[first.id].history == []                                      # the first email had no older mail
     assert replay_mod.candidates(db) == []                                                              # run twice = nothing new
     assert db.get(type(ev2), ev2.id).sub_type == "Client Screen"                                         # events untouched
+
+
+def test_history_finds_the_original_interview_even_from_a_different_sender(db):
+    """A Calendly reminder and the recruiter's invite share no sender and no subject; the company and the date/time still link them."""
+    student = make_student(db)
+    invite = make_email(db, email_id="inv", subject="Technical interview invitation", from_address="recruiter@solutionsbytext.com",
+                        received_date=NOW - timedelta(days=2))
+    event = make_interview_event(db, invite, student=student, sub_type="Technical Interview", company="Solutions by Text", interview_date="2026-10-29")
+    make_notification_draft(db, event, email_status="sent")
+    make_email(db, email_id="noise", subject="Other", from_address="hr@elsewhere.com", received_date=NOW - timedelta(days=1))
+    rows = g.load_history(db, "Reminder: SBT session", "notifications@calendly.com", before=NOW, company="Solutions by Text", student_id=student.id,
+                          interview_date="2026-10-29", interview_time="14:00")
+    assert invite.id in {r["email_id"] for r in rows}
+    by_moment = g.load_history(db, "Reminder", "notifications@calendly.com", before=NOW, student_id=student.id, interview_date="2026-10-29", interview_time="14:00")
+    assert invite.id in {r["email_id"] for r in by_moment}                                              # no company needed: same date and time
+    assert invite.id not in {r["email_id"] for r in g.load_history(db, "Reminder", "notifications@calendly.com", before=NOW)}   # nothing to link on
+
+
+def test_another_students_interview_at_the_same_company_is_not_history(db):
+    mine, other = make_student(db), make_student(db, username="asmith", full_name="A Smith", personal_email="a@example.com")
+    theirs = make_email(db, email_id="theirs", subject="Interview", from_address="hr@acme.com", received_date=NOW - timedelta(days=2))
+    make_interview_event(db, theirs, student=other, company="Acme Corp", interview_date="2026-10-29")
+    rows = g.load_history(db, "x", "someone@else.com", before=NOW, company="Acme Corp", student_id=mine.id)
+    assert theirs.id not in {r["email_id"] for r in rows}
+
+
+def test_assess_passes_the_sender_check_to_the_model(db):
+    call = fake_model()
+    out = g.assess(db, "Confirm interview availability", "jobs@talent-hub.com",
+                   "Please confirm your availability for an interview. Unsubscribe", call=call)
+    assert "SENDER CHECK: " in call.seen["prompt"] and out["sender_check"] is not None

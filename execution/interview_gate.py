@@ -38,8 +38,8 @@ HISTORY_LIMIT = 10
 NEW_TEXT_LIMIT = 3000
 FREE_MAIL = {"gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "icloud.com", "live.com", "msn.com", "proton.me", "protonmail.com"}
 
-PROMPT = """You screen interview-related emails for a career placement program. The email below was already thought to be about a job interview.
-Decide whether its NEW text (what the sender just wrote, without the older thread) brings NEWS about an interview.
+PROMPT = """You screen interview-related emails for a career placement program. The email below was flagged as possibly about a job interview; that flag is often wrong (job-board
+and lead-generation mailers, reminders, replies). Decide whether its NEW text (what the sender just wrote, without the older thread) brings NEWS about an interview.
 
 Verdicts (choose exactly one):
 - new_interview: arranges an interview that is not in the history yet (a first interview, or a 2nd / 3rd / final round).
@@ -55,13 +55,18 @@ Rules:
 - round: "1st", "2nd", "3rd" or "final" if the email or the history makes it clear, else "unknown". Never guess.
 - format: "phone", "video", "in-person" or "unknown", from the NEW text.
 - refers_to: the history number (the [n]) of the interview this is a follow_up/confirmation/reschedule/cancellation of, else null.
+- The history lists earlier emails that match by sender, by company, or by the same interview date and time, newest first. If it already holds an interview with the
+  same company at the same date and time, a new email about it is a follow_up or confirmation, NOT a new_interview.
+- SENDER CHECK is an automatic, advisory test of whether the sender looks like a real employer or a job-board mailer. If it says likely_job_board and the email only asks
+  the candidate to confirm availability, interest or a request, the answer is not_interview. If it says looks_genuine, that alone does not make the email news.
 - If unsure, lower the confidence. Do not invent details.
 
 Answer with JSON only: {{"verdict": "...", "round": "...", "format": "...", "refers_to": null, "confidence": 0.0, "reason": "one short sentence"}}
 
 FROM: {sender}
 SUBJECT: {subject}
-HISTORY (last emails from this sender, newest first):
+SENDER CHECK: {sender_check}
+HISTORY (earlier related emails, newest first):
 {history}
 
 NEW TEXT:
@@ -109,10 +114,18 @@ def history_line(n: int, row: Dict[str, Any]) -> str:
     return line + (f"\n     {snippet[:300]}" if snippet else "")
 
 
-def build_prompt(subject: str, sender: str, new_text: str, history: List[Dict[str, Any]]) -> str:
-    lines = [history_line(i + 1, row) for i, row in enumerate(history)] or ["(no earlier emails from this sender)"]
+def sender_check_line(check: Optional[Dict[str, Any]]) -> str:
+    """The authenticity check as one line of facts for the model (it never decides; the model weighs it)."""
+    if not check:
+        return "(not available)"
+    reasons = "; ".join((check.get("against") or [])[:3] + (check.get("for") or [])[:3])
+    return f"{check.get('verdict')}" + (f" ({reasons})" if reasons else "")
+
+
+def build_prompt(subject: str, sender: str, new_text: str, history: List[Dict[str, Any]], sender_check: Optional[Dict[str, Any]] = None) -> str:
+    lines = [history_line(i + 1, row) for i, row in enumerate(history)] or ["(no earlier related emails)"]
     return PROMPT.format(sender=sender or "?", subject=subject or "(no subject)", history="\n".join(lines),
-                         new_text=(new_text or "(empty)")[:NEW_TEXT_LIMIT])
+                         new_text=(new_text or "(empty)")[:NEW_TEXT_LIMIT], sender_check=sender_check_line(sender_check))
 
 
 def parse_response(text: str, history_size: int = 0) -> Optional[Dict[str, Any]]:
@@ -168,8 +181,37 @@ def label(result: Optional[Dict[str, Any]]) -> Optional[str]:
     return f"{head} · {fmt}" if fmt else head
 
 
+def _company_key(name: Optional[str]) -> str:
+    n = re.sub(r"[^a-z0-9 ]+", "", (name or "").lower().replace("&", " and "))
+    return " ".join(w for w in n.split() if w not in ("inc", "llc", "corp", "corporation", "co", "ltd", "company", "the"))
+
+
+def related_event_email_ids(db, before, exclude_email_id, company, student_id, interview_date, interview_time) -> List[int]:
+    """Emails that already made an interview event for the same company, or at the same date and time (only this student's when known), newest first."""
+    from models import Email, InterviewEvent
+    key = _company_key(company)
+    if not key and not (interview_date and interview_time):
+        return []
+    query = db.query(InterviewEvent, Email).join(Email, Email.id == InterviewEvent.email_id)
+    if before is not None:
+        query = query.filter(Email.received_date < before)
+    if exclude_email_id is not None:
+        query = query.filter(Email.id != exclude_email_id)
+    if student_id is not None:
+        query = query.filter((InterviewEvent.student_id == student_id) | (InterviewEvent.student_id.is_(None)))
+    ids: List[int] = []
+    for event, email in query.order_by(Email.received_date.desc(), InterviewEvent.id.desc()).limit(400).all():
+        same_company = bool(key) and _company_key(event.company_name) == key
+        same_moment = bool(interview_date and interview_time) and (event.interview_date, (event.interview_time or "")[:5]) == (interview_date, (interview_time or "")[:5])
+        if (same_company or same_moment) and email.id not in ids:
+            ids.append(email.id)
+    return ids
+
+
 def load_history(db, subject: str, from_address: str, before: Optional[datetime] = None,
-                 exclude_email_id: Optional[int] = None, limit: int = HISTORY_LIMIT) -> List[Dict[str, Any]]:
+                 exclude_email_id: Optional[int] = None, limit: int = HISTORY_LIMIT, company: Optional[str] = None,
+                 student_id: Optional[int] = None, interview_date: Optional[str] = None,
+                 interview_time: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     The last `limit` emails from the same sender (same domain, or the exact address for free mail) or with the same subject thread,
     newest first, each with its interview event and notice status when it has one. `before` keeps a replay honest: only mail older than the email.
@@ -184,14 +226,19 @@ def load_history(db, subject: str, from_address: str, before: Optional[datetime]
     if exclude_email_id is not None:
         query = query.filter(Email.id != exclude_email_id)
     candidates = query.order_by(Email.received_date.desc(), Email.id.desc()).limit(600).all()
-    picked = []
+    related = related_event_email_ids(db, before, exclude_email_id, company, student_id, interview_date, interview_time)
+    by_id = {e.id: e for e in db.query(Email).filter(Email.id.in_(related)).all()} if related else {}
+    picked = [by_id[i] for i in related if i in by_id][:limit]               # same company / same moment first: they are the likeliest originals
     for e in candidates:
+        if len(picked) >= limit:
+            break
+        if e.id in by_id:
+            continue
         same_sender = (_plain_address(e.from_address) == address) if (not domain or domain in FREE_MAIL) else (_domain(e.from_address) == domain)
         same_thread = bool(subject_key) and normalize_subject(e.subject) == subject_key
         if same_sender or same_thread:
             picked.append(e)
-        if len(picked) >= limit:
-            break
+    picked.sort(key=lambda x: (x.received_date, x.id), reverse=True)
     rows = []
     for e in picked:
         event = db.query(InterviewEvent).filter(InterviewEvent.email_id == e.id).order_by(InterviewEvent.id).first()
@@ -210,7 +257,8 @@ def load_history(db, subject: str, from_address: str, before: Optional[datetime]
 
 
 def assess(db, subject: str, from_address: str, body: str, received: Optional[datetime] = None,
-           exclude_email_id: Optional[int] = None, call: Callable[[str], Dict[str, Any]] = call_model) -> Dict[str, Any]:
+           exclude_email_id: Optional[int] = None, call: Callable[[str], Dict[str, Any]] = call_model, company: Optional[str] = None,
+           student_id: Optional[int] = None, interview_date: Optional[str] = None, interview_time: Optional[str] = None) -> Dict[str, Any]:
     """
     The gate's answer for one email. Never raises: on any failure `result` is None and `error` says why, which the caller treats as "do nothing".
     Returns {"result", "error", "new_text", "quoted_chars", "history", "cost_usd"}.
@@ -221,9 +269,16 @@ def assess(db, subject: str, from_address: str, body: str, received: Optional[da
     try:
         new_text, quoted = split_reply(clean_email_text(body or ""))
         out["new_text"], out["quoted_chars"] = new_text, len(quoted)
-        history = load_history(db, subject, from_address, before=received, exclude_email_id=exclude_email_id)
+        history = load_history(db, subject, from_address, before=received, exclude_email_id=exclude_email_id, company=company,
+                               student_id=student_id, interview_date=interview_date, interview_time=interview_time)
         out["history"] = history
-        reply = call(build_prompt(subject, from_address, new_text, history))
+        try:
+            from email_authenticity import assess as sender_check
+            check = sender_check(subject, from_address, clean_email_text(body or "")[:6000], company)
+        except Exception:                                   # noqa: BLE001 - the hint is optional
+            check = None
+        out["sender_check"] = check
+        reply = call(build_prompt(subject, from_address, new_text, history, check))
         out["cost_usd"] = round(reply.get("input_tokens", 0) * 0.15 / 1e6 + reply.get("output_tokens", 0) * 0.60 / 1e6, 6)
         result = parse_response(reply.get("text"), history_size=len(history))
         if result is None:

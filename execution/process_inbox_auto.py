@@ -787,7 +787,9 @@ def process_interview_email(email_data: Dict[str, Any], email_db_id: int, classi
             gate_mode = interview_gate.gate_mode()
             if gate_mode != "off":
                 gate_out = interview_gate.assess(db, email_data.get("subject", ""), email_data.get("sender_email", ""),
-                                                 email_data.get("body_content", ""), exclude_email_id=email_db_id)
+                                                 email_data.get("body_content", ""), exclude_email_id=email_db_id,
+                                                 company=extracted.get("company_name"), interview_date=extracted.get("interview_date"),
+                                                 interview_time=extracted.get("interview_time"))
                 gate_result = gate_out["result"]
         except Exception as e:
             _logger.warning(f"Interview gate skipped: {e}")
