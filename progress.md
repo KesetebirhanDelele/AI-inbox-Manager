@@ -1661,3 +1661,6 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 
 ### 2026-10-28: Alert student checker button only for students not in GHL
 - Kes: a student already added to the roster sheet (Sehiresh) must not show the button; only students not in GHL. Condition is now GHL flag `not_found` (or GHL lookup unknown and verification basis `no_ghl_contact`); roster status no longer matters. Files: `NotificationQueue.tsx`, role help text in `execution/roles.py`. Needs `--build-web` to deploy.
+
+### 2026-10-28: student checker button no longer shows for a verified student on a finished card
+- Sehrish (roster listed, GHL found on the server) still showed the button: her card was "Sent", flags are not computed for sent cards (GHL "unknown"), and the fallback used her old `no_ghl_contact` note. The fallback now also requires the student to be not verified. File: `NotificationQueue.tsx`. Deployed with `--build-web`.

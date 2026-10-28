@@ -388,7 +388,7 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
         {item.warnings.map((w) => (
           <div key={w} className="p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-900">{w}</div>
         ))}
-        {s && (item.flags?.ghl === 'not_found' || (item.flags?.ghl === 'unknown' && s.verification?.basis === 'no_ghl_contact')) && (
+        {s && (item.flags?.ghl === 'not_found' || (item.flags?.ghl === 'unknown' && s.verification?.basis === 'no_ghl_contact' && s.verification?.status !== 'verified')) && (
           <div className="p-3 bg-orange-50 border border-orange-200 rounded text-sm text-orange-900 flex flex-wrap items-center justify-between gap-2">
             <div>
               {item.checker_alert
