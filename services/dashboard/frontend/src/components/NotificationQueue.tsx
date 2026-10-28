@@ -388,12 +388,12 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
         {item.warnings.map((w) => (
           <div key={w} className="p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-900">{w}</div>
         ))}
-        {s && (item.flags?.roster === 'unlisted' || ['not_found', 'check'].includes(item.flags?.ghl ?? '') || s.verification?.basis === 'no_ghl_contact') && (
+        {s && (item.flags?.ghl === 'not_found' || (item.flags?.ghl === 'unknown' && s.verification?.basis === 'no_ghl_contact')) && (
           <div className="p-3 bg-orange-50 border border-orange-200 rounded text-sm text-orange-900 flex flex-wrap items-center justify-between gap-2">
             <div>
               {item.checker_alert
                 ? <>Student checker alerted ({item.checker_alert.to}) by {item.checker_alert.by} {fmtWhen(item.checker_alert.sent_at)}.</>
-                : <>Not on the roster sheet or not in GHL. Email the Student checker (assigned in Settings) to verify and call this candidate.</>}
+                : <>Not in GHL. Email the Student checker (assigned in Settings) to verify and call this candidate.</>}
               {alertChecker.isError && (
                 <div className="text-red-800">{(alertChecker.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Could not send the alert.'}</div>
               )}

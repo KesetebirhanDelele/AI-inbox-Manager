@@ -1658,3 +1658,6 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Review-queue items carry `checker_alert` (last alert); `NotificationQueue.tsx` shows an orange box with "Alert student checker" / "Alert again" when the roster flag is unlisted, GHL is not_found/check, or verification basis is no_ghl_contact.
 - Tests: two new in `services/dashboard/tests/test_review_flags.py`; `test_roles.py` role list updated. Dashboard 320 passed, execution 1069 passed, tsc clean.
 - Not done: nobody is assigned to the role yet (set Roblyn's email in Settings after deploy); not deployed.
+
+### 2026-10-28: Alert student checker button only for students not in GHL
+- Kes: a student already added to the roster sheet (Sehiresh) must not show the button; only students not in GHL. Condition is now GHL flag `not_found` (or GHL lookup unknown and verification basis `no_ghl_contact`); roster status no longer matters. Files: `NotificationQueue.tsx`, role help text in `execution/roles.py`. Needs `--build-web` to deploy.

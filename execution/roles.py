@@ -30,7 +30,7 @@ ROLE_HELP: Dict[str, str] = {
     "callback_owner": "Takes interview callbacks from students, within one business hour during working hours.",
     "escalation_target": "Backup for the approver: emailed when a card has waited for a decision longer than the backup time below.",
     "callback_backup": "Backup for the callback owner: emailed when a student callback is still open after one business hour.",
-    "student_checker": "Verifies and calls a candidate who is not on the roster sheet or not in GHL. Emailed when someone clicks \"Alert\" on that student's card.",
+    "student_checker": "Verifies and calls a candidate who is not in GHL. Emailed when someone clicks \"Alert\" on that student's card.",
 }
 ENV_FALLBACK: Dict[str, str] = {
     "approver": "APPROVER_ALERT_EMAIL",
