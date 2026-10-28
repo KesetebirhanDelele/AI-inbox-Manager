@@ -28,6 +28,46 @@ def test_a_student_off_the_roster_and_not_in_ghl_is_flagged_but_still_listed_and
     assert not any("ROSTER" in b or "GHL" in b for b in item["blockers"])         # a person decides; the flag never blocks Approve
 
 
+def _unlisted_event(db, monkeypatch):
+    import student_flags
+    monkeypatch.setattr(student_flags, "roster_status", lambda s, roster=None: "unlisted")
+    monkeypatch.setattr(student_flags, "ghl_status", lambda s, **k: "not_found")
+    student = make_student(db, username="tides", full_name="Tides Student")
+    event = make_interview_event(db, make_email(db), student=student)
+    make_notification_draft(db, event, email_status="draft")
+    return student, event
+
+
+def test_alert_student_checker_emails_the_role_holder_and_the_card_remembers_it(client, db, auth_cookies, monkeypatch):
+    import send_notification
+    from models import RoleAssignment
+    sent = []
+    monkeypatch.setattr(send_notification, "send_email", lambda **kw: sent.append(kw) or {"status": "sent"})
+    student, event = _unlisted_event(db, monkeypatch)
+    db.add(RoleAssignment(role="student_checker", email="roblyn@example.com", active=True))
+    db.commit()
+
+    r = client.post(f"/api/notifications/events/{event.id}/alert-student-checker", cookies=auth_cookies)
+    assert r.status_code == 200 and r.json()["to"] == "roblyn@example.com"
+    assert len(sent) == 1 and sent[0]["recipient_email"] == "roblyn@example.com"
+    assert "Tides Student" in sent[0]["body"] and "NOT IN GHL" in sent[0]["body"]
+
+    item = _item(client, auth_cookies, student)
+    assert item["checker_alert"]["to"] == "roblyn@example.com"
+    client.post(f"/api/notifications/events/{event.id}/alert-student-checker", cookies=auth_cookies)      # a second click is allowed and kept
+    assert len(sent) == 2
+
+
+def test_alert_student_checker_says_so_when_nobody_holds_the_role(client, db, auth_cookies, monkeypatch):
+    import send_notification
+    monkeypatch.delenv("STUDENT_CHECKER_EMAIL", raising=False)
+    monkeypatch.setattr(send_notification, "send_email", lambda **kw: (_ for _ in ()).throw(AssertionError("must not send")))
+    student, event = _unlisted_event(db, monkeypatch)
+    r = client.post(f"/api/notifications/events/{event.id}/alert-student-checker", cookies=auth_cookies)
+    assert r.status_code == 409 and "Student checker" in r.json()["detail"]
+    assert _item(client, auth_cookies, student)["checker_alert"] is None
+
+
 def test_a_listed_student_found_in_ghl_has_no_roster_or_ghl_warning(client, db, auth_cookies, monkeypatch):
     import student_flags
     monkeypatch.setattr(student_flags, "roster_status", lambda s, roster=None: "listed")

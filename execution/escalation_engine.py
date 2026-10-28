@@ -203,6 +203,10 @@ class RoleAlerts:
     def callback_needed(self, subject: str, body: str) -> bool:
         return self._notify(subject, body, role="callback_owner")
 
+    def student_check(self, subject: str, body: str) -> bool:
+        """To the student checker: a candidate who is not on the roster sheet or not in GHL needs verifying and a call."""
+        return self._notify(subject, body, role="student_checker")
+
     def no_response(self, seq, student_name: str) -> bool:
         return self._notify(
             f"{student_name} has not responded to their interview notice",

@@ -379,6 +379,11 @@ class ApiClient {
     return response.data;
   }
 
+  async alertStudentChecker(eventId: number): Promise<{ sent_at: string; to: string; by: string }> {
+    const response = await this.client.post(`/api/notifications/events/${eventId}/alert-student-checker`);
+    return response.data;
+  }
+
   async stopFollowUps(notificationId: number): Promise<any> {
     const response = await this.client.post(`/api/notifications/${notificationId}/sequence/close`);
     return response.data;

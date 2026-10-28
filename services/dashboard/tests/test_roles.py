@@ -9,7 +9,7 @@ class TestRoles:
         for var in ("APPROVER_ALERT_EMAIL", "CALLBACK_OWNER_EMAIL", "ESCALATION_ALERT_EMAIL", "CALLBACK_BACKUP_EMAIL"):
             monkeypatch.delenv(var, raising=False)
         data = client.get("/api/roles", cookies=auth_cookies).json()
-        assert [r["role"] for r in data["roles"]] == ["approver", "callback_owner", "escalation_target", "callback_backup"]
+        assert [r["role"] for r in data["roles"]] == ["approver", "callback_owner", "escalation_target", "callback_backup", "student_checker"]
         assert all(r["email"] == "" and r["source"] == "none" for r in data["roles"])
         assert data["pilot_limit"] == 3 and data["pilot_used"] == 0 and "09:00 to 17:00" in data["business_hours"]
 

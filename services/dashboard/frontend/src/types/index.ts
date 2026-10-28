@@ -268,6 +268,8 @@ export interface ReviewQueueItem {
   state: 'ready' | 'needs_verification' | 'blocked' | 'needs_student' | 'no_draft' | 'approved' | 'failed' | string;
   blockers: string[];
   warnings: string[];
+  flags?: { roster: string; ghl: string };
+  checker_alert?: { sent_at: string; to: string; by: string } | null;
   can_approve: boolean;
   will_happen: string;
   student: {

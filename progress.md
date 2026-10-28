@@ -1649,3 +1649,12 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Update email to Ali drafted in Kes's Gmail (not sent).
 - Found while checking the real assessment notices (events 180, 179, 162, 155, 136, 126): the assessment SMS can run past the 320-character rule (events 179 = 334, 162 = 329, before the reference number is added) because it appends the interview "Format: video / Use the meeting link in the employer's invitation email" sentence, which does not belong on a test. NOT fixed; waiting for Kes's OK on the wording change.
 - Three real assessment notices are waiting for an approver: events 180 (Martin Sprocket), 179 (Twenix), 136 (IDR). None approved by Claude; approving contacts the real student.
+
+
+### 2026-10-27: "Alert student checker" button for students not on the roster / not in GHL (built locally on master, not committed)
+- Kes: when a student is not on the sheet / not in GHL (case: TIDES LLC Zoom interview), the card needs a click that alerts Roblyn, or whoever is assigned in Settings, to verify and call the candidate.
+- New role `student_checker` (label "Student checker", env fallback `STUDENT_CHECKER_EMAIL`) in `execution/roles.py`; it appears on Settings > Roles automatically. `RoleAlerts.student_check` in `execution/escalation_engine.py`.
+- New `POST /api/notifications/events/{event_id}/alert-student-checker` (`routers/notifications.py`): emails the role holder the student's details, the interview, the source email and what the system found. Refuses with a plain message when nobody holds the role or staff alerts are off. Sends nothing to the student and does not change the card. Each click is kept in `alert_log` (kind `student_check`, key `<event>:<n>`, detail `<to>|<who clicked>`), so no schema change.
+- Review-queue items carry `checker_alert` (last alert); `NotificationQueue.tsx` shows an orange box with "Alert student checker" / "Alert again" when the roster flag is unlisted, GHL is not_found/check, or verification basis is no_ghl_contact.
+- Tests: two new in `services/dashboard/tests/test_review_flags.py`; `test_roles.py` role list updated. Dashboard 320 passed, execution 1069 passed, tsc clean.
+- Not done: nobody is assigned to the role yet (set Roblyn's email in Settings after deploy); not deployed.

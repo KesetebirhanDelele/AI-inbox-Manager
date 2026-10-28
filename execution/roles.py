@@ -7,6 +7,7 @@ Who receives what: ROLES that get assigned, never a person written into the code
   escalation_target   the BACKUP: told when a card has sat undecided too long (so it is NOT the approver)
   callback_backup     the callback owner's backup: told when a student callback is still open after one business hour
                       (falls back to escalation_target while nobody holds this role, which is how overdue callbacks were routed before)
+  student_checker     verifies and calls a candidate who is not on the roster sheet or not in GHL (alerted by a button on the card)
 
 Assignments live in the database (table role_assignments, edited on the dashboard's Settings page). When the work moves to
 recruiters this is a settings change, not a rewrite. An optional `scope` (for example a recruiter) is stored for that day but not used yet.
@@ -15,25 +16,28 @@ Fallback when nothing is assigned: the environment variables below, so an alert 
 import os
 from typing import Dict, List, Optional
 
-ROLES = ("approver", "callback_owner", "escalation_target", "callback_backup")
+ROLES = ("approver", "callback_owner", "escalation_target", "callback_backup", "student_checker")
 
 ROLE_LABELS: Dict[str, str] = {
     "approver": "Approver",
     "callback_owner": "Callback owner",
     "escalation_target": "Backup approver (escalation)",
     "callback_backup": "Callback backup",
+    "student_checker": "Student checker",
 }
 ROLE_HELP: Dict[str, str] = {
     "approver": "Approves student notifications. Emailed when a new card needs review, and when a student has not responded, replied needing help, opted out or cannot be reached.",
     "callback_owner": "Takes interview callbacks from students, within one business hour during working hours.",
     "escalation_target": "Backup for the approver: emailed when a card has waited for a decision longer than the backup time below.",
     "callback_backup": "Backup for the callback owner: emailed when a student callback is still open after one business hour.",
+    "student_checker": "Verifies and calls a candidate who is not on the roster sheet or not in GHL. Emailed when someone clicks \"Alert\" on that student's card.",
 }
 ENV_FALLBACK: Dict[str, str] = {
     "approver": "APPROVER_ALERT_EMAIL",
     "callback_owner": "CALLBACK_OWNER_EMAIL",
     "escalation_target": "ESCALATION_ALERT_EMAIL",
     "callback_backup": "CALLBACK_BACKUP_EMAIL",
+    "student_checker": "STUDENT_CHECKER_EMAIL",
 }
 
 

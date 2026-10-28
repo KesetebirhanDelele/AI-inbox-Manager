@@ -25,6 +25,7 @@ from auth import get_current_user
 from types import SimpleNamespace
 
 from models import (
+    AlertLog,
     NotificationDraft,
     InterviewGateReview,
     NotificationInbound,
@@ -386,6 +387,14 @@ def _send_draft_email(draft) -> dict:
 
 
 REVIEW_MAX_AGE_DAYS = 14
+CHECKER_ALERT_KIND = "student_check"      # alert_log key "<event id>:<n>": every click is kept, so the card can say who alerted whom and when
+
+
+def _checker_alert_view(row) -> Optional[dict]:
+    if row is None:
+        return None
+    to, _, by = (row.detail or "").partition("|")
+    return {"sent_at": row.sent_at, "to": to, "by": by}
 
 
 def _follow_up_in_view(db, draft_id: int, now: datetime) -> bool:
@@ -433,6 +442,9 @@ async def get_review_queue(
 
     follow_ups = {row.event_id: row.original_event_id for row in db.query(InterviewFollowUp).all()}
     flags_mod = _execution_module("student_flags")
+    checker_alerts = {}                    # event id -> the latest "student checker alerted" row
+    for a in db.query(AlertLog).filter(AlertLog.kind == CHECKER_ALERT_KIND).order_by(AlertLog.id).all():
+        checker_alerts[a.key.split(":")[0]] = a
     flags_deadline = time.time() + 12                       # lookups are cached; if a cold cache is slow, the rest show "unknown" this time
     items = []
     for event, draft, student, email in rows:
@@ -538,6 +550,7 @@ async def get_review_queue(
             "blockers": blockers,
             "warnings": warnings,
             "flags": flags,
+            "checker_alert": _checker_alert_view(checker_alerts.get(str(event.id))),
             "can_approve": state == "ready",
             "will_happen": (("Starts a call, a text and an email to the student, then follows up until they confirm."
                              if delivery_live else
@@ -585,6 +598,65 @@ async def get_review_queue(
     callbacks = [callback_item(db, r).model_dump() for r in
                  db.query(CallbackRequest).filter(CallbackRequest.status == "open", CallbackRequest.student_id.isnot(None)).order_by(CallbackRequest.received_at).limit(50).all()]
     return {"escalation_enabled": escalation_on, "delivery_live": delivery_live, "count": len(items), "items": items, "callbacks": callbacks}
+
+
+@router.post("/events/{event_id}/alert-student-checker")
+async def alert_student_checker(
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: UserSession = Depends(get_current_user),
+):
+    """
+    Email the Student checker role (Settings) to verify a candidate who is not on the roster sheet or not in GHL, and to call them.
+    Nothing is sent to the student and the card is not changed. Refuses, saying why, when nobody holds the role or staff alerts are off.
+    """
+    event = db.get(InterviewEvent, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Interview notice not found")
+    roles = _execution_module("roles")
+    to = roles.role_email(db, "student_checker")
+    if not to:
+        raise HTTPException(status_code=409, detail="Nobody holds the Student checker role. Assign an email to it on the Settings page, then click Alert again.")
+    if not roles.staff_alerts_on(db):
+        raise HTTPException(status_code=409, detail="Email alerts to staff are switched off on the Settings page, so nothing was sent.")
+
+    student = db.get(Student, event.student_id) if event.student_id else None
+    email = db.get(Email, event.email_id) if event.email_id else None
+    flags_mod = _execution_module("student_flags")
+    problems = []
+    if student is not None:
+        try:
+            problems = flags_mod.warnings_for(flags_mod.roster_status(student), flags_mod.ghl_status(student))
+        except Exception:
+            problems = []
+    when = " ".join(x for x in (event.interview_date, event.interview_time, event.interview_timezone) if x) or "no time stated"
+    who = (student.full_name if student else None) or "an unidentified student"
+    lines = [
+        f"{user.username} asks you to verify {who} and call them before their interview notice goes out.",
+        "",
+        f"Student: {who}",
+        f"Phone: {(student.phone_number if student else None) or 'none on file'}",
+        f"Personal email: {(student.personal_email if student else None) or 'none on file'}",
+        f"Assigned Gmail: {(student.assigned_gmail if student else None) or 'none on file'}",
+        "",
+        f"Interview: {event.sub_type or 'Interview'} with {event.company_name or 'an unnamed company'}"
+        + (f", {event.position_title}" if event.position_title else "") + f" ({when})",
+        f"Source email: {(email.subject if email else '') or '(none)'} from {(email.from_address if email else '') or '(unknown)'}",
+    ]
+    if problems:
+        lines += ["", "What the system found:"] + [f"- {p}" for p in problems]
+    lines += ["", "Please confirm this is one of our students, get their current phone and email, and fix the roster sheet or GHL "
+              "(or correct the details under Review > Verify students). Then tell the approver, who decides on the card.",
+              f"Review screen: {os.getenv('DASHBOARD_URL', 'https://2-29-47-89.nip.io/review')}"]
+    sent = _execution_module("escalation_engine").RoleAlerts(db=db).student_check(f"Please verify and call {who}", "\n".join(lines))
+    if not sent:
+        raise HTTPException(status_code=502, detail="The alert email could not be sent. Nothing was recorded; check the app's email login and try again.")
+    n = db.query(AlertLog).filter(AlertLog.kind == CHECKER_ALERT_KIND, AlertLog.key.like(f"{event_id}:%")).count() + 1
+    row = AlertLog(kind=CHECKER_ALERT_KIND, key=f"{event_id}:{n}", detail=f"{to}|{user.username}")
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _checker_alert_view(row)
 
 
 class VerifyStudentRequest(BaseModel):

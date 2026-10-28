@@ -133,6 +133,10 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
       refresh();
     },
   });
+  const alertChecker = useMutation({
+    mutationFn: (eventId: number) => apiClient.alertStudentChecker(eventId),
+    onSuccess: refresh,
+  });
   const [rejectingStudent, setRejectingStudent] = useState(false);
   const rejectStudent = useMutation({
     mutationFn: (id: number) => apiClient.rejectStudent(id),
@@ -384,6 +388,26 @@ const QueueCard = ({ item, escalationOn, callbacks }: { item: ReviewQueueItem; e
         {item.warnings.map((w) => (
           <div key={w} className="p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-900">{w}</div>
         ))}
+        {s && (item.flags?.roster === 'unlisted' || ['not_found', 'check'].includes(item.flags?.ghl ?? '') || s.verification?.basis === 'no_ghl_contact') && (
+          <div className="p-3 bg-orange-50 border border-orange-200 rounded text-sm text-orange-900 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              {item.checker_alert
+                ? <>Student checker alerted ({item.checker_alert.to}) by {item.checker_alert.by} {fmtWhen(item.checker_alert.sent_at)}.</>
+                : <>Not on the roster sheet or not in GHL. Email the Student checker (assigned in Settings) to verify and call this candidate.</>}
+              {alertChecker.isError && (
+                <div className="text-red-800">{(alertChecker.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Could not send the alert.'}</div>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={alertChecker.isPending}
+              onClick={() => alertChecker.mutate(item.event_id)}
+              className="px-4 py-2 bg-orange-600 text-white rounded-md text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+            >
+              {alertChecker.isPending ? 'Sending...' : item.checker_alert ? 'Alert again' : 'Alert student checker'}
+            </button>
+          </div>
+        )}
 
         {item.sequence && (
           <div className="text-sm text-gray-700 space-y-2">
