@@ -1651,16 +1651,17 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Three real assessment notices are waiting for an approver: events 180 (Martin Sprocket), 179 (Twenix), 136 (IDR). None approved by Claude; approving contacts the real student.
 
 
-### 2026-10-27: "Alert student checker" button for students not on the roster / not in GHL (built locally on master, not committed)
+### 2026-10-27: "Alert student checker" button for students not on the roster / not in GHL (deployed 2026-10-28)
 - Kes: when a student is not on the sheet / not in GHL (case: TIDES LLC Zoom interview), the card needs a click that alerts Roblyn, or whoever is assigned in Settings, to verify and call the candidate.
 - New role `student_checker` (label "Student checker", env fallback `STUDENT_CHECKER_EMAIL`) in `execution/roles.py`; it appears on Settings > Roles automatically. `RoleAlerts.student_check` in `execution/escalation_engine.py`.
 - New `POST /api/notifications/events/{event_id}/alert-student-checker` (`routers/notifications.py`): emails the role holder the student's details, the interview, the source email and what the system found. Refuses with a plain message when nobody holds the role or staff alerts are off. Sends nothing to the student and does not change the card. Each click is kept in `alert_log` (kind `student_check`, key `<event>:<n>`, detail `<to>|<who clicked>`), so no schema change.
 - Review-queue items carry `checker_alert` (last alert); `NotificationQueue.tsx` shows an orange box with "Alert student checker" / "Alert again" when the roster flag is unlisted, GHL is not_found/check, or verification basis is no_ghl_contact.
 - Tests: two new in `services/dashboard/tests/test_review_flags.py`; `test_roles.py` role list updated. Dashboard 320 passed, execution 1069 passed, tsc clean.
-- Not done: nobody is assigned to the role yet (set Roblyn's email in Settings after deploy); not deployed.
+- Deployed with `--build-web` (the first deploy forgot it, so the server ran the new backend with the old page for a few minutes). Role assigned in Settings to robelyn@colaberry.com (Kes to confirm the spelling is right).
 
 ### 2026-10-28: Alert student checker button only for students not in GHL
 - Kes: a student already added to the roster sheet (Sehiresh) must not show the button; only students not in GHL. Condition is now GHL flag `not_found` (or GHL lookup unknown and verification basis `no_ghl_contact`); roster status no longer matters. Files: `NotificationQueue.tsx`, role help text in `execution/roles.py`. Needs `--build-web` to deploy.
 
 ### 2026-10-28: student checker button no longer shows for a verified student on a finished card
 - Sehrish (roster listed, GHL found on the server) still showed the button: her card was "Sent", flags are not computed for sent cards (GHL "unknown"), and the fallback used her old `no_ghl_contact` note. The fallback now also requires the student to be not verified. File: `NotificationQueue.tsx`. Deployed with `--build-web`.
+- Follow-up: one real alert email went to the role holder for Sehrish (event on a sent card, 2026-10-27 8:21 PM CT) before the button was narrowed; she is fine in GHL, so the email was a false alarm. Final rule: button shows only for students not in GHL (see the two entries above).
