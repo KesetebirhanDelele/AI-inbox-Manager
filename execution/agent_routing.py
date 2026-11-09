@@ -67,6 +67,13 @@ def agent_emails(db) -> Dict[str, str]:
     return out
 
 
+def agent_names(db) -> Dict[str, str]:
+    """{normalised agent name: the name as typed on Settings} for every active agent row."""
+    import models as M
+    rows = db.query(M.RoleAssignment).filter(M.RoleAssignment.role == AGENT_ROLE, M.RoleAssignment.active == True).order_by(M.RoleAssignment.id).all()   # noqa: E712
+    return {key(r.scope): r.scope.strip() for r in rows if (r.scope or "").strip() and (r.email or "").strip()}
+
+
 def set_agent_email(db, agent: str, email: str, who: str = "") -> None:
     """Store (or clear, with an empty email) the address for an agent name."""
     import models as M

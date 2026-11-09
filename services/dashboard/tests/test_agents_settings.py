@@ -48,3 +48,9 @@ def test_agents_do_not_appear_among_the_single_roles(client, db, auth_cookies, r
 def test_needs_login(client, db):
     assert client.get("/api/roles/agents").status_code == 401
     assert client.put("/api/roles/agents", json={"agent": "K", "email": ""}).status_code == 401
+
+
+def test_an_agent_added_by_hand_is_listed_even_with_no_roster_students(client, db, auth_cookies, roster):
+    client.put("/api/roles/agents", json={"agent": "Kes", "email": "kes@example.com"}, cookies=auth_cookies)
+    agents = client.get("/api/roles/agents", cookies=auth_cookies).json()["agents"]
+    assert {"agent": "Kes", "students": 0, "email": "kes@example.com"} in agents

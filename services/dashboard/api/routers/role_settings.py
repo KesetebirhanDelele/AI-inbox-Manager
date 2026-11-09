@@ -190,8 +190,8 @@ async def get_agents(db: Session = Depends(get_db), user: UserSession = Depends(
         if name and row.active:
             k = routing.key(name)
             seen.setdefault(k, {"agent": name, "students": 0})["students"] += 1
-    for k in emails:                                           # an agent with an email but no active students is still listed
-        seen.setdefault(k, {"agent": k.title(), "students": 0})
+    for k, typed in routing.agent_names(db).items():           # an agent added by hand (or with no active students) is still listed
+        seen.setdefault(k, {"agent": typed, "students": 0})
     out = [{"agent": v["agent"], "students": v["students"], "email": emails.get(k, "")} for k, v in seen.items()]
     return {"roster_readable": bool(roster), "agents": sorted(out, key=lambda a: a["agent"].lower())}
 

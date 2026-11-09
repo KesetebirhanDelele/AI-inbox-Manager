@@ -1679,3 +1679,7 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - No agent email set = exactly the old behaviour (roster not even read). Tests: agent routing 22, agents settings 5; main suite 1172, dashboard 347 passed, tsc clean. NOT done: a check against the live roster (agent name spelling, match rate), a real email.
 - Deferred: deploy with `--build-web`; enter agent emails on Settings > Agents (until then nothing changes); first live run should be watched (agents get real alert emails; approving still contacts real students).
 
+
+### 2026-11-09: "Add agent" button on Settings > Agents (branch `feat/add-agent-button`)
+- Kes wanted to add an agent (himself) by clicking a button. `AgentsCard.tsx` has a name + email form (uses the existing `PUT /api/roles/agents`); `agent_routing.agent_names` keeps the name as typed so a hand-added agent is listed even with no roster students. One new test; dashboard + main suites 1520 passed, tsc clean.
+- Live sample test (same day, one-off script, not committed): roster test row "test1" (agent Kes) got a student row (id 32), a sample email/event/draft (draft 181, event 207, subject starts "SAMPLE TEST") and agent "Kes" = Kes's Gmail. GHL was stubbed as found for test1 only, so the review alert emailed Kes as the agent (alert log detail `agent:Kes`). Nothing was sent to a student. CLEANUP PENDING: reject/remove draft 181 and the sample rows once Kes confirms the email arrived.

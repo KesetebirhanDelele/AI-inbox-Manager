@@ -17,7 +17,13 @@ const AgentsCard = () => {
     mutationFn: (agent: string) => apiClient.setAgentEmail(agent, emails[agent] || ''),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
   });
-  const errorOf = (e: unknown) => (e as { response?: { data?: { detail?: string } } } | null)?.response?.data?.detail;
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const add = useMutation({
+    mutationFn: () => apiClient.setAgentEmail(newName, newEmail),
+    onSuccess: () => { setNewName(''); setNewEmail(''); queryClient.invalidateQueries({ queryKey: ['agents'] }); },
+  });
+  const errorOf =(e: unknown) => (e as { response?: { data?: { detail?: string } } } | null)?.response?.data?.detail;
 
   if (!data) return null;
 
@@ -59,7 +65,19 @@ const AgentsCard = () => {
           ))}
           {data.agents.length === 0 && <li className="py-2 text-gray-500">No agents found on the roster sheet.</li>}
         </ul>
-        {save.isError && <p className="text-sm text-red-700">{errorOf(save.error) || 'That did not work.'}</p>}
+        <form
+          className="flex flex-wrap items-end gap-3 pt-2"
+          onSubmit={(e) => { e.preventDefault(); add.mutate(); }}
+        >
+          <input required placeholder="agent name (as on the roster sheet)" value={newName} onChange={(e) => setNewName(e.target.value)}
+                 className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-64" />
+          <input required type="email" placeholder="agent@company.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
+                 className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-72" />
+          <button type="submit" disabled={add.isPending} className="px-3 py-1.5 text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50">
+            Add agent
+          </button>
+        </form>
+        {(save.isError || add.isError) && <p className="text-sm text-red-700">{errorOf(save.error) || errorOf(add.error) || 'That did not work.'}</p>}
       </div>
     </div>
   );
