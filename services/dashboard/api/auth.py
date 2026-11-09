@@ -52,7 +52,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
-def create_session(username: str, db: Session, role: str = "stakeholder") -> dict:
+def create_session(username: str, db: Session, role: str = "stakeholder", hours: Optional[int] = None) -> dict:
     """
     Create a new user session.
 
@@ -67,7 +67,7 @@ def create_session(username: str, db: Session, role: str = "stakeholder") -> dic
     session_token = str(uuid.uuid4())
 
     # Calculate expiration time
-    expires_at = datetime.utcnow() + timedelta(hours=settings.session_expiry_hours)
+    expires_at = datetime.utcnow() + timedelta(hours=hours or settings.session_expiry_hours)
 
     # Create session record
     session = UserSession(

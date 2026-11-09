@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
 import { format } from 'date-fns';
 import RolesCard from '../components/RolesCard';
+import UsersCard from '../components/UsersCard';
 
 const SettingsPage = () => {
   const queryClient = useQueryClient();
@@ -103,6 +104,8 @@ const SettingsPage = () => {
       </div>
 
       <RolesCard />
+
+      <UsersCard />
 
       {/* Whitelist Management */}
       <div className="bg-white shadow rounded-lg">

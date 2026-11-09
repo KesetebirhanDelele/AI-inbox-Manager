@@ -12,6 +12,7 @@ const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const ApprovePage = lazy(() => import('./pages/ApprovePage'));
+const SignInLinkPage = lazy(() => import('./pages/SignInLinkPage'));
 
 // Loading fallback for lazy-loaded components
 const PageLoader = () => (
@@ -47,6 +48,8 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Opened from the sign-in email: the one-time link is the key */}
+      <Route path="/signin/:token" element={<Suspense fallback={<PageLoader />}><SignInLinkPage /></Suspense>} />
       {/* Opened from an alert email: no login, the token in the link is the key */}
       <Route path="/approve/:token" element={<Suspense fallback={<PageLoader />}><ApprovePage /></Suspense>} />
 

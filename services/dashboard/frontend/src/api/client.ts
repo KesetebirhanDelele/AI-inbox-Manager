@@ -28,6 +28,16 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+export interface AllowedUser {
+  id: number;
+  email: string;
+  name: string | null;
+  role: string;
+  can_manage: boolean;
+  active: boolean;
+  last_login_at: string | null;
+}
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -44,6 +54,31 @@ class ApiClient {
   // Authentication
   async login(username: string, password: string): Promise<{ message: string; username: string }> {
     const response = await this.client.post('/api/auth/login', { username, password });
+    return response.data;
+  }
+
+  async requestSignInLink(email: string): Promise<{ message: string }> {
+    const response = await this.client.post('/api/signin/request', { email });
+    return response.data;
+  }
+
+  async redeemSignInLink(token: string): Promise<{ message: string; username: string }> {
+    const response = await this.client.post('/api/signin/redeem', { token });
+    return response.data;
+  }
+
+  async getAllowedUsers(): Promise<{ can_manage: boolean; users: AllowedUser[] }> {
+    const response = await this.client.get('/api/users');
+    return response.data;
+  }
+
+  async addAllowedUser(body: { email: string; name?: string; role: string; can_manage: boolean }): Promise<AllowedUser> {
+    const response = await this.client.post('/api/users', body);
+    return response.data;
+  }
+
+  async changeAllowedUser(id: number, body: { active?: boolean; role?: string; can_manage?: boolean }): Promise<AllowedUser> {
+    const response = await this.client.patch(`/api/users/${id}`, body);
     return response.data;
   }
 

@@ -614,3 +614,33 @@ class InterviewGateReview(Base):
     human_note = Column(String(300))
     decided_by = Column(String(100))
     decided_at = Column(DateTime)
+
+
+class AllowedUser(Base):
+    """
+    A person allowed to sign in by an emailed one-time link. The email is the username. `role` is the access level they get (admin | stakeholder).
+    `can_manage` lets them add or remove people on the Settings page. Removing = active False (kept so the history is not lost).
+    """
+    __tablename__ = "allowed_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, unique=True, index=True)   # stored lower-case
+    name = Column(String(100))
+    role = Column(String(20), nullable=False, default="admin")
+    can_manage = Column(Boolean, nullable=False, default=False)
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    added_by = Column(String(255))
+    last_login_at = Column(DateTime)
+
+
+class LoginLink(Base):
+    """A one-time sign-in link emailed to an allowed user. Only the SHA-256 of the token is stored. Short-lived, used up by the first sign-in."""
+    __tablename__ = "login_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime)
