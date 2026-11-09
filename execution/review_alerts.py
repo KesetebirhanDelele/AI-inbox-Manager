@@ -1,5 +1,5 @@
 """
-Tell the APPROVER when a new notification card is waiting for their decision.
+Tell whoever must decide when a new notification card is waiting: the student's AGENT (execution/agent_routing.py), or the APPROVER for cards that need a person first or have no agent.
 
 Runs at the end of every processing run (so the email goes out as soon as the cards exist, day or night). ONE email per run lists every new open card:
 student, company, position, interview time, and the app's suggested action, with a link to the Review screen. The 2-hour BACKUP alert for cards nobody
@@ -80,31 +80,66 @@ def run(db, now: Optional[datetime] = None, alerts=None, env: Optional[Dict[str,
         return {"status": "nothing new", "alerted": 0}
 
     alerts = alerts or RoleAlerts(db=db)
-    if not roles.role_email(db, "approver", env):
-        alerts.review_needed("New cards waiting for review", f"{len(new)} new card(s) but nobody holds the approver role.")
-        return {"status": "no approver assigned", "alerted": 0, "new": len(new)}
+    import agent_routing
+    routes = agent_routing.route_cards(db, new)                 # no agent email set up = every card goes to the approver, as before
+    approver_cards = [d for d in new if routes[d.id].to == "approver"]
+    by_agent: Dict[str, List[Any]] = {}
+    for d in new:
+        if routes[d.id].to == "agent":
+            by_agent.setdefault(routes[d.id].email, []).append(d)
 
-    approver = roles.role_email(db, "approver", env)
+    result: Dict[str, Any] = {"status": "nothing new", "alerted": 0}
+    for email, cards_for in by_agent.items():                    # the student's agent first
+        agent_name = routes[cards_for[0].id].agent
+        body = _body(db, cards_for, email, "agent", now, env,
+                     "Nothing is sent to a student until you approve. If you do not decide within the backup time, the approver is told.")
+        if alerts.agent_review(email, f"{len(cards_for)} new notification card(s) for your students", body):
+            for d in cards_for:
+                db.add(M.AlertLog(kind="review_needed", key=str(d.id), detail=f"agent:{agent_name}"))
+            db.commit()
+            result["agent_alerted"] = result.get("agent_alerted", 0) + len(cards_for)
+
+    if approver_cards:
+        approver = roles.role_email(db, "approver", env)
+        if not approver:
+            alerts.review_needed("New cards waiting for review", f"{len(approver_cards)} new card(s) but nobody holds the approver role.")
+            result.update(status="no approver assigned", new=len(approver_cards))
+            return result
+        body = _body(db, approver_cards, approver, "approver", now, env,
+                     "Nothing is sent to a student until you approve. If nobody decides within the backup time, the backup person is told.", routes)
+        if alerts.review_needed(f"{len(approver_cards)} new notification card(s) to review", body):
+            for d in approver_cards:
+                db.add(M.AlertLog(kind="review_needed", key=str(d.id)))
+            db.commit()
+            result["alerted"] = len(approver_cards)
+        else:
+            result["status"] = "send failed"
+            return result
+    result["status"] = "sent" if (result["alerted"] or result.get("agent_alerted")) else "send failed"
+    return result
+
+
+def _body(db, cards, recipient: str, role: str, now, env, closing: str, routes=None) -> str:
+    """One email: every card with its facts and a protected approve link made for `recipient`."""
     lines: List[str] = []
-    for d in new[:MAX_LISTED]:
+    for d in cards[:MAX_LISTED]:
         try:
             import approval_links
-            link = approval_links.create_link(db, d.id, "approver", approver, now, env)
+            link = approval_links.create_link(db, d.id, role, recipient, now, env)
         except Exception as exc:                        # no link must never stop the alert; the app still works
             logger.warning(f"approval link not created for card {d.id}: {exc}")
             link = ""
-        lines.append(_line(db, d, link))
-    more = f"\n...and {len(new) - MAX_LISTED} more." if len(new) > MAX_LISTED else ""
-    body = (f"{len(new)} new student notification card(s) are waiting for your decision (approve, edit or reject):\n\n" + "\n".join(lines) + more +
+        line = _line(db, d, link)
+        reason = routes[d.id].reason if routes else ""
+        if reason:
+            import agent_routing
+            line += f"\n    Needs a person first: {agent_routing.APPROVER_REASON_TEXT[reason]}."
+        lines.append(line)
+    more = f"\n...and {len(cards) - MAX_LISTED} more." if len(cards) > MAX_LISTED else ""
+    return (f"{len(cards)} new student notification card(s) are waiting for your decision (approve, edit or reject):\n\n" + "\n".join(lines) + more +
             f"\n\nReview them here: {DASHBOARD_URL}\n"
             "Each link first emails a 6-digit code to this address, so only you can open it; then it shows the card and asks you to confirm. It works once and expires in 24 hours. "
-            "Nothing is sent to a student until you approve. If nobody decides within the backup time, the backup person is told.")
-    sent = alerts.review_needed(f"{len(new)} new notification card(s) to review", body)
-    if sent:
-        for d in new:
-            db.add(M.AlertLog(kind="review_needed", key=str(d.id)))
-        db.commit()
-    return {"status": "sent" if sent else "send failed", "alerted": len(new) if sent else 0}
+            + closing)
 
 
 def main() -> None:

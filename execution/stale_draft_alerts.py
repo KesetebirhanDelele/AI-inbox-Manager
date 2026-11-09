@@ -80,17 +80,36 @@ def run(db, now: datetime, alerts=None, hours=None, env: Optional[Dict[str, str]
     if not stale:
         return {"status": "nothing stale", "alerted": 0}
 
-    if not roles.role_email(db, "escalation_target", env):
-        alerts.stale_drafts("Drafts waiting for approval", f"{len(stale)} draft(s) are stale but nobody holds the escalation role.")
-        return {"status": "no escalation role assigned", "alerted": 0, "stale": len(stale)}
+    import agent_routing
+    to_approver = [d for d in stale if agent_routing.agent_of_alert(db, d.id)]       # the agent did not decide: the approver is the backup
+    to_escalation = [d for d in stale if d not in to_approver]                        # the approver did not decide: the escalation role is the backup
+    out = {"status": "sent", "alerted": 0}
+    for group, role, method in ((to_approver, "approver", "stale_for_approver"), (to_escalation, "escalation_target", "stale_drafts")):
+        if not group:
+            continue
+        send = getattr(alerts, method)
+        step = _tell(db, group, role, send, alerts, now, hours, threshold, env)
+        out["alerted"] += step.get("alerted", 0)
+        if step["status"] != "sent":
+            out["status"] = step["status"]
+            out.update({k: v for k, v in step.items() if k not in ("status", "alerted")})
+    return out
 
+
+def _tell(db, stale, role: str, send, alerts, now, hours, threshold, env) -> Dict[str, Any]:
+    import models as M
+    import roles
+    from business_hours import business_minutes_between
+    backup = roles.role_email(db, role, env)
+    if not backup:
+        send("Drafts waiting for approval", f"{len(stale)} draft(s) are stale but nobody holds the {role} role.")
+        return {"status": "no escalation role assigned" if role == "escalation_target" else "no approver assigned", "alerted": 0, "stale": len(stale)}
     lines = []
-    backup = roles.role_email(db, "escalation_target", env)
     for d in stale[:MAX_LISTED]:
         event = db.get(M.InterviewEvent, d.interview_event_id)
         try:
             import approval_links
-            link = approval_links.create_link(db, d.id, "escalation_target", backup, now, env)
+            link = approval_links.create_link(db, d.id, role, backup, now, env)
         except Exception:                               # no link must never stop the alert
             link = ""
         student = db.get(M.Student, event.student_id) if event and event.student_id else None
@@ -99,11 +118,13 @@ def run(db, now: datetime, alerts=None, hours=None, env: Optional[Dict[str, str]
                      f"{(event.company_name if event else '') or 'unknown company'}: waiting {age / 60:.1f} business hours"
                      + (f"\n    Review and approve on your phone: {link}" if link else ""))
     more = f"\n...and {len(stale) - MAX_LISTED} more." if len(stale) > MAX_LISTED else ""
+    who = ("the student's agent has not acted on them (you are the backup)" if role == "approver"
+           else "the approver has not acted on them (you are the backup)")
     body = (f"{len(stale)} student notification draft(s) have been waiting for approval for more than "
             f"{threshold / 60:g} business hours:\n\n" + "\n".join(lines) + more +
             f"\n\nThey are in the approval screen: {DASHBOARD_URL}\n"
-            "You are receiving this because you hold the escalation role; the approver has not acted on them (you are the backup).")
-    sent = alerts.stale_drafts(f"{len(stale)} notification draft(s) waiting for approval", body)
+            f"You are receiving this because you hold the {role.replace('_', ' ')} role; {who}.")
+    sent = send(f"{len(stale)} notification draft(s) waiting for approval", body)
     if sent:
         for d in stale:
             db.add(M.AlertLog(kind="stale_draft", key=str(d.id)))

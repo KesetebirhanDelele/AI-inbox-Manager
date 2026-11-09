@@ -172,13 +172,13 @@ class RoleAlerts:
         import roles
         return roles.role_email(self.db, role)
 
-    def _notify(self, subject: str, body: str, role: str = "approver") -> bool:
+    def _notify(self, subject: str, body: str, role: str = "approver", to: Optional[str] = None) -> bool:
         self.sent.append(subject)
         import roles
         if self.to is None and not roles.staff_alerts_on(self.db):
             logger.info(f"[staff email alerts are OFF in Settings] not sent: {subject}")
             return False
-        to = self.address_for(role)
+        to = self.to if self.to is not None else (to or self.address_for(role))
         if not to:
             logger.warning(f"[alert for role {role}, nobody assigned] {subject}: {body}")
             return False
@@ -191,6 +191,14 @@ class RoleAlerts:
         return result.get("status") == "sent"
 
     def review_needed(self, subject: str, body: str) -> bool:
+        return self._notify(subject, body, role="approver")
+
+    def agent_review(self, to: str, subject: str, body: str) -> bool:
+        """To one student's AGENT (address from the Settings page agent list): a new card for their student."""
+        return self._notify(subject, body, role="agent", to=to)
+
+    def stale_for_approver(self, subject: str, body: str) -> bool:
+        """The agent did not decide within the backup time: the approver is told (a card the approver got first goes to stale_drafts, the escalation role)."""
         return self._notify(subject, body, role="approver")
 
     def stale_drafts(self, subject: str, body: str) -> bool:

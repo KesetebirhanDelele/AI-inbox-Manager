@@ -302,6 +302,16 @@ class ApiClient {
     return response.data;
   }
 
+  async getAgents(): Promise<{ roster_readable: boolean; agents: { agent: string; students: number; email: string }[] }> {
+    const response = await this.client.get('/api/roles/agents');
+    return response.data;
+  }
+
+  async setAgentEmail(agent: string, email: string): Promise<any> {
+    const response = await this.client.put('/api/roles/agents', { agent, email });
+    return response.data;
+  }
+
   async setAlertSettings(review_alert_enabled: boolean, backup_after_hours: number, staff_alerts_enabled: boolean): Promise<any> {
     const response = await this.client.put('/api/roles/alert-settings', { review_alert_enabled, backup_after_hours, staff_alerts_enabled });
     return response.data;

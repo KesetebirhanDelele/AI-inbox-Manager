@@ -171,6 +171,43 @@ async def set_alert_settings(body: AlertSettingsIn, db: Session = Depends(get_db
     return {"review_alert_enabled": body.review_alert_enabled, "backup_after_hours": body.backup_after_hours, "staff_alerts_enabled": body.staff_alerts_enabled}
 
 
+class AgentIn(BaseModel):
+    agent: str
+    email: str = ""
+
+
+@router.get("/agents")
+async def get_agents(db: Session = Depends(get_db), user: UserSession = Depends(get_current_user)):
+    """Every agent named on the roster sheet (with how many active students) plus the email set for each. A card goes to its student's agent first."""
+    routing = _execution("agent_routing")
+    sr = _execution("student_roster")
+    emails = routing.agent_emails(db)
+    _execution("student_flags")._load_env()
+    roster = sr.cached_roster()
+    seen = {}
+    for row in roster or []:
+        name = (row.agent or "").strip()
+        if name and row.active:
+            k = routing.key(name)
+            seen.setdefault(k, {"agent": name, "students": 0})["students"] += 1
+    for k in emails:                                           # an agent with an email but no active students is still listed
+        seen.setdefault(k, {"agent": k.title(), "students": 0})
+    out = [{"agent": v["agent"], "students": v["students"], "email": emails.get(k, "")} for k, v in seen.items()]
+    return {"roster_readable": bool(roster), "agents": sorted(out, key=lambda a: a["agent"].lower())}
+
+
+@router.put("/agents")
+async def set_agent(body: AgentIn, db: Session = Depends(get_db), user: UserSession = Depends(get_current_user)):
+    routing = _execution("agent_routing")
+    email = (body.email or "").strip()
+    if email and not _EMAIL.match(email):
+        raise HTTPException(status_code=422, detail="That does not look like an email address")
+    if not routing.key(body.agent):
+        raise HTTPException(status_code=422, detail="Agent name is empty")
+    routing.set_agent_email(db, body.agent, email, user.username)
+    return {"agent": body.agent, "email": email}
+
+
 @router.put("/{role}")
 async def assign_role(role: str, body: RoleIn, db: Session = Depends(get_db), user: UserSession = Depends(get_current_user)):
     roles = _execution("roles")

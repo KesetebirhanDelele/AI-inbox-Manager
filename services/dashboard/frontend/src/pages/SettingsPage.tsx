@@ -4,6 +4,7 @@ import { apiClient } from '../api/client';
 import { format } from 'date-fns';
 import RolesCard from '../components/RolesCard';
 import UsersCard from '../components/UsersCard';
+import AgentsCard from '../components/AgentsCard';
 
 const SettingsPage = () => {
   const queryClient = useQueryClient();
@@ -104,6 +105,8 @@ const SettingsPage = () => {
       </div>
 
       <RolesCard />
+
+      <AgentsCard />
 
       <UsersCard />
 
