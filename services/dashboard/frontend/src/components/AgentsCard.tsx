@@ -17,6 +17,10 @@ const AgentsCard = () => {
     mutationFn: (agent: string) => apiClient.setAgentEmail(agent, emails[agent] || ''),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
   });
+  const remove = useMutation({
+    mutationFn: (agent: string) => apiClient.setAgentEmail(agent, ''),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['agents'] }),
+  });
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const add = useMutation({
@@ -36,7 +40,7 @@ const AgentsCard = () => {
             A new notification card goes to the student&apos;s agent first (from the roster sheet). If the agent has not decided within the backup
             time, the approver is told. A card that needs a person first (student not on the roster or not in GHL, unverified, or an uncertain
             email classification) goes straight to the approver. An agent with no email here is skipped, so the approver gets their cards.
-            Leave every email empty to keep everything with the approver.
+            Remove clears an agent's email; an agent named on the roster sheet stays listed with no email (take the name off the sheet to drop them completely). Leave every email empty to keep everything with the approver.
           </p>
         </div>
         {!data.roster_readable && (
@@ -61,6 +65,15 @@ const AgentsCard = () => {
               >
                 Save
               </button>
+              {a.email && (
+                <button
+                  onClick={() => { if (window.confirm(`Remove ${a.agent}? Their students' cards will go to the approver.`)) remove.mutate(a.agent); }}
+                  disabled={remove.isPending}
+                  className="ml-auto text-xs font-medium text-red-600 hover:text-red-700"
+                >
+                  Remove
+                </button>
+              )}
             </li>
           ))}
           {data.agents.length === 0 && <li className="py-2 text-gray-500">No agents found on the roster sheet.</li>}
@@ -77,7 +90,7 @@ const AgentsCard = () => {
             Add agent
           </button>
         </form>
-        {(save.isError || add.isError) && <p className="text-sm text-red-700">{errorOf(save.error) || errorOf(add.error) || 'That did not work.'}</p>}
+        {(save.isError || add.isError || remove.isError) && <p className="text-sm text-red-700">{errorOf(save.error) || errorOf(add.error) || errorOf(remove.error) || 'That did not work.'}</p>}
       </div>
     </div>
   );

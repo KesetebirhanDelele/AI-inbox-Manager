@@ -54,3 +54,12 @@ def test_an_agent_added_by_hand_is_listed_even_with_no_roster_students(client, d
     client.put("/api/roles/agents", json={"agent": "Kes", "email": "kes@example.com"}, cookies=auth_cookies)
     agents = client.get("/api/roles/agents", cookies=auth_cookies).json()["agents"]
     assert {"agent": "Kes", "students": 0, "email": "kes@example.com"} in agents
+
+
+def test_clearing_an_added_agent_removes_them_but_a_roster_agent_stays_listed(client, db, auth_cookies, roster):
+    client.put("/api/roles/agents", json={"agent": "Kes", "email": "kes@example.com"}, cookies=auth_cookies)
+    client.put("/api/roles/agents", json={"agent": "Karthik", "email": "k@example.com"}, cookies=auth_cookies)
+    client.put("/api/roles/agents", json={"agent": "Kes", "email": ""}, cookies=auth_cookies)
+    client.put("/api/roles/agents", json={"agent": "Karthik", "email": ""}, cookies=auth_cookies)
+    names = {a["agent"]: a["email"] for a in client.get("/api/roles/agents", cookies=auth_cookies).json()["agents"]}
+    assert "Kes" not in names and names["Karthik"] == ""
