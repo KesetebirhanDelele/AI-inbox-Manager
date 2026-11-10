@@ -81,7 +81,13 @@ def run(db, now: datetime, alerts=None, hours=None, env: Optional[Dict[str, str]
         return {"status": "nothing stale", "alerted": 0}
 
     import agent_routing
-    to_approver = [d for d in stale if agent_routing.agent_of_alert(db, d.id)]       # the agent did not decide: the approver is the backup
+    approver = (roles.role_email(db, "approver", env) or "").strip().lower()
+    emails = agent_routing.agent_emails(db)
+
+    def _agent_is_the_approver(name: str) -> bool:                   # the approver cannot be their own backup: the escalation role is told instead
+        return bool(approver) and emails.get(agent_routing.key(name), "").strip().lower() == approver
+
+    to_approver = [d for d in stale if agent_routing.agent_of_alert(db, d.id) and not _agent_is_the_approver(agent_routing.agent_of_alert(db, d.id))]       # the agent did not decide: the approver is the backup
     to_escalation = [d for d in stale if d not in to_approver]                        # the approver did not decide: the escalation role is the backup
     out = {"status": "sent", "alerted": 0}
     for group, role, method in ((to_approver, "approver", "stale_for_approver"), (to_escalation, "escalation_target", "stale_drafts")):

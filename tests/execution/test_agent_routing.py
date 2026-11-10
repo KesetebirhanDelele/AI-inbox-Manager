@@ -286,6 +286,19 @@ def test_approver_card_not_decided_in_time_still_goes_to_the_escalation_role(rou
     assert len(cap.stale_escalation) == 1 and cap.stale_approver == []
 
 
+def test_agent_who_is_also_the_approver_is_backed_up_by_the_escalation_role(routed):
+    db = routed
+    db.add(db.models.RoleAssignment(role="approver", email="karthik@example.com", active=True))
+    db.commit()
+    sd.run(db, datetime(2026, 10, 6, 15, 0), alerts=Cap())
+    _, d = _card(db)
+    ra.run(db, alerts=Cap())
+    d.created_at = datetime(2026, 10, 6, 14, 0); db.commit()
+    cap = Cap()
+    sd.run(db, datetime(2026, 10, 6, 18, 0), alerts=cap)
+    assert len(cap.stale_escalation) == 1 and cap.stale_approver == []
+
+
 def test_not_yet_two_hours_nobody_is_told_again(routed):
     db = routed
     sd.run(db, datetime(2026, 10, 6, 15, 0), alerts=Cap())

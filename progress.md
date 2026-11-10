@@ -1697,3 +1697,8 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 ### 2026-11-10: fix: candidate_confirm.py did not load on the server's Python 3.11 (branch `fix/py-compat-candidate-confirm`)
 - The verification-flow deploy (899d1e3) shipped a backslash inside an f-string expression, which Python 3.14 (local) accepts but the server's 3.11 rejects with a SyntaxError. `routers/approval_links.py` imports that module whenever a link card is opened, so opening any approve link on the server would have failed from 19:49 UTC until this fix. Found immediately by the post-deploy import check, before any link was opened as far as the logs show (not independently verified).
 - Fix: build the agent name in a variable first. Now ALL Python files compile under Python 3.11 (`py -3.11 -m compileall execution services/dashboard/api tests services/dashboard/tests`): run this before every deploy. The server runs 3.11.
+
+### 2026-11-10: fix: an agent who is also the approver is backed up by the escalation role (branch `fix/stale-agent-is-approver`)
+- Kes made Vivek both an agent and the approver, with Kes as the backup (escalation role). A card Vivek missed would have gone back to Vivek (the approver is the backup for a missed agent card).
+- Fix in `execution/stale_draft_alerts.py`: when the card's agent email equals the approver's email, the stale alert goes to the escalation role instead. Other agents are unchanged (the approver is still their backup). Test added in `tests/execution/test_agent_routing.py`.
+- Not yet merged or deployed (waiting for Kes's go-ahead). Full tests pass; the changed file compiles under Python 3.11.
