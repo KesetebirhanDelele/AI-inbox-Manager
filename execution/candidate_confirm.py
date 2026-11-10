@@ -44,8 +44,9 @@ def request_text(db, draft, agent_name: str, agent_email: str, roster=None) -> D
         if m.row is not None and m.row.emails:
             roster_emails = ", ".join(m.row.emails)
     when = " ".join(x for x in (event.interview_date, event.interview_time, event.interview_timezone) if x) if event else ""
+    who = agent_name or "The student's agent"
     lines = [
-        f"{agent_name or 'The student\'s agent'} has confirmed that {name} is a candidate they are actively applying for, but there is no matching contact in GHL.",
+        f"{who} has confirmed that {name} is a candidate they are actively applying for, but there is no matching contact in GHL.",
         "",
         "Please provide the student's email in GHL (add the contact, or fix the one that is wrong).",
         "",

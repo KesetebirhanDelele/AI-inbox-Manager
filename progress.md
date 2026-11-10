@@ -1693,3 +1693,7 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 - Tests: verify flow 12, send cc 2, routing updated; main + dashboard 1540 passed, tsc clean. NOT done: real email to Rose, browser check. Rose C's address is NOT known to Claude: set it on Settings > Roles (GHL contact owner) after deploy, until then the confirm button refuses with a plain message.
 - Not covered (asked, not decided): a student who is NOT on the roster has no agent, so the approver still gets that card (with the existing student-checker Alert button).
 
+
+### 2026-11-10: fix: candidate_confirm.py did not load on the server's Python 3.11 (branch `fix/py-compat-candidate-confirm`)
+- The verification-flow deploy (899d1e3) shipped a backslash inside an f-string expression, which Python 3.14 (local) accepts but the server's 3.11 rejects with a SyntaxError. `routers/approval_links.py` imports that module whenever a link card is opened, so opening any approve link on the server would have failed from 19:49 UTC until this fix. Found immediately by the post-deploy import check, before any link was opened as far as the logs show (not independently verified).
+- Fix: build the agent name in a variable first. Now ALL Python files compile under Python 3.11 (`py -3.11 -m compileall execution services/dashboard/api tests services/dashboard/tests`): run this before every deploy. The server runs 3.11.
