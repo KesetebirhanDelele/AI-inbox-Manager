@@ -92,7 +92,7 @@ def run(db, now: Optional[datetime] = None, alerts=None, env: Optional[Dict[str,
     for email, cards_for in by_agent.items():                    # the student's agent first
         agent_name = routes[cards_for[0].id].agent
         body = _body(db, cards_for, email, "agent", now, env,
-                     "Nothing is sent to a student until you approve. If you do not decide within the backup time, the approver is told.")
+                     "Nothing is sent to a student until you approve. If you do not decide within the backup time, the approver is told.", routes)
         if alerts.agent_review(email, f"{len(cards_for)} new notification card(s) for your students", body):
             for d in cards_for:
                 db.add(M.AlertLog(kind="review_needed", key=str(d.id), detail=f"agent:{agent_name}"))
@@ -123,17 +123,22 @@ def _body(db, cards, recipient: str, role: str, now, env, closing: str, routes=N
     """One email: every card with its facts and a protected approve link made for `recipient`."""
     lines: List[str] = []
     for d in cards[:MAX_LISTED]:
+        route = routes.get(d.id) if routes else None
+        verify = route is not None and route.to == "agent" and route.reason == "not_in_ghl"       # verification: the agent confirms the candidate
         try:
             import approval_links
-            link = approval_links.create_link(db, d.id, role, recipient, now, env)
+            link = approval_links.create_link(db, d.id, "agent_verify" if verify else role, recipient, now, env)
         except Exception as exc:                        # no link must never stop the alert; the app still works
             logger.warning(f"approval link not created for card {d.id}: {exc}")
             link = ""
         line = _line(db, d, link)
-        reason = routes[d.id].reason if routes else ""
-        if reason:
+        if verify:
+            line += ("\n    NOT IN GHL: open the link and confirm whether this is a candidate you are actively applying for. "
+                     "If yes, the GHL contact owner is emailed (you in copy) to add the student's email in GHL; "
+                     "once she replies, update your Google Sheet and GHL.")
+        elif route is not None and route.to == "approver" and route.reason:
             import agent_routing
-            line += f"\n    Needs a person first: {agent_routing.APPROVER_REASON_TEXT[reason]}."
+            line += f"\n    Needs a person first: {agent_routing.APPROVER_REASON_TEXT[route.reason]}."
         lines.append(line)
     more = f"\n...and {len(cards) - MAX_LISTED} more." if len(cards) > MAX_LISTED else ""
     return (f"{len(cards)} new student notification card(s) are waiting for your decision (approve, edit or reject):\n\n" + "\n".join(lines) + more +

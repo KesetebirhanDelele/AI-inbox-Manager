@@ -23,6 +23,8 @@ type View = {
   used_action?: string;
   draft_status?: string;
   delivery_live?: boolean;
+  mode?: 'approve' | 'verify';
+  candidate_confirmed_at?: string | null;
   card?: Card;
   original_email?: { subject?: string; from_address?: string; received_date?: string; text?: string } | null;
 };
@@ -42,7 +44,7 @@ const ApprovePage = () => {
   const [gateBusy, setGateBusy] = useState(false);
   const [gateMessage, setGateMessage] = useState('');
   const [error, setError] = useState('');
-  const [confirming, setConfirming] = useState<'approve' | 'reject' | null>(null);
+  const [confirming, setConfirming] = useState<'approve' | 'reject' | 'confirm' | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState('');
@@ -68,7 +70,7 @@ const ApprovePage = () => {
       .catch((e) => setError(e.message));
   }, [token]);
 
-  const act = async (action: 'approve' | 'reject') => {
+  const act = async (action: 'approve' | 'reject' | 'confirm-candidate') => {
     setBusy(true);
     setActionError('');
     try {
@@ -79,7 +81,9 @@ const ApprovePage = () => {
       });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Could not complete this. Open the Review page in the app.');
-      setDone(action === 'approve' ? 'Approved. The follow-up plan has started.' : 'Rejected. Nothing will be sent.');
+      setDone(action === 'approve' ? 'Approved. The follow-up plan has started.'
+        : action === 'confirm-candidate' ? 'Thank you. The GHL contact owner has been emailed (you are in copy). When she replies, update your Google Sheet and GHL.'
+        : 'Rejected. Nothing will be sent.');
     } catch (e) {
       setActionError((e as Error).message);
       setConfirming(null);
@@ -160,6 +164,7 @@ const ApprovePage = () => {
 
   const c = view.card;
   const iv = c.interview;
+  const verify = view.mode === 'verify';
   const when = [iv.date, iv.time, iv.timezone].filter(Boolean).join(' ') || 'Not stated in the email';
 
   return shell(
@@ -198,7 +203,7 @@ const ApprovePage = () => {
         </div>
       )}
 
-      {c.preview && (
+      {!verify && c.preview && (
         <div className="bg-white rounded-lg shadow p-4 text-sm space-y-3">
           <div className="font-medium text-gray-900">Exactly what the student will receive</div>
           <div>
@@ -217,19 +222,36 @@ const ApprovePage = () => {
         </div>
       )}
 
-      <div className={`rounded-lg p-3 text-sm ${view.delivery_live ? 'bg-red-50 border border-red-300 text-red-800' : 'bg-gray-50 border border-gray-200 text-gray-700'}`}>
+      {!verify && <div className={`rounded-lg p-3 text-sm ${view.delivery_live ? 'bg-red-50 border border-red-300 text-red-800' : 'bg-gray-50 border border-gray-200 text-gray-700'}`}>
         {view.delivery_live ? <strong>LIVE: </strong> : <strong>Shadow: </strong>}{c.will_happen}
-      </div>
+      </div>}
+
+      {verify && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900">
+          This student is <strong>not in GHL</strong>. Confirm below if this is a candidate you are actively applying for: the GHL contact owner is then emailed (you in copy) to add their email in GHL.
+          Once she replies, update the email in your Google Sheet and in GHL. Nothing is sent to the student from this page.
+        </div>
+      )}
+      {verify && view.candidate_confirmed_at && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-900">
+          You already confirmed this candidate ({new Date(view.candidate_confirmed_at.endsWith('Z') ? view.candidate_confirmed_at : `${view.candidate_confirmed_at}Z`).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} CT). The GHL contact owner has been emailed.
+        </div>
+      )}
 
       {actionError && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{actionError}</div>}
 
       <div className="bg-white rounded-lg shadow p-4 space-y-3">
         {confirming === null && (
           <div className="flex gap-3">
-            <button type="button" disabled={!c.can_approve} onClick={() => setConfirming('approve')}
-              className="flex-1 py-3 rounded-md bg-green-600 text-white font-medium disabled:opacity-40">Approve</button>
+            {verify ? (
+              <button type="button" disabled={!!view.candidate_confirmed_at} onClick={() => setConfirming('confirm')}
+                className="flex-1 py-3 rounded-md bg-green-600 text-white font-medium disabled:opacity-40">Yes, this is my candidate</button>
+            ) : (
+              <button type="button" disabled={!c.can_approve} onClick={() => setConfirming('approve')}
+                className="flex-1 py-3 rounded-md bg-green-600 text-white font-medium disabled:opacity-40">Approve</button>
+            )}
             <button type="button" onClick={() => setConfirming('reject')}
-              className="flex-1 py-3 rounded-md border border-red-300 text-red-700 font-medium">Reject</button>
+              className="flex-1 py-3 rounded-md border border-red-300 text-red-700 font-medium">{verify ? 'Not my candidate' : 'Reject'}</button>
           </div>
         )}
         {confirming === 'approve' && (
@@ -237,6 +259,15 @@ const ApprovePage = () => {
             <div className="text-sm text-gray-900">Confirm: start the notification for <strong>{c.student?.name}</strong>? {view.delivery_live ? 'This calls, texts and emails them now.' : 'Shadow mode: nothing reaches them yet.'}</div>
             <div className="flex gap-3">
               <button type="button" disabled={busy} onClick={() => act('approve')} className="flex-1 py-3 rounded-md bg-green-600 text-white font-medium disabled:opacity-50">Yes, approve</button>
+              <button type="button" onClick={() => setConfirming(null)} className="flex-1 py-3 rounded-md border border-gray-300">Cancel</button>
+            </div>
+          </div>
+        )}
+        {confirming === 'confirm' && (
+          <div className="space-y-2">
+            <div className="text-sm text-gray-900">Confirm: <strong>{c.student?.name}</strong> is a candidate you are actively applying for? The GHL contact owner will be emailed, with you in copy, to add their email in GHL.</div>
+            <div className="flex gap-3">
+              <button type="button" disabled={busy} onClick={() => act('confirm-candidate')} className="flex-1 py-3 rounded-md bg-green-600 text-white font-medium disabled:opacity-50">Yes, email her</button>
               <button type="button" onClick={() => setConfirming(null)} className="flex-1 py-3 rounded-md border border-gray-300">Cancel</button>
             </div>
           </div>

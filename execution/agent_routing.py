@@ -9,10 +9,14 @@ something out first, so an agent is never asked to approve a card the app is uns
   unverified        the student was created from a delivery address and is not verified
   not_on_roster     the roster sheet has no email match (unlisted, or listed by name only)
   roster_unknown    the roster sheet could not be read, so nothing can be trusted
-  not_in_ghl        GHL has no contact for the student (or the lookup is ambiguous / unreachable)
+  ghl_unknown       GHL could not be checked (unreachable / not configured)
+  not_in_ghl        GHL has no contact for the student AND there is no agent to verify them
   low_confidence    the email classification confidence is under CLASSIFICATION_FLOOR
   no_agent          the roster row has no agent
   agent_no_email    nobody has entered an email for that agent on the Settings page
+
+A student the roster matches by email whose GHL contact is missing (or ambiguous) is VERIFICATION: the card goes to the AGENT with reason "not_in_ghl" (Route.reason == VERIFY).
+The agent confirms from the emailed link that this is a candidate they are actively applying for; that emails the ghl_contact_owner role (agent copied) to add the email in GHL.
 
 Agent emails live in role_assignments (role "agent", scope = agent name as on the sheet), edited on the Settings page; no person is written into code.
 While NO agent has an email, every card goes to the approver exactly as before, so nothing changes until agents are set up.
@@ -30,13 +34,15 @@ for _p in (_ROOT / "execution", _ROOT / "services" / "dashboard" / "api"):
 logger = logging.getLogger(__name__)
 
 AGENT_ROLE = "agent"
+VERIFY = "not_in_ghl"                 # an agent Route with this reason = verification mode (the agent confirms the candidate; see candidate_confirmed)
 CLASSIFICATION_FLOOR = 0.70          # the classifier's own "needs a person" line (classify_email.py)
 APPROVER_REASON_TEXT = {
     "no_student": "no student is attached to the email",
     "unverified": "the student is not verified yet",
     "not_on_roster": "the student is not (fully) matched on the roster sheet",
     "roster_unknown": "the roster sheet could not be read",
-    "not_in_ghl": "the student could not be confirmed in GHL",
+    "not_in_ghl": "the student is not in GHL and has no agent to verify them",
+    "ghl_unknown": "GHL could not be checked for this student",
     "low_confidence": "the email classification is uncertain",
     "no_agent": "the roster has no agent for this student",
     "agent_no_email": "the student's agent has no email set in Settings",
@@ -111,16 +117,18 @@ def route_for_draft(db, draft, roster, emails: Dict[str, str], ghl_status: Calla
     except Exception as exc:                       # a lookup failure is a doubt, never a reason to skip the approver
         logger.warning(f"GHL status failed for routing: {exc}")
         ghl = "unknown"
-    if ghl != "found":
-        return Route("approver", "not_in_ghl")
+    if ghl == "unknown":
+        return Route("approver", "ghl_unknown")    # GHL could not be checked: a person decides, the agent is not asked to verify on a guess
     if event.confidence is not None and event.confidence < CLASSIFICATION_FLOOR:
         return Route("approver", "low_confidence")
     agent = (match.row.agent if match.row is not None else "").strip()
     if not agent:
-        return Route("approver", "no_agent")
+        return Route("approver", "not_in_ghl" if ghl != "found" else "no_agent")
     email = emails.get(key(agent), "")
     if not email:
         return Route("approver", "agent_no_email", agent=agent)
+    if ghl != "found":                             # not_found / check: the agent confirms the candidate, then the GHL contact owner is asked for the email
+        return Route("agent", VERIFY, agent=agent, email=email)
     return Route("agent", "", agent=agent, email=email)
 
 

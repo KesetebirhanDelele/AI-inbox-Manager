@@ -172,7 +172,7 @@ class RoleAlerts:
         import roles
         return roles.role_email(self.db, role)
 
-    def _notify(self, subject: str, body: str, role: str = "approver", to: Optional[str] = None) -> bool:
+    def _notify(self, subject: str, body: str, role: str = "approver", to: Optional[str] = None, cc: str = "", reply_to: str = "") -> bool:
         self.sent.append(subject)
         import roles
         if self.to is None and not roles.staff_alerts_on(self.db):
@@ -187,11 +187,16 @@ class RoleAlerts:
             from send_notification import send_email
             send = send_email
         # bcc="": these are internal alerts to the person holding a role, not student mail, so they are NOT copied to the interviews mailbox
-        result = send(recipient_email=to, subject=f"[InboxGenius] {subject}", body=body, bcc="")
+        extra = {k: v for k, v in (("cc", cc), ("reply_to", reply_to)) if v}          # only when used, so plain alerts are sent exactly as before
+        result = send(recipient_email=to, subject=f"[InboxGenius] {subject}", body=body, bcc="", **extra)
         return result.get("status") == "sent"
 
     def review_needed(self, subject: str, body: str) -> bool:
         return self._notify(subject, body, role="approver")
+
+    def ghl_contact_request(self, subject: str, body: str, cc: str, reply_to: str) -> bool:
+        """To the GHL contact owner, the student's agent copied and replies going to the agent: please put this student's email in GHL."""
+        return self._notify(subject, body, role="ghl_contact_owner", cc=cc, reply_to=reply_to)
 
     def agent_review(self, to: str, subject: str, body: str) -> bool:
         """To one student's AGENT (address from the Settings page agent list): a new card for their student."""

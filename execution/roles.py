@@ -8,6 +8,7 @@ Who receives what: ROLES that get assigned, never a person written into the code
   callback_backup     the callback owner's backup: told when a student callback is still open after one business hour
                       (falls back to escalation_target while nobody holds this role, which is how overdue callbacks were routed before)
   student_checker     verifies and calls a candidate who is not on the roster sheet or not in GHL (alerted by a button on the card)
+  ghl_contact_owner   asked to put a missing student email in GHL after the student's agent confirms the candidate (agent copied; replies go to the agent)
 
 Assignments live in the database (table role_assignments, edited on the dashboard's Settings page). When the work moves to
 recruiters this is a settings change, not a rewrite. An optional `scope` (for example a recruiter) is stored for that day but not used yet.
@@ -16,7 +17,7 @@ Fallback when nothing is assigned: the environment variables below, so an alert 
 import os
 from typing import Dict, List, Optional
 
-ROLES = ("approver", "callback_owner", "escalation_target", "callback_backup", "student_checker")
+ROLES = ("approver", "callback_owner", "escalation_target", "callback_backup", "student_checker", "ghl_contact_owner")
 
 ROLE_LABELS: Dict[str, str] = {
     "approver": "Approver",
@@ -24,6 +25,7 @@ ROLE_LABELS: Dict[str, str] = {
     "escalation_target": "Backup approver (escalation)",
     "callback_backup": "Callback backup",
     "student_checker": "Student checker",
+    "ghl_contact_owner": "GHL contact owner",
 }
 ROLE_HELP: Dict[str, str] = {
     "approver": "Approves student notifications. Emailed when a new card needs review, and when a student has not responded, replied needing help, opted out or cannot be reached.",
@@ -31,6 +33,7 @@ ROLE_HELP: Dict[str, str] = {
     "escalation_target": "Backup for the approver: emailed when a card has waited for a decision longer than the backup time below.",
     "callback_backup": "Backup for the callback owner: emailed when a student callback is still open after one business hour.",
     "student_checker": "Verifies and calls a candidate who is not in GHL. Emailed when someone clicks \"Alert\" on that student's card.",
+    "ghl_contact_owner": "Adds a missing student email in GHL. Emailed (with the student's agent copied) when an agent confirms a candidate who is not in GHL.",
 }
 ENV_FALLBACK: Dict[str, str] = {
     "approver": "APPROVER_ALERT_EMAIL",
@@ -38,6 +41,7 @@ ENV_FALLBACK: Dict[str, str] = {
     "escalation_target": "ESCALATION_ALERT_EMAIL",
     "callback_backup": "CALLBACK_BACKUP_EMAIL",
     "student_checker": "STUDENT_CHECKER_EMAIL",
+    "ghl_contact_owner": "GHL_CONTACT_OWNER_EMAIL",
 }
 
 

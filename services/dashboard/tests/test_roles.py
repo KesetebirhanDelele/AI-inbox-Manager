@@ -6,10 +6,10 @@ from conftest import make_email, make_interview_event, make_notification_draft, 
 
 class TestRoles:
     def test_all_four_roles_are_listed_with_nobody_assigned(self, client, db, auth_cookies, monkeypatch):
-        for var in ("APPROVER_ALERT_EMAIL", "CALLBACK_OWNER_EMAIL", "ESCALATION_ALERT_EMAIL", "CALLBACK_BACKUP_EMAIL"):
+        for var in ("APPROVER_ALERT_EMAIL", "CALLBACK_OWNER_EMAIL", "ESCALATION_ALERT_EMAIL", "CALLBACK_BACKUP_EMAIL", "GHL_CONTACT_OWNER_EMAIL"):
             monkeypatch.delenv(var, raising=False)
         data = client.get("/api/roles", cookies=auth_cookies).json()
-        assert [r["role"] for r in data["roles"]] == ["approver", "callback_owner", "escalation_target", "callback_backup", "student_checker"]
+        assert [r["role"] for r in data["roles"]] == ["approver", "callback_owner", "escalation_target", "callback_backup", "student_checker", "ghl_contact_owner"]
         assert all(r["email"] == "" and r["source"] == "none" for r in data["roles"])
         assert data["pilot_limit"] == 3 and data["pilot_used"] == 0 and "09:00 to 17:00" in data["business_hours"]
 

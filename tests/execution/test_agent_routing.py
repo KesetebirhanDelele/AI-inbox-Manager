@@ -84,11 +84,17 @@ def test_agent_name_matches_loosely(db):
     assert _route(db, d).to == "agent"
 
 
-@pytest.mark.parametrize("ghl", ["not_found", "check", "unknown"])
-def test_not_in_ghl_or_unconfirmed_goes_to_the_approver(db, ghl):
+@pytest.mark.parametrize("ghl", ["not_found", "check"])
+def test_not_in_ghl_with_an_agent_goes_to_the_agent_for_verification(db, ghl):
     _agent(db)
     _, d = _card(db)
-    assert _route(db, d, ghl=lambda s: ghl) == ar.Route("approver", "not_in_ghl")
+    assert _route(db, d, ghl=lambda s: ghl) == ar.Route("agent", ar.VERIFY, "Karthik", "karthik@example.com")
+
+
+def test_ghl_that_cannot_be_checked_goes_to_the_approver(db):
+    _agent(db)
+    _, d = _card(db)
+    assert _route(db, d, ghl=lambda s: "unknown") == ar.Route("approver", "ghl_unknown")
 
 
 def test_ghl_lookup_error_goes_to_the_approver(db):
@@ -97,7 +103,26 @@ def test_ghl_lookup_error_goes_to_the_approver(db):
 
     def boom(student):
         raise RuntimeError("down")
-    assert _route(db, d, ghl=boom).reason == "not_in_ghl"
+    assert _route(db, d, ghl=boom).reason == "ghl_unknown"
+
+
+def test_not_in_ghl_and_no_agent_goes_to_the_approver(db):
+    _agent(db)
+    _, d = _card(db)
+    assert _route(db, d, roster=_roster(agent=""), ghl=lambda s: "not_found") == ar.Route("approver", "not_in_ghl")
+
+
+def test_not_in_ghl_and_agent_without_email_goes_to_the_approver(db):
+    _agent(db, "Someone Else", "else@example.com")
+    _, d = _card(db)
+    r = _route(db, d, ghl=lambda s: "not_found")
+    assert r.to == "approver" and r.reason == "agent_no_email"
+
+
+def test_not_in_ghl_and_doubtful_classification_goes_to_the_approver(db):
+    _agent(db)
+    _, d = _card(db, confidence=0.5)
+    assert _route(db, d, ghl=lambda s: "not_found").reason == "low_confidence"
 
 
 def test_student_not_on_roster_or_by_name_only_goes_to_the_approver(db):
@@ -206,13 +231,11 @@ def test_new_card_emails_the_agent_not_the_approver(routed):
 
 def test_card_needing_a_person_emails_the_approver_with_the_reason(routed, monkeypatch):
     db = routed
-    import student_flags
-    monkeypatch.setattr(student_flags, "ghl_status", lambda s: "not_found")
-    _card(db)
+    _card(db, confidence=0.5)
     cap = Cap()
     out = ra.run(db, alerts=cap)
     assert out["alerted"] == 1 and cap.agent == []
-    assert "Needs a person first: the student could not be confirmed in GHL" in cap.approver[0][1]
+    assert "Needs a person first: the email classification is uncertain" in cap.approver[0][1]
     assert ar.agent_of_alert(db, 1) == ""
 
 
@@ -254,10 +277,8 @@ def test_agent_card_not_decided_in_time_goes_to_the_approver_not_the_escalation_
 
 def test_approver_card_not_decided_in_time_still_goes_to_the_escalation_role(routed, monkeypatch):
     db = routed
-    import student_flags
-    monkeypatch.setattr(student_flags, "ghl_status", lambda s: "not_found")
     sd.run(db, datetime(2026, 10, 6, 15, 0), alerts=Cap())
-    _, d = _card(db)
+    _, d = _card(db, confidence=0.5)
     ra.run(db, alerts=Cap())
     d.created_at = datetime(2026, 10, 6, 14, 0); db.commit()
     cap = Cap()
@@ -273,3 +294,33 @@ def test_not_yet_two_hours_nobody_is_told_again(routed):
     d.created_at = datetime(2026, 10, 6, 17, 0); db.commit()                                     # 12:00 CDT, one hour before
     cap = Cap()
     assert sd.run(db, datetime(2026, 10, 6, 18, 0), alerts=cap)["status"] == "nothing stale"
+
+
+# ── verification: not in GHL, the agent confirms the candidate ───────────────
+
+def test_verification_card_emails_the_agent_with_a_verify_link(routed, monkeypatch):
+    db = routed
+    import student_flags
+    monkeypatch.setattr(student_flags, "ghl_status", lambda s: "not_found")
+    _, d = _card(db)
+    cap = Cap()
+    out = ra.run(db, alerts=cap, env={"DASHBOARD_BASE_URL": "https://example.test"})
+    assert out["agent_alerted"] == 1 and cap.approver == []
+    to, _, body = cap.agent[0]
+    assert to == "karthik@example.com" and "NOT IN GHL" in body and "actively applying for" in body
+    link = db.query(db.models.ApprovalLink).one()
+    assert (link.role, link.recipient_email) == ("agent_verify", "karthik@example.com")
+    assert ar.agent_of_alert(db, d.id) == "Karthik"
+
+
+def test_a_clean_card_and_a_verification_card_in_one_agent_email_get_different_links(routed, monkeypatch):
+    db = routed
+    import student_flags
+    seen = iter(["found", "not_found"])
+    monkeypatch.setattr(student_flags, "ghl_status", lambda s: next(seen))
+    _card(db, company="Clean Co")
+    _card(db, company="Missing Co")
+    cap = Cap()
+    ra.run(db, alerts=cap)
+    assert len(cap.agent) == 1
+    assert sorted(l.role for l in db.query(db.models.ApprovalLink).all()) == ["agent", "agent_verify"]

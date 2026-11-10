@@ -1686,3 +1686,10 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 
 ### 2026-11-09: Remove button on Settings > Agents (branch `feat/remove-agent-button`)
 - Kes: agents should be addable and removable like the people-who-can-sign-in list. Remove clears the agent's email (their students' cards then go to the approver). An agent named on the roster sheet stays listed with an empty email (the sheet owns that list); a hand-added agent with no roster students disappears. `AgentsCard.tsx` only (the API already clears with an empty email). One new test.
+
+### 2026-11-10: verification flow for students not in GHL (branch `feat/verify-candidate-flow`; not yet merged or deployed)
+- Why: Kes: when a student needs verification (not in GHL), Vivek/Karthik get the notification and confirm by a button that it is a candidate they are actively applying for; that emails Rose C (agent copied) to provide the email in GHL; once she replies the agent updates the Google Sheet and GHL by hand.
+- `agent_routing.py`: roster-matched + not in GHL (`not_found` / `check`) is now an AGENT route with reason `not_in_ghl` (was approver); GHL unreachable = approver `ghl_unknown`; no agent or no agent email still approver. `review_alerts.py`: verification cards use link role `agent_verify` and say what to do. `routers/approval_links.py`: `mode` on open, `POST .../confirm-candidate`, approve refused for `agent_verify`. `execution/candidate_confirm.py` (new), role `ghl_contact_owner` in `roles.py`, `RoleAlerts.ghl_contact_request`, `send_email(cc=, reply_to=)`. `ApprovePage.tsx`: verification mode. Directive and RUNBOOK updated.
+- Tests: verify flow 12, send cc 2, routing updated; main + dashboard 1540 passed, tsc clean. NOT done: real email to Rose, browser check. Rose C's address is NOT known to Claude: set it on Settings > Roles (GHL contact owner) after deploy, until then the confirm button refuses with a plain message.
+- Not covered (asked, not decided): a student who is NOT on the roster has no agent, so the approver still gets that card (with the existing student-checker Alert button).
+

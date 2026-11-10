@@ -38,6 +38,13 @@ def _links():
     return __import__("approval_links")
 
 
+def _confirm():
+    exec_dir = str(Path(__file__).resolve().parents[4] / "execution")
+    if exec_dir not in sys.path:
+        sys.path.insert(0, exec_dir)
+    return __import__("candidate_confirm")
+
+
 class OpenIn(BaseModel):
     code: str = ""
 
@@ -130,7 +137,11 @@ async def open_link(token: str, body: OpenIn, db: Session = Depends(get_db)):
         "subject": email.subject, "from_address": email.from_address, "received_date": email.received_date,
         "text": clean_email_text(email.full_body or email.body_preview or "")[:ORIGINAL_EMAIL_MAX_CHARS],
     }
-    return {"state": "ready", "expires_at": link.expires_at, "delivery_live": queue.get("delivery_live"), "card": card, "original_email": original}
+    cc = _confirm()
+    done = cc.confirmed(db, link.draft_id)
+    return {"state": "ready", "expires_at": link.expires_at, "delivery_live": queue.get("delivery_live"), "card": card, "original_email": original,
+            "mode": "verify" if link.role == "agent_verify" else "approve",
+            "candidate_confirmed_at": done.sent_at if done is not None else None}
 
 
 async def _act(token: str, action: str, body: ActionIn, db: Session):
@@ -141,6 +152,9 @@ async def _act(token: str, action: str, body: ActionIn, db: Session):
     reason = _blocked(al, link, draft)
     if reason:
         raise HTTPException(status_code=409, detail=f"This link can no longer be used ({reason}).")
+    if link.role == "agent_verify" and action == "approve":
+        raise HTTPException(status_code=409, detail="This student is not in GHL yet, so the notice cannot be approved from this link. Confirm the candidate here, "
+                                                    "then approve in the app once the contact is in GHL.")
     _require_code(al, db, link, body.code)                       # checked first, used up only when the decision succeeds
     actor = SimpleNamespace(username=f"link:{link.recipient_email}")
     if action == "approve":
@@ -161,3 +175,31 @@ async def approve_link(token: str, body: ActionIn, db: Session = Depends(get_db)
 @router.post("/{token}/reject")
 async def reject_link(token: str, body: ActionIn, db: Session = Depends(get_db)):
     return await _act(token, "reject", body, db)
+
+
+@router.post("/{token}/confirm-candidate")
+async def confirm_candidate(token: str, body: ActionIn, db: Session = Depends(get_db)):
+    """Verification: the agent confirms the student is a candidate they are actively applying for. Emails the GHL contact owner (agent copied).
+    Uses the code up; leaves the link usable (the card is still undecided, and Reject stays available)."""
+    if not body.confirm:
+        raise HTTPException(status_code=422, detail="Confirmation is required.")
+    al, link = _load(db, token)
+    if link.role != "agent_verify":
+        raise HTTPException(status_code=409, detail="This card is not a verification request.")
+    draft = db.get(NotificationDraft, link.draft_id)
+    reason = _blocked(al, link, draft)
+    if reason:
+        raise HTTPException(status_code=409, detail=f"This link can no longer be used ({reason}).")
+    _require_code(al, db, link, body.code)
+    cc = _confirm()
+    import agent_routing
+    agent_name = agent_routing.agent_of_alert(db, link.draft_id)
+    try:
+        result = cc.confirm(db, draft, agent_name, link.recipient_email)
+    except cc.NoOwner:
+        raise HTTPException(status_code=409, detail="Nobody is set as the GHL contact owner yet. Ask the approver to add her under Settings, then try again.")
+    except cc.SendFailed:
+        raise HTTPException(status_code=502, detail="The email to the GHL contact owner could not be sent. Try again in a moment.")
+    al.check_code(db, link, body.code, consume=True)
+    db.commit()
+    return {"ok": True, **result}

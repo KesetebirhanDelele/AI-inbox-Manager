@@ -73,6 +73,8 @@ def build_email_message(
     from_name: Optional[str] = None,
     from_email: Optional[str] = None,
     bcc: Optional[str] = None,
+    cc: Optional[str] = None,
+    reply_to: Optional[str] = None,
 ) -> MIMEMultipart:
     """
     Build a MIME email message.
@@ -96,6 +98,10 @@ def build_email_message(
     msg["To"] = recipient_email
     msg["Subject"] = subject
 
+    if cc:
+        msg["Cc"] = cc
+    if reply_to:
+        msg["Reply-To"] = reply_to
     if bcc:
         msg["Bcc"] = bcc
 
@@ -116,6 +122,8 @@ def send_email(
     smtp_port: Optional[int] = None,
     smtp_username: Optional[str] = None,
     smtp_password: Optional[str] = None,
+    cc: Optional[str] = None,
+    reply_to: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Send an email via Gmail SMTP.
@@ -177,6 +185,8 @@ def send_email(
         from_name=from_name,
         from_email=from_email or username,
         bcc=bcc_addr,
+        cc=cc,
+        reply_to=reply_to,
     )
 
     # Send via SMTP
@@ -190,6 +200,8 @@ def send_email(
 
             # Build recipient list (To + BCC)
             recipients = [recipient_email]
+            if cc:
+                recipients.extend(a.strip() for a in cc.split(",") if a.strip())
             if bcc_addr:
                 recipients.append(bcc_addr)
 
