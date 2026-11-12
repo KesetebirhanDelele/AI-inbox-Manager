@@ -1682,7 +1682,7 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 
 ### 2026-11-09: "Add agent" button on Settings > Agents (branch `feat/add-agent-button`)
 - Kes wanted to add an agent (himself) by clicking a button. `AgentsCard.tsx` has a name + email form (uses the existing `PUT /api/roles/agents`); `agent_routing.agent_names` keeps the name as typed so a hand-added agent is listed even with no roster students. One new test; dashboard + main suites 1520 passed, tsc clean.
-- Live sample test (same day, one-off script, not committed): roster test row "test1" (agent Kes) got a student row (id 32), a sample email/event/draft (draft 181, event 207, subject starts "SAMPLE TEST") and agent "Kes" = Kes's Gmail. GHL was stubbed as found for test1 only, so the review alert emailed Kes as the agent (alert log detail `agent:Kes`). Nothing was sent to a student. CLEANUP PENDING: reject/remove draft 181 and the sample rows once Kes confirms the email arrived.
+- Live sample test (same day, one-off script, not committed): roster test row "test1" (agent Kes) got a student row (id 32), a sample email/event/draft (draft 181, event 207, subject starts "SAMPLE TEST") and agent "Kes" = Kes's Gmail. GHL was stubbed as found for test1 only, so the review alert emailed Kes as the agent (alert log detail `agent:Kes`). Nothing was sent to a student. CLEANUP DONE the same day (Kes confirmed the email arrived): the sample rows and Kes's agent entry were removed by a one-off script (not committed); 0 SAMPLE TEST emails remain.
 
 ### 2026-11-09: Remove button on Settings > Agents (branch `feat/remove-agent-button`)
 - Kes: agents should be addable and removable like the people-who-can-sign-in list. Remove clears the agent's email (their students' cards then go to the approver). An agent named on the roster sheet stays listed with an empty email (the sheet owns that list); a hand-added agent with no roster students disappears. `AgentsCard.tsx` only (the API already clears with an empty email). One new test.
@@ -1701,4 +1701,10 @@ For full detail on any of the above, see `RUNBOOK.md` §16 and `git log`.
 ### 2026-11-10: fix: an agent who is also the approver is backed up by the escalation role (branch `fix/stale-agent-is-approver`)
 - Kes made Vivek both an agent and the approver, with Kes as the backup (escalation role). A card Vivek missed would have gone back to Vivek (the approver is the backup for a missed agent card).
 - Fix in `execution/stale_draft_alerts.py`: when the card's agent email equals the approver's email, the stale alert goes to the escalation role instead. Other agents are unchanged (the approver is still their backup). Test added in `tests/execution/test_agent_routing.py`.
-- Not yet merged or deployed (waiting for Kes's go-ahead). Full tests pass; the changed file compiles under Python 3.11.
+- Merged to master and deployed 2026-11-10 23:40 UTC (commit 9140e09); server `.deployed_commit` matched; the reminder job's container reads the new file. Full tests pass (1180 main + 361 dashboard); all Python compiles under 3.11. Not yet seen on a real missed card.
+
+### 2026-11-12: state check and open items (docs only, no code change)
+- Live roles confirmed on the server (names and presence only): agents Karthik and Vivek (active, emails set), approver, escalation target (backup) and GHL contact owner (Rose) all set.
+- Verification flow, as built: the agent who taps "Yes, this is my candidate" is the ONLY one copied on the email to Rose and the only reply-to. Not "both agents". Nothing updates the app directly: the agent edits the Google Sheet and GHL by hand. Tested with a fake mail sender only; no real email to Rose yet, page not seen in a browser.
+- Open, Kes to decide: always copy BOTH agents on the email to Rose, and send replies to both? (recommended; small change).
+- Open follow-ups: 12 active students have no agent on the roster sheet; confirm from the alert log who got the first real agent/approver cards; later retire the shared passwords once Kes and Ali use email links; the Gmail draft to Ali (unsent) does not mention the verification flow or the agent-is-approver rule.
